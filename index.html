@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <meta name="theme-color" content="#0d3d2e" />
+    <meta name="description" content="Ocealgo Team Dashboard" />
+    <title>Ocealgo — Team App</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      body { background: #060a0f; font-family: 'Trebuchet MS', sans-serif; color: #fff; -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
+      ::-webkit-scrollbar { display: none; }
+      button { font-family: inherit; cursor: pointer; }
+      textarea, input { font-family: inherit; }
+      @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+      .fade-in { animation: fadeIn 0.25s ease forwards; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
