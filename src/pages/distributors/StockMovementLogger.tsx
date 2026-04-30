@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { collection, addDoc, onSnapshot } from 'firebase/firestore'
 import { db } from '../../firebase'
 import { Party, StockMovement, PaymentType } from '../../types'
+import DateInput from '../../components/DateInput'
 import { useAuth } from '../../context/AuthContext'
 import { useStockConfig, toDisplay } from '../../hooks/useFirebase'
 import CustomSelect from '../../components/CustomSelect'
@@ -189,8 +190,7 @@ export default function StockMovementLogger({ onBack, parties }: Props) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div>
               <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>Month</div>
-              <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}
-                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '10px 14px', fontSize: 14, color: '#fff', outline: 'none', width: '100%', boxSizing: 'border-box', marginBottom: 10 }} />
+              <DateInput type="month" value={selectedMonth} onChange={v => setSelectedMonth(v)} />
             </div>
             {filteredMovements.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#475569' }}>

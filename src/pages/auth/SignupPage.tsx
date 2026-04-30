@@ -34,7 +34,7 @@ export default function SignupPage({ onSwitch }: Props) {
       await setDoc(doc(db, 'users', user.uid), {
         email: form.email,
         name: form.name.trim(),
-        role: isSuperAdmin ? 'super_admin' : 'sales',
+        role: isSuperAdmin ? 'super_admin' : 'offline_sales',
         status: isSuperAdmin ? 'approved' : 'pending',
         createdAt: Date.now(),
       })

@@ -5,12 +5,14 @@ import { AppUser, UserRole } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 
 const SUPER_ADMIN_EMAIL = 'amalau14113@gmail.com'
-const ROLES: UserRole[] = ['admin', 'sales', 'marketing']
+const ROLES: UserRole[] = ['admin', 'offline_sales', 'online_sales', 'offline_marketing', 'online_marketing']
 const ROLE_LABELS: Record<string, string> = {
   super_admin: '👑 Super Admin',
   admin: '🛡️ Admin',
-  sales: '🤝 Sales',
-  marketing: '📣 Marketing',
+  offline_sales: '🏪 Offline Sales',
+  online_sales: '🌐 Online Sales',
+  offline_marketing: '📣 Offline Marketing (Coming Soon)',
+  online_marketing: '💻 Online Marketing (Active)',
 }
 
 interface Props { onBack: () => void }

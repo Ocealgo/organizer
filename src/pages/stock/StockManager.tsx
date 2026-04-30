@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { collection, addDoc, onSnapshot, doc, updateDoc, query, where } from 'firebase/firestore'
 import { db } from '../../firebase'
 import { Party, Dispatch, MonthlyRequest, PaymentType } from '../../types'
+import DateInput from '../../components/DateInput'
 import { useAuth } from '../../context/AuthContext'
 import { useStockConfig, updateStockConfig, toDisplay } from '../../hooks/useFirebase'
 import CustomSelect from '../../components/CustomSelect'
@@ -104,13 +105,26 @@ export default function StockManager({ onBack }: Props) {
         })
       }
 
-      // Low stock alert
+      // Low stock alert + auto-reminder
       const remaining = available - packets
       if (party.lowStockThreshold && remaining <= party.lowStockThreshold) {
         await addDoc(collection(db, 'alerts'), {
           type: 'low_stock',
           message: `⚠️ ${party.name} low — only ${toDisplay(remaining, config.packetsPerCarton)} remaining`,
           relatedId: form.partyId, read: false, createdAt: now,
+        })
+        // Auto-create workspace reminder
+        await addDoc(collection(db, 'reminders'), {
+          title: `⚠️ Restock: ${party.name} — only ${toDisplay(remaining, config.packetsPerCarton)} remaining`,
+          date: new Date().toISOString().split('T')[0],
+          category: 'Operations',
+          type: 'low_stock',
+          linkedId: form.partyId,
+          linkedType: 'party',
+          createdBy: appUser!.uid,
+          createdByName: appUser!.name,
+          done: false,
+          createdAt: now,
         })
       }
 
@@ -247,8 +261,7 @@ export default function StockManager({ onBack }: Props) {
 
             <div>
               <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>Month</div>
-              <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}
-                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '10px 14px', fontSize: 14, color: '#fff', outline: 'none', width: '100%', boxSizing: 'border-box' }} />
+              <DateInput type="month" value={selectedMonth} onChange={v => setSelectedMonth(v)} />
             </div>
 
             <div>
@@ -327,8 +340,7 @@ export default function StockManager({ onBack }: Props) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div>
               <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>Filter by Month</div>
-              <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}
-                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '10px 14px', fontSize: 14, color: '#fff', outline: 'none', width: '100%', boxSizing: 'border-box', marginBottom: 12 }} />
+              <DateInput type="month" value={selectedMonth} onChange={v => setSelectedMonth(v)} />
             </div>
             {dispatches.filter(d => d.month === selectedMonth).length === 0 ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#475569' }}>
@@ -371,8 +383,7 @@ export default function StockManager({ onBack }: Props) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div>
               <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>Month</div>
-              <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}
-                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '10px 14px', fontSize: 14, color: '#fff', outline: 'none', width: '100%', boxSizing: 'border-box' }} />
+              <DateInput type="month" value={selectedMonth} onChange={v => setSelectedMonth(v)} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div style={{ background: '#161b22', borderRadius: 14, padding: 14, border: '1px solid rgba(22,163,74,0.2)' }}>

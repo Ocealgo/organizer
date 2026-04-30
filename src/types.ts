@@ -1,4 +1,4 @@
-export type UserRole = 'super_admin' | 'admin' | 'sales' | 'marketing'
+export type UserRole = 'super_admin' | 'admin' | 'offline_sales' | 'online_sales' | 'offline_marketing' | 'online_marketing'
 export type AccountStatus = 'pending' | 'approved' | 'rejected'
 
 export interface AppUser {
@@ -136,4 +136,42 @@ export interface Allocation {
   createdBy: string
   createdByName: string
   createdAt: number
+}
+
+// ── WORKSPACE ─────────────────────────────────────────────────────────────────
+export type ReminderType = 'manual' | 'low_stock' | 'dispatch' | 'credit_due' | 'allocation'
+export type WorkspaceCategory = 'Finance' | 'Operations' | 'Sales' | 'Marketing' | 'General'
+
+export interface Reminder {
+  id?: string
+  title: string
+  date: string              // YYYY-MM-DD
+  category: WorkspaceCategory
+  type: ReminderType
+  linkedId?: string
+  linkedType?: string
+  createdBy: string
+  createdByName: string
+  done: boolean
+  createdAt: number
+}
+
+export interface ChecklistItem {
+  id?: string
+  title: string
+  category: WorkspaceCategory
+  completed: boolean
+  completedAt?: number
+  ownerId: string
+  ownerName: string
+  createdAt: number
+}
+
+export interface PinnedNote {
+  id?: string
+  content: string
+  createdBy: string
+  createdByName: string
+  createdAt: number
+  archived: boolean
 }

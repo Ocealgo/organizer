@@ -6,6 +6,7 @@ import LoginPage from './pages/auth/LoginPage'
 import SignupPage from './pages/auth/SignupPage'
 import SalesView from './pages/sales/SalesView'
 import MarketingView from './pages/marketing/MarketingView'
+import OnlineMarketingView from './pages/marketing/OnlineMarketingView'
 import AdminDashboard from './pages/admin/AdminDashboard'
 import UserManagement from './pages/admin/UserManagement'
 import NotificationBell from './components/NotificationBell'
@@ -30,7 +31,7 @@ function AppContent() {
   if (appUser.status === 'pending' || appUser.status === 'rejected') return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(145deg,#0d3d2e,#060a0f)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, textAlign: 'center' }}>
       <div style={{ fontSize: 56, marginBottom: 20 }}>{appUser.status === 'pending' ? '⏳' : '❌'}</div>
-      <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 10 }}>
+      <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 10, color: '#fff' }}>
         {appUser.status === 'pending' ? 'Awaiting Approval' : 'Access Rejected'}
       </div>
       <div style={{ color: '#a7f3d0', fontSize: 14, lineHeight: 1.8, marginBottom: 32, maxWidth: 300 }}>
@@ -45,40 +46,66 @@ function AppContent() {
     </div>
   )
 
-  if (showUserMgmt) return <UserManagement onBack={() => setShowUserMgmt(false)} />
-
-  const handleLogout = () => signOut(auth)
   const isAdmin = appUser.role === 'super_admin' || appUser.role === 'admin'
+  const isSales = appUser.role === 'offline_sales' || appUser.role === 'online_sales'
+  const isMarketing = appUser.role === 'offline_marketing' || appUser.role === 'online_marketing'
+
+  const ROLE_LABEL: Record<string, string> = {
+    offline_sales: '🏪 Offline Sales',
+    online_sales: '🌐 Online Sales',
+    offline_marketing: '📣 Offline Marketing',
+    online_marketing: '💻 Online Marketing',
+    admin: '🛡️ Admin',
+    super_admin: '👑 Super Admin',
+  }
+
+  if (showUserMgmt) return (
+    <div>
+      <TopBar roleLabel={ROLE_LABEL[appUser.role]} isAdmin={isAdmin}
+        onUsers={() => setShowUserMgmt(true)} onSignOut={() => signOut(auth)} />
+      <UserManagement onBack={() => setShowUserMgmt(false)} />
+    </div>
+  )
 
   return (
     <div>
-      <div style={{ background: '#0d1117', borderBottom: '1px solid rgba(255,255,255,0.06)', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ color: '#6ee7b7', fontSize: 12, fontWeight: 700 }}>🌿 Ocealgo</span>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <NotificationBell />
-          {isAdmin && (
-            <button onClick={() => setShowUserMgmt(true)}
-              style={{ background: 'rgba(217,119,6,0.15)', border: '1px solid rgba(217,119,6,0.3)', color: '#d97706', borderRadius: 10, padding: '6px 12px', fontSize: 11, fontWeight: 700 }}>
-              👥 Users
-            </button>
-          )}
-          <button onClick={handleLogout}
-            style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.2)', color: '#dc2626', borderRadius: 10, padding: '6px 12px', fontSize: 11, fontWeight: 700 }}>
-            Sign Out
-          </button>
-        </div>
+      <TopBar roleLabel={ROLE_LABEL[appUser.role]} isAdmin={isAdmin}
+        onUsers={() => setShowUserMgmt(true)} onSignOut={() => signOut(auth)} />
+      {isSales && <SalesView name={appUser.name} />}
+      {appUser.role === 'offline_marketing' && <MarketingView />}
+      {appUser.role === 'online_marketing' && <OnlineMarketingView />}
+      {isAdmin && <AdminDashboard />}
+    </div>
+  )
+}
+
+function TopBar({ roleLabel, isAdmin, onUsers, onSignOut }: {
+  roleLabel: string; isAdmin: boolean
+  onUsers: () => void; onSignOut: () => void
+}) {
+  return (
+    <div style={{ background: '#0d1117', borderBottom: '1px solid rgba(255,255,255,0.06)', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ color: '#6ee7b7', fontSize: 13, fontWeight: 800 }}>🌿 Ocealgo</span>
+        <span style={{ fontSize: 10, color: '#475569', background: 'rgba(255,255,255,0.04)', padding: '2px 8px', borderRadius: 99 }}>{roleLabel}</span>
       </div>
-      {appUser.role === 'sales' && <SalesView name={appUser.name} role="sales" onBack={handleLogout} />}
-      {appUser.role === 'marketing' && <MarketingView onBack={handleLogout} />}
-      {isAdmin && <AdminDashboard onBack={handleLogout} />}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <NotificationBell />
+        {isAdmin && (
+          <button onClick={onUsers}
+            style={{ background: 'rgba(217,119,6,0.15)', border: '1px solid rgba(217,119,6,0.3)', color: '#d97706', borderRadius: 10, padding: '6px 12px', fontSize: 11, fontWeight: 700 }}>
+            👥 Users
+          </button>
+        )}
+        <button onClick={onSignOut}
+          style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.2)', color: '#dc2626', borderRadius: 10, padding: '6px 12px', fontSize: 11, fontWeight: 700 }}>
+          Sign Out
+        </button>
+      </div>
     </div>
   )
 }
 
 export default function App() {
-  return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
-  )
+  return <AuthProvider><AppContent /></AuthProvider>
 }

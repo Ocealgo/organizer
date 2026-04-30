@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { collection, addDoc, onSnapshot } from 'firebase/firestore'
 import { db } from '../../firebase'
 import { Expense, ExpenseCategory } from '../../types'
+import DateInput from '../../components/DateInput'
 import { useAuth } from '../../context/AuthContext'
 
 interface Props { onBack: () => void }
