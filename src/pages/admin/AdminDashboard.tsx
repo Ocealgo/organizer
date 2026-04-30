@@ -1,33 +1,49 @@
 import { useState } from 'react'
 import { useCheckIns, usePostStatuses } from '../../hooks/useFirebase'
 import { MAY_POSTS, FORMAT_EMOJI, PILLAR_COLORS, STATUS_CONFIG } from '../../data'
+import StockManager from '../stock/StockManager'
+import PartyManager from '../distributors/PartyManager'
+import CreditBook from '../credit/CreditBook'
+import ExpenseLogger from '../stock/ExpenseLogger'
 
 interface Props { onBack: () => void }
 
 const MONTH = '2026-05'
 const today = () => new Date().toISOString().split('T')[0]
 
+type SubScreen = 'dashboard' | 'stock' | 'parties' | 'credits' | 'expenses'
+
 export default function AdminDashboard({ onBack }: Props) {
+  const [subScreen, setSubScreen] = useState<SubScreen>('dashboard')
   const [tab, setTab] = useState<'overview' | 'sales' | 'marketing'>('overview')
   const { checkIns } = useCheckIns(today())
   const { statuses } = usePostStatuses(MONTH)
 
-  const done    = MAY_POSTS.filter(p => statuses[p.id] === 'posted').length
-  const missed  = MAY_POSTS.filter(p => statuses[p.id] === 'missed').length
-  const inprog  = MAY_POSTS.filter(p => statuses[p.id] === 'in-progress').length
-  const pct     = Math.round((done / MAY_POSTS.length) * 100)
+  if (subScreen === 'stock')    return <StockManager onBack={() => setSubScreen('dashboard')} />
+  if (subScreen === 'parties')  return <PartyManager onBack={() => setSubScreen('dashboard')} />
+  if (subScreen === 'credits')  return <CreditBook onBack={() => setSubScreen('dashboard')} />
+  if (subScreen === 'expenses') return <ExpenseLogger onBack={() => setSubScreen('dashboard')} />
 
-  const salesMembers = ['Murali', 'Santhosh']
+  const done   = MAY_POSTS.filter(p => statuses[p.id] === 'posted').length
+  const missed = MAY_POSTS.filter(p => statuses[p.id] === 'missed').length
+  const pct    = Math.round((done / MAY_POSTS.length) * 100)
+
   const weekStats = [1, 2, 3, 4].map(w => {
     const wp = MAY_POSTS.filter(p => p.week === w)
     return { week: w, total: wp.length, done: wp.filter(p => statuses[p.id] === 'posted').length, missed: wp.filter(p => statuses[p.id] === 'missed').length }
   })
 
+  const quickLinks = [
+    { emoji: '📦', label: 'Stock',          sub: 'Manage inventory',        screen: 'stock'    as SubScreen, color: '#16a34a' },
+    { emoji: '🤝', label: 'Distributors',   sub: 'View & manage network',   screen: 'parties'  as SubScreen, color: '#0891b2' },
+    { emoji: '💜', label: 'Credit Book',    sub: 'Outstanding payments',    screen: 'credits'  as SubScreen, color: '#7c3aed' },
+    { emoji: '💸', label: 'Expenses',       sub: 'Team expenses log',       screen: 'expenses' as SubScreen, color: '#dc2626' },
+  ]
+
   return (
     <div style={{ minHeight: '100vh', background: '#0d1117' }}>
-      {/* Header */}
       <div style={{ background: 'linear-gradient(135deg,#78350f,#d97706)', padding: '24px 20px 0' }}>
-        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fde68a', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 16 }}>← Switch</button>
+        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fde68a', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 16 }}>← Sign out</button>
         <div style={{ color: '#fde68a', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Founders 👑</div>
         <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 2 }}>Admin Dashboard</div>
         <div style={{ color: '#fef3c7', fontSize: 13, marginBottom: 16 }}>Ocealgo — May 2026</div>
@@ -45,7 +61,20 @@ export default function AdminDashboard({ onBack }: Props) {
 
         {/* OVERVIEW */}
         {tab === 'overview' && (
-          <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }} className="fade-in">
+
+            {/* Quick links */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              {quickLinks.map(q => (
+                <button key={q.screen} onClick={() => setSubScreen(q.screen)}
+                  style={{ background: '#161b22', border: `1px solid ${q.color}33`, borderRadius: 14, padding: '14px', textAlign: 'left', color: '#fff' }}>
+                  <div style={{ fontSize: 24, marginBottom: 6 }}>{q.emoji}</div>
+                  <div style={{ fontWeight: 800, fontSize: 14, color: q.color }}>{q.label}</div>
+                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{q.sub}</div>
+                </button>
+              ))}
+            </div>
+
             {/* Marketing summary */}
             <div style={{ background: '#161b22', borderRadius: 16, padding: 16, border: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 16 }}>
               <div style={{ position: 'relative', width: 64, height: 64, flexShrink: 0 }}>
@@ -59,49 +88,40 @@ export default function AdminDashboard({ onBack }: Props) {
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 900, color: '#6ee7b7' }}>{pct}%</div>
               </div>
               <div>
-                <div style={{ color: '#6ee7b7', fontSize: 11, letterSpacing: 1 }}>MARKETING</div>
+                <div style={{ color: '#6ee7b7', fontSize: 11, letterSpacing: 1 }}>MARKETING MAY</div>
                 <div style={{ fontSize: 26, fontWeight: 900, lineHeight: 1 }}>{done}<span style={{ fontSize: 14, color: '#6ee7b7' }}>/{MAY_POSTS.length}</span></div>
-                <div style={{ color: '#64748b', fontSize: 12 }}>posts this month</div>
+                <div style={{ color: '#64748b', fontSize: 12 }}>posts {missed > 0 ? `• ❌ ${missed} missed` : 'on track ✅'}</div>
               </div>
-              {missed > 0 && (
-                <div style={{ marginLeft: 'auto', background: '#dc262220', borderRadius: 10, padding: '8px 12px', textAlign: 'center', border: '1px solid #dc262233' }}>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: '#dc2626' }}>{missed}</div>
-                  <div style={{ fontSize: 10, color: '#dc2626' }}>missed</div>
-                </div>
-              )}
             </div>
 
-            {/* Sales summary */}
+            {/* Today's sales */}
             <div style={{ background: '#161b22', borderRadius: 16, padding: 16, border: '1px solid rgba(255,255,255,0.06)' }}>
               <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Sales — Today</div>
-              {salesMembers.map(name => {
-                const ci = checkIns.find(c => c.name.toLowerCase() === name.toLowerCase())
-                return (
-                  <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-                    <div style={{ width: 40, height: 40, background: 'linear-gradient(135deg,#0891b2,#0e7490)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 16, flexShrink: 0 }}>{name[0]}</div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 700, fontSize: 14 }}>{name}</div>
-                      {ci ? (
-                        <div style={{ fontSize: 12, color: '#16a34a' }}>✅ Checked in • 🏪 {ci.shops} shops • 📦 {ci.orders} orders</div>
-                      ) : (
-                        <div style={{ fontSize: 12, color: '#ef4444' }} >⏳ Not checked in yet</div>
-                      )}
-                    </div>
+              {checkIns.length === 0 ? (
+                <div style={{ color: '#475569', fontSize: 13, textAlign: 'center', padding: '12px 0' }}>No check-ins yet today</div>
+              ) : checkIns.map(ci => (
+                <div key={ci.id} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+                  <div style={{ width: 40, height: 40, background: 'linear-gradient(135deg,#0891b2,#0e7490)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 16, flexShrink: 0 }}>
+                    {ci.name[0]}
                   </div>
-                )
-              })}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{ci.name}</div>
+                    <div style={{ fontSize: 12, color: '#16a34a' }}>✅ {ci.shops} shops • 📦 {ci.orders} orders</div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
 
         {/* SALES TAB */}
         {tab === 'sales' && (
-          <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }} className="fade-in">
             {checkIns.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#475569' }}>
                 <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
                 <div style={{ fontSize: 16, fontWeight: 700 }}>No check-ins yet today</div>
-                <div style={{ fontSize: 13, marginTop: 6 }}>Updates will appear here once Murali and Santhosh submit</div>
+                <div style={{ fontSize: 13, marginTop: 6 }}>Updates appear here once the team submits</div>
               </div>
             ) : checkIns.map(ci => (
               <div key={ci.id} style={{ background: '#161b22', borderRadius: 16, padding: 16, border: '1px solid rgba(255,255,255,0.06)' }}>
@@ -139,7 +159,7 @@ export default function AdminDashboard({ onBack }: Props) {
 
         {/* MARKETING TAB */}
         {tab === 'marketing' && (
-          <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} className="fade-in">
             {weekStats.map(w => {
               const wp = Math.round((w.done / w.total) * 100)
               return (
