@@ -121,7 +121,7 @@ function PendingCard({ user, updating, onApprove, onReject }: {
   onApprove: (uid: string, role: UserRole) => void
   onReject: (uid: string) => void
 }) {
-  const [role, setRole] = useState<UserRole>('sales')
+  const [role, setRole] = useState<UserRole>('offline_sales')
   const isUpdating = updating === user.uid
 
   return (

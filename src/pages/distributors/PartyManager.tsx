@@ -146,7 +146,7 @@ export default function PartyManager({ onBack }: Props) {
         data.addedByName = appUser!.name
         data.createdAt = Date.now()
         await addDoc(collection(db, 'parties'), data)
-        if (appUser?.role === 'sales') {
+        if (appUser?.role === 'offline_sales' || appUser?.role === 'online_sales') {
           await addDoc(collection(db, 'alerts'), {
             type: 'new_party',
             message: `${appUser.name} added ${form.type}: ${form.name.trim()} — needs ${toDisplay(packets, config.packetsPerCarton)}`,
