@@ -8,6 +8,7 @@ import SalesView from './pages/sales/SalesView'
 import MarketingView from './pages/marketing/MarketingView'
 import AdminDashboard from './pages/admin/AdminDashboard'
 import UserManagement from './pages/admin/UserManagement'
+import NotificationBell from './components/NotificationBell'
 
 function AppContent() {
   const { firebaseUser, appUser, loading } = useAuth()
@@ -51,21 +52,22 @@ function AppContent() {
 
   return (
     <div>
-      {isAdmin && (
-        <div style={{ background: '#0d1117', borderBottom: '1px solid rgba(255,255,255,0.06)', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ color: '#6ee7b7', fontSize: 12, fontWeight: 700 }}>🌿 Ocealgo Admin</span>
-          <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ background: '#0d1117', borderBottom: '1px solid rgba(255,255,255,0.06)', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ color: '#6ee7b7', fontSize: 12, fontWeight: 700 }}>🌿 Ocealgo</span>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <NotificationBell />
+          {isAdmin && (
             <button onClick={() => setShowUserMgmt(true)}
               style={{ background: 'rgba(217,119,6,0.15)', border: '1px solid rgba(217,119,6,0.3)', color: '#d97706', borderRadius: 10, padding: '6px 12px', fontSize: 11, fontWeight: 700 }}>
               👥 Users
             </button>
-            <button onClick={handleLogout}
-              style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.2)', color: '#dc2626', borderRadius: 10, padding: '6px 12px', fontSize: 11, fontWeight: 700 }}>
-              Sign Out
-            </button>
-          </div>
+          )}
+          <button onClick={handleLogout}
+            style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.2)', color: '#dc2626', borderRadius: 10, padding: '6px 12px', fontSize: 11, fontWeight: 700 }}>
+            Sign Out
+          </button>
         </div>
-      )}
+      </div>
       {appUser.role === 'sales' && <SalesView name={appUser.name} role="sales" onBack={handleLogout} />}
       {appUser.role === 'marketing' && <MarketingView onBack={handleLogout} />}
       {isAdmin && <AdminDashboard onBack={handleLogout} />}

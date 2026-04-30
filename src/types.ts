@@ -120,3 +120,20 @@ export interface Alert {
   id?: string; type: 'new_party' | 'credit_settlement' | 'low_stock' | 'stock_dispatched'
   message: string; relatedId: string; read: boolean; createdAt: number
 }
+
+// ── ALLOCATION ────────────────────────────────────────────────────────────────
+export interface Allocation {
+  id?: string
+  partyId: string
+  partyName: string
+  partyType: PartyType
+  packets: number
+  cartons: number
+  pricePerPacket: number
+  month: string              // YYYY-MM
+  notes: string
+  status: 'active' | 'completed'
+  createdBy: string
+  createdByName: string
+  createdAt: number
+}

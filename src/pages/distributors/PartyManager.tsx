@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react'
 import { collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc } from 'firebase/firestore'
 import { db } from '../../firebase'
-import { Party, PartyType, PartyCategory } from '../../types'
+import { Party, PartyType, PartyCategory, Dispatch } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { useStockConfig, toDisplay } from '../../hooks/useFirebase'
 import CustomSelect from '../../components/CustomSelect'
 import StockMovementLogger from './StockMovementLogger'
 import MonthlyRequestManager from './MonthlyRequestManager'
+import AllocationManager from './AllocationManager'
 
 interface Props { onBack: () => void }
 
@@ -47,7 +48,9 @@ export default function PartyManager({ onBack }: Props) {
   const { appUser } = useAuth()
   const { config } = useStockConfig()
   const [parties, setParties] = useState<Party[]>([])
-  const [tab, setTab] = useState<'list' | 'add' | 'movement' | 'requests'>('list')
+  const [tab, setTab] = useState<'list' | 'add' | 'movement' | 'requests' | 'allocations'>('list')
+  const [dispatches, setDispatches] = useState<Dispatch[]>([])
+  const [expandedDispatch, setExpandedDispatch] = useState<string | null>(null)
   const [typeFilter, setTypeFilter] = useState<'all' | 'distributor' | 'retailer'>('all')
   const [categoryFilter, setCategoryFilter] = useState<'all' | PartyCategory>('all')
   const [placeSearch, setPlaceSearch] = useState('')
@@ -62,10 +65,13 @@ export default function PartyManager({ onBack }: Props) {
   const distributors = parties.filter(p => p.type === 'distributor')
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'parties'), snap => {
+    const u1 = onSnapshot(collection(db, 'parties'), snap => {
       setParties(snap.docs.map(d => ({ id: d.id, ...d.data() } as Party)))
     })
-    return unsub
+    const u2 = onSnapshot(collection(db, 'dispatches'), snap => {
+      setDispatches(snap.docs.map(d => ({ id: d.id, ...d.data() } as Dispatch)).sort((a, b) => b.createdAt - a.createdAt))
+    })
+    return () => { u1(); u2() }
   }, [])
 
   // Safe filter — handle missing place field
@@ -164,6 +170,7 @@ export default function PartyManager({ onBack }: Props) {
   }
 
   if (tab === 'movement') return <StockMovementLogger onBack={() => setTab('list')} parties={parties} />
+  if (tab === 'allocations') return <AllocationManager onBack={() => setTab('list')} parties={parties} />
   if (tab === 'requests') return <MonthlyRequestManager onBack={() => setTab('list')} parties={parties} />
 
   const distributorOptions = distributors.map(d => ({ value: d.id!, label: `🚚 ${d.name}` }))
@@ -182,6 +189,7 @@ export default function PartyManager({ onBack }: Props) {
           {([
             { id: 'list', label: '📋 View All' },
             { id: 'add', label: editingId ? '✏️ Editing' : '➕ Add New' },
+            { id: 'allocations', label: '📋 Allocations' },
             { id: 'requests', label: '📅 Monthly Requests' },
             { id: 'movement', label: '📦 Log Movement' },
           ] as const).map(t => (
@@ -251,6 +259,33 @@ export default function PartyManager({ onBack }: Props) {
                         </span>
                       </div>
                       <div style={{ fontSize: 10, color: '#475569', marginTop: 4 }}>Added by {p.addedByName}</div>
+
+                      {/* Dispatch log toggle */}
+                      <button onClick={e => { e.stopPropagation(); setExpandedDispatch(expandedDispatch === p.id ? null : p.id!) }}
+                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '5px 10px', fontSize: 11, color: '#64748b', marginTop: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {expandedDispatch === p.id ? '▲' : '▼'} Last dispatches
+                      </button>
+
+                      {expandedDispatch === p.id && (() => {
+                        const pd = dispatches.filter(d => d.partyId === p.id).slice(0, 3)
+                        return pd.length === 0 ? (
+                          <div style={{ fontSize: 11, color: '#475569', marginTop: 8, padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>No dispatches yet</div>
+                        ) : (
+                          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {pd.map(d => (
+                              <div key={d.id} style={{ fontSize: 11, background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '8px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div>
+                                  <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{toDisplay(d.packets, config.packetsPerCarton)}</div>
+                                  <div style={{ color: '#475569', fontSize: 10 }}>{new Date(d.dispatchedAt || d.createdAt).toLocaleDateString('en-IN')}</div>
+                                </div>
+                                <span style={{ fontSize: 10, color: d.paymentType === 'cash' ? '#16a34a' : '#d97706', background: d.paymentType === 'cash' ? 'rgba(22,163,74,0.1)' : 'rgba(217,119,6,0.1)', padding: '2px 8px', borderRadius: 99 }}>
+                                  {d.paymentType === 'cash' ? '💵 Cash' : '📋 Credit'}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      })()}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       <button onClick={() => startEdit(p)}
