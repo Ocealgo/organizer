@@ -175,3 +175,29 @@ export interface PinnedNote {
   createdAt: number
   archived: boolean
 }
+
+// ── UNIFIED ALLOCATION ────────────────────────────────────────────────────────
+export type AllocationStatus = 'pending' | 'sent' | 'paid' | 'overdue'
+
+export interface UnifiedAllocation {
+  id?: string
+  partyId: string
+  partyName: string
+  partyType: PartyType
+  packets: number
+  cartons: number
+  pricePerPacket: number
+  totalAmount: number
+  paymentType: PaymentType
+  plannedDate: string          // date admin plans to send
+  sentAt?: number              // timestamp when actually dispatched
+  sentBy?: string
+  sentByName?: string
+  paidAt?: number              // timestamp when payment received
+  status: AllocationStatus
+  notes: string
+  createdBy: string
+  createdByName: string
+  createdAt: number
+  month: string                // YYYY-MM for grouping
+}

@@ -10,16 +10,18 @@ import WorkspaceDashboard from '../workspace/WorkspaceDashboard'
 import PartyManager from '../distributors/PartyManager'
 import CreditBook from '../credit/CreditBook'
 import ExpenseLogger from '../stock/ExpenseLogger'
+import AllocationManager from '../distributors/AllocationManager'
 
 const MONTH = '2026-05'
 
 type MainTab = 'overview' | 'sales' | 'marketing' | 'workspace'
 type SalesTab = 'offline' | 'online'
 type MarketingTab = 'offline' | 'online'
-type SubScreen = 'dashboard' | 'stock' | 'parties' | 'credits' | 'expenses'
+type SubScreen = 'dashboard' | 'stock' | 'parties' | 'credits' | 'expenses' | 'allocations'
 
 export default function AdminDashboard() {
   const [subScreen, setSubScreen] = useState<SubScreen>('dashboard')
+  const [allocations, setAllocations] = useState<any[]>([])
   const [mainTab, setMainTab] = useState<MainTab>('overview')
   const [salesTab, setSalesTab] = useState<SalesTab>('offline')
   const [marketingTab, setMarketingTab] = useState<MarketingTab>('offline')
@@ -34,6 +36,13 @@ export default function AdminDashboard() {
   const [datePeriodFrom, setDatePeriodFrom] = useState(new Date().toISOString().split('T')[0])
   const [datePeriodTo, setDatePeriodTo] = useState(new Date().toISOString().split('T')[0])
   const [allCheckIns, setAllCheckIns] = useState<CheckIn[]>([])
+
+  useEffect(() => {
+    const u3 = onSnapshot(collection(db, 'allocations_v2'), snap => {
+      setAllocations(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    })
+    return () => u3()
+  }, [])
 
   useEffect(() => {
     // Fetch offline sales users
@@ -73,6 +82,7 @@ export default function AdminDashboard() {
   })
 
   if (subScreen === 'stock')    return <StockManager onBack={() => setSubScreen('dashboard')} />
+  if (subScreen === 'allocations') return <AllocationManager onBack={() => setSubScreen('dashboard')} parties={[]} isAdmin />
   if (subScreen === 'parties')  return <PartyManager onBack={() => setSubScreen('dashboard')} />
   if (subScreen === 'credits')  return <CreditBook onBack={() => setSubScreen('dashboard')} />
   if (subScreen === 'expenses') return <ExpenseLogger onBack={() => setSubScreen('dashboard')} />
@@ -124,6 +134,30 @@ export default function AdminDashboard() {
                 </button>
               ))}
             </div>
+
+            {/* Allocation summary */}
+            {(() => {
+              const today = new Date().toISOString().split('T')[0]
+              const pending  = allocations.filter(a => a.status === 'pending' && a.plannedDate >= today).length
+              const overdue  = allocations.filter(a => a.status === 'pending' && a.plannedDate < today).length
+              const creditDue = allocations.filter(a => a.status === 'sent' && a.paymentType === 'credit').reduce((s: number, a: any) => s + a.totalAmount, 0)
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                  {[
+                    { label: 'Overdue', val: overdue, color: '#dc2626', bg: 'rgba(220,38,38,0.1)', emoji: '🔴' },
+                    { label: 'Pending', val: pending, color: '#d97706', bg: 'rgba(217,119,6,0.1)', emoji: '🟡' },
+                    { label: 'Credit Due', val: creditDue > 0 ? `₹${(creditDue/1000).toFixed(0)}k` : '0', color: '#7c3aed', bg: 'rgba(124,58,237,0.1)', emoji: '💜' },
+                  ].map(s => (
+                    <button key={s.label} onClick={() => setSubScreen('allocations')}
+                      style={{ background: s.bg, borderRadius: 12, padding: '10px 6px', textAlign: 'center', border: `1px solid ${s.color}33` }}>
+                      <div style={{ fontSize: 11 }}>{s.emoji}</div>
+                      <div style={{ fontSize: 18, fontWeight: 900, color: s.color }}>{s.val}</div>
+                      <div style={{ fontSize: 9, color: '#64748b', marginTop: 1 }}>{s.label}</div>
+                    </button>
+                  ))}
+                </div>
+              )
+            })()}
 
             {/* Today's sales snapshot */}
             <div style={{ background: '#161b22', borderRadius: 16, padding: 16, border: '1px solid rgba(255,255,255,0.06)' }}>

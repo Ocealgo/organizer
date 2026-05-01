@@ -81,3 +81,16 @@ export function toDisplay(packets: number, ppc: number) {
   if (remaining === 0) return `${cartons} cartons (${packets} pkts)`
   return `${cartons} cartons + ${remaining} pkts (${packets} pkts)`
 }
+
+// ── DEFAULT PRICE ─────────────────────────────────────────────────────────────
+export async function getDefaultPrice(): Promise<number> {
+  const { getDoc, doc } = await import('firebase/firestore')
+  const snap = await getDoc(doc(db, 'config', 'stock'))
+  return snap.exists() ? (snap.data().defaultPricePerPacket || 0) : 0
+}
+
+export async function setDefaultPrice(price: number) {
+  const snap = await import('firebase/firestore')
+  const existing = await (await snap.getDoc(snap.doc(db, 'config', 'stock'))).data() || {}
+  await snap.setDoc(snap.doc(db, 'config', 'stock'), { ...existing, defaultPricePerPacket: price, updatedAt: Date.now() })
+}

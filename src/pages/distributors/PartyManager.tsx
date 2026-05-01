@@ -5,9 +5,8 @@ import { Party, PartyType, PartyCategory, Dispatch } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { useStockConfig, toDisplay } from '../../hooks/useFirebase'
 import CustomSelect from '../../components/CustomSelect'
-import StockMovementLogger from './StockMovementLogger'
-import MonthlyRequestManager from './MonthlyRequestManager'
 import AllocationManager from './AllocationManager'
+import CSVImporter from './CSVImporter'
 
 interface Props { onBack: () => void }
 
@@ -48,7 +47,7 @@ export default function PartyManager({ onBack }: Props) {
   const { appUser } = useAuth()
   const { config } = useStockConfig()
   const [parties, setParties] = useState<Party[]>([])
-  const [tab, setTab] = useState<'list' | 'add' | 'movement' | 'requests' | 'allocations'>('list')
+  const [tab, setTab] = useState<'list' | 'add' | 'allocations' | 'import'>('list')
   const [dispatches, setDispatches] = useState<Dispatch[]>([])
   const [expandedDispatch, setExpandedDispatch] = useState<string | null>(null)
   const [typeFilter, setTypeFilter] = useState<'all' | 'distributor' | 'retailer'>('all')
@@ -169,8 +168,8 @@ export default function PartyManager({ onBack }: Props) {
     setDeleting(null)
   }
 
-  if (tab === 'movement') return <StockMovementLogger onBack={() => setTab('list')} parties={parties} />
-  if (tab === 'allocations') return <AllocationManager onBack={() => setTab('list')} parties={parties} />
+  if (tab === 'import') return <CSVImporter onBack={() => setTab('list')} onDone={() => setTab('list')} />
+  if (tab === 'allocations') return <AllocationManager onBack={() => setTab('list')} parties={parties} isAdmin={isAdmin} />
   if (tab === 'requests') return <MonthlyRequestManager onBack={() => setTab('list')} parties={parties} />
 
   const distributorOptions = distributors.map(d => ({ value: d.id!, label: `🚚 ${d.name}` }))
@@ -189,9 +188,8 @@ export default function PartyManager({ onBack }: Props) {
           {([
             { id: 'list', label: '📋 View All' },
             { id: 'add', label: editingId ? '✏️ Editing' : '➕ Add New' },
-            { id: 'allocations', label: '📋 Allocations' },
-            { id: 'requests', label: '📅 Monthly Requests' },
-            { id: 'movement', label: '📦 Log Movement' },
+            { id: 'import', label: '📥 Import CSV' },
+            { id: 'allocations', label: '📦 Allocations' },
           ] as const).map(t => (
             <button key={t.id} onClick={() => { setTab(t.id); if (t.id !== 'add') { setEditingId(null); setForm(emptyForm) } }}
               style={{ background: tab === t.id ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.08)', color: tab === t.id ? '#fff' : 'rgba(255,255,255,0.6)', border: 'none', borderRadius: 20, padding: '7px 14px', fontSize: 11, fontWeight: 700 }}>

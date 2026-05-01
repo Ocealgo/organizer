@@ -28,15 +28,17 @@ function AppContent() {
     return <LoginPage onSwitch={() => setAuthScreen('signup')} />
   }
 
-  if (appUser.status === 'pending' || appUser.status === 'rejected') return (
+  if (appUser.status === 'pending' || appUser.status === 'rejected' || (appUser as any).status === 'deactivated') return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(145deg,#0d3d2e,#060a0f)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, textAlign: 'center' }}>
-      <div style={{ fontSize: 56, marginBottom: 20 }}>{appUser.status === 'pending' ? '⏳' : '❌'}</div>
+      <div style={{ fontSize: 56, marginBottom: 20 }}>{appUser.status === 'pending' ? '⏳' : (appUser as any).status === 'deactivated' ? '🚫' : '❌'}</div>
       <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 10, color: '#fff' }}>
-        {appUser.status === 'pending' ? 'Awaiting Approval' : 'Access Rejected'}
+        {appUser.status === 'pending' ? 'Awaiting Approval' : (appUser as any).status === 'deactivated' ? 'Account Deactivated' : 'Access Rejected'}
       </div>
       <div style={{ color: '#a7f3d0', fontSize: 14, lineHeight: 1.8, marginBottom: 32, maxWidth: 300 }}>
         {appUser.status === 'pending'
           ? 'Your account is pending admin approval. Please check back later.'
+          : (appUser as any).status === 'deactivated'
+          ? 'Your account has been deactivated. Please contact the admin team to reactivate.'
           : 'Your account request was rejected. Please contact the admin team.'}
       </div>
       <button onClick={() => signOut(auth)}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { collection, addDoc, onSnapshot, doc, updateDoc, query, where } from 'firebase/firestore'
 import { db } from '../../firebase'
 import { Party, Dispatch, MonthlyRequest, PaymentType } from '../../types'
@@ -8,6 +8,57 @@ import { useStockConfig, updateStockConfig, toDisplay } from '../../hooks/useFir
 import CustomSelect from '../../components/CustomSelect'
 
 interface Props { onBack: () => void }
+
+
+// ── Default Price Editor (defined outside to prevent re-mount) ────────────────
+function DefaultPriceEditor() {
+  const [editing, setEditing] = React.useState(false)
+  const [val, setVal] = React.useState('')
+  const [current, setCurrent] = React.useState(0)
+  const [saving, setSaving] = React.useState(false)
+
+  React.useEffect(() => {
+    import('firebase/firestore').then(({ getDoc, doc }) => {
+      getDoc(doc(db, 'config', 'stock')).then(snap => {
+        if (snap.exists()) setCurrent(snap.data().defaultPricePerPacket || 0)
+      })
+    })
+  }, [])
+
+  const handleSave = async () => {
+    const price = parseFloat(val)
+    if (isNaN(price) || price <= 0) return
+    setSaving(true)
+    try {
+      const { getDoc, setDoc, doc } = await import('firebase/firestore')
+      const snap = await getDoc(doc(db, 'config', 'stock'))
+      const existing = snap.exists() ? snap.data() : {}
+      await setDoc(doc(db, 'config', 'stock'), { ...existing, defaultPricePerPacket: price, updatedAt: Date.now() })
+      setCurrent(price)
+      setEditing(false)
+      setVal('')
+    } finally { setSaving(false) }
+  }
+
+  return editing ? (
+    <div style={{ display: 'flex', gap: 8 }}>
+      <input type="number" value={val} onChange={e => setVal(e.target.value)}
+        placeholder="Price per packet"
+        style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '10px 14px', fontSize: 14, color: '#fff', outline: 'none' }} />
+      <button onClick={handleSave} disabled={saving}
+        style={{ background: '#16a34a', border: 'none', color: '#fff', borderRadius: 10, padding: '0 16px', fontWeight: 800, fontSize: 13 }}>
+        {saving ? '...' : 'Save'}
+      </button>
+      <button onClick={() => setEditing(false)}
+        style={{ background: 'rgba(255,255,255,0.06)', border: 'none', color: '#64748b', borderRadius: 10, padding: '0 14px', fontSize: 13 }}>Cancel</button>
+    </div>
+  ) : (
+    <button onClick={() => { setEditing(true); setVal(String(current || '')) }}
+      style={{ background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(22,163,74,0.2)', color: '#16a34a', borderRadius: 10, padding: '10px 16px', fontSize: 13, fontWeight: 700, width: '100%' }}>
+      💰 Default: {current > 0 ? `₹${current}/packet` : 'Not set'} — tap to edit
+    </button>
+  )
+}
 
 export default function StockManager({ onBack }: Props) {
   const { appUser } = useAuth()

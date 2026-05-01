@@ -7,6 +7,7 @@ import PartyManager from '../distributors/PartyManager'
 import StockManager from '../stock/StockManager'
 import ExpenseLogger from '../stock/ExpenseLogger'
 import CreditBook from '../credit/CreditBook'
+import AllocationManager from '../distributors/AllocationManager'
 import { CheckIn } from '../../types'
 
 interface Props { name: string }
@@ -15,7 +16,7 @@ const todayStr = () => new Date().toISOString().split('T')[0]
 const currentMonth = () => new Date().toISOString().slice(0, 7)
 const isLocked = (createdAt: number) => Date.now() - createdAt > 24 * 60 * 60 * 1000
 
-type SubScreen = 'home' | 'checkin' | 'done' | 'parties' | 'stock' | 'expenses' | 'credits' | 'history'
+type SubScreen = 'home' | 'checkin' | 'done' | 'parties' | 'stock' | 'expenses' | 'credits' | 'history' | 'allocations'
 
 export default function SalesView({ name }: Props) {
   const { appUser } = useAuth()
@@ -103,6 +104,7 @@ export default function SalesView({ name }: Props) {
   if (screen === 'stock')    return <StockManager onBack={resetHome} />
   if (screen === 'expenses') return <ExpenseLogger onBack={resetHome} />
   if (screen === 'credits')  return <CreditBook onBack={resetHome} />
+  if (screen === 'allocations') return <AllocationManager onBack={resetHome} parties={[]} isAdmin={false} />
 
   // ── DONE ─────────────────────────────────────────────────────────────────
   if (screen === 'done') return (
@@ -236,6 +238,7 @@ export default function SalesView({ name }: Props) {
     { emoji: '📅', label: 'My Check-in History', sub: `${checkIns.length} entries this month`, action: () => setScreen('history'), primary: false, locked: false },
     { emoji: '🤝', label: 'Distributors & Retailers', sub: 'View & add network', action: () => setScreen('parties'), primary: false, locked: false },
     { emoji: '📦', label: 'Stock Overview', sub: 'Check available stock', action: () => setScreen('stock'), primary: false, locked: false },
+    { emoji: '📦', label: 'Allocations', sub: 'View & create stock requests', action: () => setScreen('allocations'), primary: false, locked: false },
     { emoji: '💜', label: 'Credit Book', sub: 'Outstanding & settlements', action: () => setScreen('credits'), primary: false, locked: false },
     { emoji: '💸', label: 'Log an Expense', sub: 'Travel, food, misc', action: () => setScreen('expenses'), primary: false, locked: false },
   ]
