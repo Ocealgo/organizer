@@ -170,7 +170,7 @@ export default function PartyManager({ onBack }: Props) {
 
   if (tab === 'import') return <CSVImporter onBack={() => setTab('list')} onDone={() => setTab('list')} />
   if (tab === 'allocations') return <AllocationManager onBack={() => setTab('list')} parties={parties} isAdmin={isAdmin} />
-  if (tab === 'requests') return <MonthlyRequestManager onBack={() => setTab('list')} parties={parties} />
+
 
   const distributorOptions = distributors.map(d => ({ value: d.id!, label: `🚚 ${d.name}` }))
 
