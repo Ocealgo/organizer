@@ -11,13 +11,14 @@ import PartyManager from '../distributors/PartyManager'
 import CreditBook from '../credit/CreditBook'
 import ExpenseLogger from '../stock/ExpenseLogger'
 import AllocationManager from '../distributors/AllocationManager'
+import ProductManager from '../products/ProductManager'
 
 const MONTH = '2026-05'
 
 type MainTab = 'overview' | 'sales' | 'marketing' | 'workspace'
 type SalesTab = 'offline' | 'online'
 type MarketingTab = 'offline' | 'online'
-type SubScreen = 'dashboard' | 'stock' | 'parties' | 'credits' | 'expenses' | 'allocations'
+type SubScreen = 'dashboard' | 'stock' | 'parties' | 'credits' | 'expenses' | 'allocations' | 'products'
 
 export default function AdminDashboard() {
   const [subScreen, setSubScreen] = useState<SubScreen>('dashboard')
@@ -83,6 +84,7 @@ export default function AdminDashboard() {
 
   if (subScreen === 'stock')    return <StockManager onBack={() => setSubScreen('dashboard')} />
   if (subScreen === 'allocations') return <AllocationManager onBack={() => setSubScreen('dashboard')} parties={[]} isAdmin />
+  if (subScreen === 'products') return <ProductManager onBack={() => setSubScreen('dashboard')} />
   if (subScreen === 'parties')  return <PartyManager onBack={() => setSubScreen('dashboard')} />
   if (subScreen === 'credits')  return <CreditBook onBack={() => setSubScreen('dashboard')} />
   if (subScreen === 'expenses') return <ExpenseLogger onBack={() => setSubScreen('dashboard')} />

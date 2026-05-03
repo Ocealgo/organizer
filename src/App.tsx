@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { signOut } from 'firebase/auth'
 import { auth } from './firebase'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { ThemeProvider, useTheme } from './context/ThemeContext'
 import LoginPage from './pages/auth/LoginPage'
 import SignupPage from './pages/auth/SignupPage'
 import SalesView from './pages/sales/SalesView'
@@ -13,13 +14,14 @@ import NotificationBell from './components/NotificationBell'
 
 function AppContent() {
   const { firebaseUser, appUser, loading } = useAuth()
+  const { theme, toggle, t } = useTheme()
   const [authScreen, setAuthScreen] = useState<'login' | 'signup'>('login')
   const [showUserMgmt, setShowUserMgmt] = useState(false)
 
   if (loading) return (
-    <div style={{ minHeight: '100vh', background: '#060a0f', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16 }}>
+    <div style={{ minHeight: '100vh', background: t.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16 }}>
       <div style={{ fontSize: 40 }}>🌿</div>
-      <div style={{ color: '#6ee7b7', fontSize: 13, letterSpacing: 2 }}>Loading Ocealgo...</div>
+      <div style={{ color: '#6ee7b7', fontSize: 14, letterSpacing: 2 }}>Loading Ocealgo...</div>
     </div>
   )
 
@@ -28,18 +30,19 @@ function AppContent() {
     return <LoginPage onSwitch={() => setAuthScreen('signup')} />
   }
 
-  if (appUser.status === 'pending' || appUser.status === 'rejected' || (appUser as any).status === 'deactivated') return (
+  const status = (appUser as any).status
+  if (status === 'pending' || status === 'rejected' || status === 'deactivated') return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(145deg,#0d3d2e,#060a0f)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, textAlign: 'center' }}>
-      <div style={{ fontSize: 56, marginBottom: 20 }}>{appUser.status === 'pending' ? '⏳' : (appUser as any).status === 'deactivated' ? '🚫' : '❌'}</div>
+      <div style={{ fontSize: 56, marginBottom: 20 }}>
+        {status === 'pending' ? '⏳' : status === 'deactivated' ? '🚫' : '❌'}
+      </div>
       <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 10, color: '#fff' }}>
-        {appUser.status === 'pending' ? 'Awaiting Approval' : (appUser as any).status === 'deactivated' ? 'Account Deactivated' : 'Access Rejected'}
+        {status === 'pending' ? 'Awaiting Approval' : status === 'deactivated' ? 'Account Deactivated' : 'Access Rejected'}
       </div>
       <div style={{ color: '#a7f3d0', fontSize: 14, lineHeight: 1.8, marginBottom: 32, maxWidth: 300 }}>
-        {appUser.status === 'pending'
-          ? 'Your account is pending admin approval. Please check back later.'
-          : (appUser as any).status === 'deactivated'
-          ? 'Your account has been deactivated. Please contact the admin team to reactivate.'
-          : 'Your account request was rejected. Please contact the admin team.'}
+        {status === 'pending' ? 'Your account is pending admin approval.'
+          : status === 'deactivated' ? 'Your account has been deactivated. Contact the admin team.'
+          : 'Your account was rejected. Contact the admin team.'}
       </div>
       <button onClick={() => signOut(auth)}
         style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', padding: '12px 32px', borderRadius: 50, fontSize: 14 }}>
@@ -50,28 +53,26 @@ function AppContent() {
 
   const isAdmin = appUser.role === 'super_admin' || appUser.role === 'admin'
   const isSales = appUser.role === 'offline_sales' || appUser.role === 'online_sales'
-  const isMarketing = appUser.role === 'offline_marketing' || appUser.role === 'online_marketing'
 
   const ROLE_LABEL: Record<string, string> = {
-    offline_sales: '🏪 Offline Sales',
-    online_sales: '🌐 Online Sales',
-    offline_marketing: '📣 Offline Marketing',
-    online_marketing: '💻 Online Marketing',
-    admin: '🛡️ Admin',
-    super_admin: '👑 Super Admin',
+    offline_sales: '🏪 Offline Sales', online_sales: '🌐 Online Sales',
+    offline_marketing: '📣 Offline Marketing', online_marketing: '💻 Online Marketing',
+    admin: '🛡️ Admin', super_admin: '👑 Super Admin',
   }
 
   if (showUserMgmt) return (
-    <div>
+    <div style={{ background: t.bg, minHeight: '100vh' }}>
       <TopBar roleLabel={ROLE_LABEL[appUser.role]} isAdmin={isAdmin}
+        theme={theme} onThemeToggle={toggle}
         onUsers={() => setShowUserMgmt(true)} onSignOut={() => signOut(auth)} />
       <UserManagement onBack={() => setShowUserMgmt(false)} />
     </div>
   )
 
   return (
-    <div>
+    <div style={{ background: t.bg, minHeight: '100vh' }}>
       <TopBar roleLabel={ROLE_LABEL[appUser.role]} isAdmin={isAdmin}
+        theme={theme} onThemeToggle={toggle}
         onUsers={() => setShowUserMgmt(true)} onSignOut={() => signOut(auth)} />
       {isSales && <SalesView name={appUser.name} />}
       {appUser.role === 'offline_marketing' && <MarketingView />}
@@ -81,17 +82,22 @@ function AppContent() {
   )
 }
 
-function TopBar({ roleLabel, isAdmin, onUsers, onSignOut }: {
-  roleLabel: string; isAdmin: boolean
-  onUsers: () => void; onSignOut: () => void
+function TopBar({ roleLabel, isAdmin, theme, onThemeToggle, onUsers, onSignOut }: {
+  roleLabel: string; isAdmin: boolean; theme: string
+  onThemeToggle: () => void; onUsers: () => void; onSignOut: () => void
 }) {
   return (
-    <div style={{ background: '#0d1117', borderBottom: '1px solid rgba(255,255,255,0.06)', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
+    <div style={{ background: theme === 'dark' ? '#0d1117' : '#fff', borderBottom: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)'}`, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ color: '#6ee7b7', fontSize: 13, fontWeight: 800 }}>🌿 Ocealgo</span>
-        <span style={{ fontSize: 10, color: '#475569', background: 'rgba(255,255,255,0.04)', padding: '2px 8px', borderRadius: 99 }}>{roleLabel}</span>
+        <span style={{ fontSize: 11, color: theme === 'dark' ? '#475569' : '#94a3b8', background: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)', padding: '2px 8px', borderRadius: 99 }}>{roleLabel}</span>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        {/* Theme toggle */}
+        <button onClick={onThemeToggle}
+          style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', border: 'none', borderRadius: 10, padding: '6px 10px', fontSize: 16, cursor: 'pointer' }}>
+          {theme === 'dark' ? '☀️' : '🌙'}
+        </button>
         <NotificationBell />
         {isAdmin && (
           <button onClick={onUsers}
@@ -108,6 +114,15 @@ function TopBar({ roleLabel, isAdmin, onUsers, onSignOut }: {
   )
 }
 
+function AppWithTheme() {
+  const { firebaseUser, appUser } = useAuth()
+  return (
+    <ThemeProvider userId={appUser?.uid || firebaseUser?.uid}>
+      <AppContent />
+    </ThemeProvider>
+  )
+}
+
 export default function App() {
-  return <AuthProvider><AppContent /></AuthProvider>
+  return <AuthProvider><AppWithTheme /></AuthProvider>
 }

@@ -201,3 +201,66 @@ export interface UnifiedAllocation {
   createdAt: number
   month: string                // YYYY-MM for grouping
 }
+
+// ── PRODUCTS ──────────────────────────────────────────────────────────────────
+export interface Product {
+  id?: string
+  name: string
+  unitLabel: string             // e.g. "packets", "bottles", "units"
+  defaultPricePerUnit: number
+  unitsPerCarton: number
+  active: boolean
+  createdBy: string
+  createdAt: number
+}
+
+// ── PARTY STATUS ──────────────────────────────────────────────────────────────
+export type PartyStatus = 'prospect' | 'active' | 'inactive'
+
+// ── VISIT LOG ─────────────────────────────────────────────────────────────────
+export type VisitOutcome = 'interested' | 'not_interested' | 'follow_up'
+
+export const NOT_INTERESTED_REASONS = [
+  'Price too high',
+  'Margin not enough',
+  'Already has similar product',
+  'Loyal to competitor',
+  'Need more time',
+  'Come back next month',
+  'Shop too small',
+  'Low footfall',
+  'Product not relevant',
+  'Other',
+] as const
+
+export type NotInterestedReason = typeof NOT_INTERESTED_REASONS[number]
+
+export interface VisitEntry {
+  partyId: string
+  partyName: string
+  isNew: boolean
+  outcome: VisitOutcome
+  notInterestedReason?: NotInterestedReason
+  otherReason?: string
+  productId?: string
+  productName?: string
+  allocationId?: string
+  notes?: string
+}
+
+export interface DailyVisitLog {
+  id?: string
+  salesPersonId: string
+  salesPersonName: string
+  date: string
+  visits: VisitEntry[]
+  endOfDayNote: string
+  totalVisited: number
+  totalInterested: number
+  totalNotInterested: number
+  createdAt: number
+  updatedAt: number
+}
+
+// ── THEME ─────────────────────────────────────────────────────────────────────
+export type AppTheme = 'dark' | 'light'
