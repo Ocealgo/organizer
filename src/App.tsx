@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { signOut } from 'firebase/auth'
 import { auth } from './firebase'
 import { AuthProvider, useAuth } from './context/AuthContext'
@@ -12,10 +12,31 @@ import AdminDashboard from './pages/admin/AdminDashboard'
 import UserManagement from './pages/admin/UserManagement'
 import NotificationBell from './components/NotificationBell'
 
+
+// Seed default product only if Baby Wet Wipes doesn't exist yet
+async function seedDefaultProducts() {
+  const { getDocs, collection, addDoc, query, where } = await import('firebase/firestore')
+  const { db } = await import('./firebase')
+  const snap = await getDocs(query(collection(db, 'products'), where('name', '==', 'Baby Wet Wipes')))
+  if (snap.empty) {
+    await addDoc(collection(db, 'products'), {
+      name: 'Baby Wet Wipes',
+      unitLabel: 'packets',
+      defaultPricePerUnit: 45,
+      unitsPerCarton: 12,
+      active: true,
+      createdBy: 'system',
+      createdAt: Date.now(),
+    })
+  }
+}
+
 function AppContent() {
   const { firebaseUser, appUser, loading } = useAuth()
   const { theme, toggle, t } = useTheme()
   const [authScreen, setAuthScreen] = useState<'login' | 'signup'>('login')
+
+  useEffect(() => { seedDefaultProducts() }, [])
   const [showUserMgmt, setShowUserMgmt] = useState(false)
 
   if (loading) return (
@@ -87,27 +108,26 @@ function TopBar({ roleLabel, isAdmin, theme, onThemeToggle, onUsers, onSignOut }
   onThemeToggle: () => void; onUsers: () => void; onSignOut: () => void
 }) {
   return (
-    <div style={{ background: theme === 'dark' ? '#0d1117' : '#fff', borderBottom: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)'}`, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ color: '#6ee7b7', fontSize: 13, fontWeight: 800 }}>🌿 Ocealgo</span>
-        <span style={{ fontSize: 11, color: theme === 'dark' ? '#475569' : '#94a3b8', background: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)', padding: '2px 8px', borderRadius: 99 }}>{roleLabel}</span>
+    <div style={{ background: theme === 'dark' ? '#0d1117' : '#fff', borderBottom: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)'}`, padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+        <span style={{ color: '#6ee7b7', fontSize: 13, fontWeight: 800, whiteSpace: 'nowrap' }}>🌿 Ocealgo</span>
+        <span style={{ fontSize: 10, color: theme === 'dark' ? '#475569' : '#94a3b8', background: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)', padding: '2px 6px', borderRadius: 99, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>{roleLabel}</span>
       </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        {/* Theme toggle */}
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
         <button onClick={onThemeToggle}
-          style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', border: 'none', borderRadius: 10, padding: '6px 10px', fontSize: 16, cursor: 'pointer' }}>
+          style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', border: 'none', borderRadius: 10, padding: '7px 9px', fontSize: 15, cursor: 'pointer', lineHeight: 1 }}>
           {theme === 'dark' ? '☀️' : '🌙'}
         </button>
         <NotificationBell />
         {isAdmin && (
           <button onClick={onUsers}
-            style={{ background: 'rgba(217,119,6,0.15)', border: '1px solid rgba(217,119,6,0.3)', color: '#d97706', borderRadius: 10, padding: '6px 12px', fontSize: 11, fontWeight: 700 }}>
-            👥 Users
+            style={{ background: 'rgba(217,119,6,0.15)', border: '1px solid rgba(217,119,6,0.3)', color: '#d97706', borderRadius: 10, padding: '7px 9px', fontSize: 13, fontWeight: 700, lineHeight: 1 }}>
+            👥
           </button>
         )}
         <button onClick={onSignOut}
-          style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.2)', color: '#dc2626', borderRadius: 10, padding: '6px 12px', fontSize: 11, fontWeight: 700 }}>
-          Sign Out
+          style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.2)', color: '#dc2626', borderRadius: 10, padding: '7px 10px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
+          Exit
         </button>
       </div>
     </div>

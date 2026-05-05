@@ -240,6 +240,7 @@ export interface VisitEntry {
   partyName: string
   isNew: boolean
   outcome: VisitOutcome
+  isRevisit?: boolean
   notInterestedReason?: NotInterestedReason
   otherReason?: string
   productId?: string
@@ -264,3 +265,68 @@ export interface DailyVisitLog {
 
 // ── THEME ─────────────────────────────────────────────────────────────────────
 export type AppTheme = 'dark' | 'light'
+
+// ── REVISIT ACTIONS ───────────────────────────────────────────────────────────
+export type RevisitActionType = 'stock_update' | 'new_order' | 'payment_collection' | 'relationship_visit' | 'no_longer_active'
+
+export interface StockUpdateAction {
+  type: 'stock_update'
+  openingQty: number
+  purchasedQty: number
+  soldQty: number
+  balanceQty: number
+  balanceValue: number
+  photoUrl?: string
+  aiRead: boolean
+}
+
+export interface NewOrderAction {
+  type: 'new_order'
+  productId: string
+  productName: string
+  quantity: number
+  pricePerUnit: number
+  totalAmount: number
+  paymentType: 'cash' | 'credit'
+  plannedDate: string
+  allocationId?: string
+}
+
+export interface PaymentCollectionAction {
+  type: 'payment_collection'
+  amount: number
+  notes: string
+  status: 'pending_approval' | 'approved'
+  approvedBy?: string
+  approvedAt?: number
+}
+
+export interface RelationshipVisitAction {
+  type: 'relationship_visit'
+  notes: string
+}
+
+export interface NoLongerActiveAction {
+  type: 'no_longer_active'
+  reason: string
+}
+
+export type RevisitAction =
+  | StockUpdateAction
+  | NewOrderAction
+  | PaymentCollectionAction
+  | RelationshipVisitAction
+  | NoLongerActiveAction
+
+export interface RevisitLog {
+  id?: string
+  partyId: string
+  partyName: string
+  partyType: PartyType
+  salesPersonId: string
+  salesPersonName: string
+  date: string
+  actions: RevisitAction[]
+  notes: string
+  createdAt: number
+}

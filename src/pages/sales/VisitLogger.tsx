@@ -1,30 +1,26 @@
 import React, { useState, useEffect } from 'react'
-import { collection, addDoc, onSnapshot, updateDoc, doc, query, where } from 'firebase/firestore'
+import { collection, addDoc, onSnapshot, updateDoc, doc, query, where, arrayUnion, increment } from 'firebase/firestore'
 import { db } from '../../firebase'
 import { Party, Product, VisitEntry, VisitOutcome, NOT_INTERESTED_REASONS, NotInterestedReason, DailyVisitLog } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
-import { useStockConfig, toDisplay } from '../../hooks/useFirebase'
 import CustomSelect from '../../components/CustomSelect'
+import RevisitLogger from './RevisitLogger'
 
 interface Props { onBack: () => void }
 
 const todayStr = () => new Date().toISOString().split('T')[0]
-
-type Step = 'home' | 'selectShop' | 'addNewShop' | 'markOutcome' | 'summary'
+type Step = 'home' | 'selectShop' | 'addNewShop' | 'markOutcome' | 'revisit'
 
 export default function VisitLogger({ onBack }: Props) {
   const { appUser } = useAuth()
-  const { t, theme } = useTheme()
-  const { config } = useStockConfig()
-
+  const { t } = useTheme()
   const [parties, setParties] = useState<Party[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [todayLog, setTodayLog] = useState<DailyVisitLog | null>(null)
   const [step, setStep] = useState<Step>('home')
   const [saving, setSaving] = useState(false)
-
-  // Current visit being logged
+  const [saveError, setSaveError] = useState('')
   const [selectedParty, setSelectedParty] = useState<Party | null>(null)
   const [outcome, setOutcome] = useState<VisitOutcome | null>(null)
   const [notInterestedReason, setNotInterestedReason] = useState<NotInterestedReason | ''>('')
@@ -33,12 +29,12 @@ export default function VisitLogger({ onBack }: Props) {
   const [allocQty, setAllocQty] = useState('')
   const [allocPrice, setAllocPrice] = useState('')
   const [allocPayment, setAllocPayment] = useState<'cash' | 'credit'>('cash')
-  const [allocDate, setAllocDate] = useState(new Date(Date.now() + 86400000).toISOString().split('T')[0])
+  const [allocDate, setAllocDate] = useState(new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0])
   const [endNote, setEndNote] = useState('')
+  const [newShop, setNewShop] = useState({ name: '', phone: '', address: '', place: '', type: 'retailer' as 'distributor' | 'retailer', underDistributorId: '' })
+  const [showFinishModal, setShowFinishModal] = useState(false)
 
-  // New shop form
-  const [newShop, setNewShop] = useState({ name: '', phone: '', address: '', place: '', type: 'retailer' as 'distributor' | 'retailer' })
-
+  // ── ALL hooks first ───────────────────────────────────────────────────────
   useEffect(() => {
     const u1 = onSnapshot(collection(db, 'parties'), snap =>
       setParties(snap.docs.map(d => ({ id: d.id, ...d.data() } as Party))))
@@ -47,7 +43,6 @@ export default function VisitLogger({ onBack }: Props) {
     return () => { u1(); u2() }
   }, [])
 
-  // Load today's log if exists
   useEffect(() => {
     if (!appUser) return
     const q = query(collection(db, 'visit_logs'),
@@ -57,48 +52,79 @@ export default function VisitLogger({ onBack }: Props) {
       if (!snap.empty) {
         setTodayLog({ id: snap.docs[0].id, ...snap.docs[0].data() } as DailyVisitLog)
         setEndNote(snap.docs[0].data().endOfDayNote || '')
-      } else {
-        setTodayLog(null)
-      }
+      } else { setTodayLog(null) }
     })
   }, [appUser])
 
-  const visits: VisitEntry[] = todayLog?.visits || []
-
-  const resetVisitState = () => {
-    setSelectedParty(null); setOutcome(null)
-    setNotInterestedReason(''); setOtherReason('')
-    setSelectedProduct(null); setAllocQty(''); setAllocPrice('')
-    setAllocPayment('cash')
-    setAllocDate(new Date(Date.now() + 86400000).toISOString().split('T')[0])
-  }
-
-  // Auto-fill price when product selected
   useEffect(() => {
     if (selectedProduct) setAllocPrice(String(selectedProduct.defaultPricePerUnit))
   }, [selectedProduct])
 
+  // ── Derived ───────────────────────────────────────────────────────────────
+  const visits: VisitEntry[] = todayLog?.visits || []
+
+  const resetVisit = () => {
+    setSelectedParty(null); setOutcome(null)
+    setNotInterestedReason(''); setOtherReason('')
+    setSelectedProduct(null); setAllocQty(''); setAllocPrice('')
+    setAllocPayment('cash')
+    setAllocDate(new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0])
+  }
+
+  // ── REVISIT screen ────────────────────────────────────────────────────────
+  const handleRevisitDone = async () => {
+    if (!selectedParty || !appUser) { resetVisit(); setStep('home'); return }
+    const entry: VisitEntry = {
+      partyId: selectedParty.id!, partyName: selectedParty.name,
+      isNew: false, outcome: 'follow_up', isRevisit: true,
+    }
+    try {
+      if (todayLog?.id) {
+        await updateDoc(doc(db, 'visit_logs', todayLog.id), {
+          visits: arrayUnion(entry), totalVisited: increment(1), updatedAt: Date.now(),
+        })
+      } else {
+        await addDoc(collection(db, 'visit_logs'), {
+          salesPersonId: appUser.uid, salesPersonName: appUser.name,
+          date: todayStr(), endOfDayNote: '', createdAt: Date.now(),
+          visits: [entry], totalVisited: 1, totalInterested: 0, totalNotInterested: 0,
+          updatedAt: Date.now(),
+        })
+      }
+    } catch (err) { console.error('Failed to log revisit:', err) }
+    resetVisit(); setStep('home')
+  }
+
+  if (step === 'revisit' && selectedParty) {
+    return <RevisitLogger
+      party={selectedParty}
+      onBack={() => { resetVisit(); setStep('home') }}
+      onDone={handleRevisitDone} />
+  }
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
   const handleAddVisit = async () => {
     if (!selectedParty || !outcome) return
     setSaving(true)
+    setSaveError('')
     try {
       const entry: VisitEntry = {
-        partyId: selectedParty.id!,
-        partyName: selectedParty.name,
-        isNew: false,
-        outcome,
-        ...(outcome === 'not_interested' && { notInterestedReason: notInterestedReason as NotInterestedReason, otherReason: notInterestedReason === 'Other' ? otherReason : undefined }),
+        partyId: selectedParty.id!, partyName: selectedParty.name,
+        isNew: false, outcome,
+        ...(outcome === 'not_interested' && {
+          notInterestedReason: notInterestedReason as NotInterestedReason,
+          ...(notInterestedReason === 'Other' && { otherReason }),
+        }),
       }
 
-      // If interested — create allocation
       if (outcome === 'interested' && selectedProduct && allocQty) {
         const units = parseInt(allocQty)
-        const cartons = Math.floor(units / selectedProduct.unitsPerCarton)
         const price = parseFloat(allocPrice) || selectedProduct.defaultPricePerUnit
         const ref = await addDoc(collection(db, 'allocations_v2'), {
           partyId: selectedParty.id!, partyName: selectedParty.name, partyType: selectedParty.type,
           productId: selectedProduct.id!, productName: selectedProduct.name,
-          packets: units, cartons, pricePerPacket: price, totalAmount: units * price,
+          packets: units, cartons: Math.floor(units / selectedProduct.unitsPerCarton),
+          pricePerPacket: price, totalAmount: units * price,
           paymentType: allocPayment, plannedDate: allocDate,
           status: 'pending', notes: '',
           createdBy: appUser!.uid, createdByName: appUser!.name,
@@ -107,43 +133,38 @@ export default function VisitLogger({ onBack }: Props) {
         entry.productId = selectedProduct.id!
         entry.productName = selectedProduct.name
         entry.allocationId = ref.id
-        // Mark party as active
         await updateDoc(doc(db, 'parties', selectedParty.id!), { status: 'active' })
       }
 
-      // Update party status to prospect if not already active
-      const currentStatus = (selectedParty as any).status
-      if (!currentStatus || currentStatus === 'prospect') {
-        if (outcome === 'not_interested') {
-          await updateDoc(doc(db, 'parties', selectedParty.id!), { status: 'prospect', lastVisited: todayStr(), lastVisitedBy: appUser!.name, notInterestedReason: notInterestedReason })
-        }
+      if (outcome === 'not_interested') {
+        await updateDoc(doc(db, 'parties', selectedParty.id!), {
+          status: 'prospect', lastVisited: todayStr(),
+          lastVisitedBy: appUser!.name, notInterestedReason,
+        })
       }
-
-      // Save to today's log
-      const newVisits = [...visits, entry]
-      const interested = newVisits.filter(v => v.outcome === 'interested').length
-      const notInterested = newVisits.filter(v => v.outcome === 'not_interested').length
 
       if (todayLog?.id) {
         await updateDoc(doc(db, 'visit_logs', todayLog.id), {
-          visits: newVisits,
-          totalVisited: newVisits.length,
-          totalInterested: interested,
-          totalNotInterested: notInterested,
+          visits: arrayUnion(entry),
+          totalVisited: increment(1),
+          ...(entry.outcome === 'interested' && { totalInterested: increment(1) }),
+          ...(entry.outcome === 'not_interested' && { totalNotInterested: increment(1) }),
           updatedAt: Date.now(),
         })
       } else {
         await addDoc(collection(db, 'visit_logs'), {
           salesPersonId: appUser!.uid, salesPersonName: appUser!.name,
-          date: todayStr(), visits: newVisits,
-          endOfDayNote: '', totalVisited: newVisits.length,
-          totalInterested: interested, totalNotInterested: notInterested,
-          createdAt: Date.now(), updatedAt: Date.now(),
+          date: todayStr(), endOfDayNote: '', createdAt: Date.now(),
+          visits: [entry],
+          totalVisited: 1,
+          totalInterested: entry.outcome === 'interested' ? 1 : 0,
+          totalNotInterested: entry.outcome === 'not_interested' ? 1 : 0,
+          updatedAt: Date.now(),
         })
       }
-
-      resetVisitState()
-      setStep('home')
+      resetVisit(); setStep('home')
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Save failed. Try again.')
     } finally { setSaving(false) }
   }
 
@@ -151,302 +172,404 @@ export default function VisitLogger({ onBack }: Props) {
     if (!newShop.name.trim()) return
     setSaving(true)
     try {
+      const underDist = parties.find(p => p.id === newShop.underDistributorId)
+      const distLink = newShop.type === 'retailer' && newShop.underDistributorId
+        ? { underDistributorId: newShop.underDistributorId, underDistributorName: underDist?.name || '' }
+        : {}
       const ref = await addDoc(collection(db, 'parties'), {
         name: newShop.name.trim(), type: newShop.type,
         phone: newShop.phone, address: newShop.address, place: newShop.place,
-        category: 'General Store', pricePerPacket: 0, packetsAllocated: 0,
-        cartonsAllocated: 0, lowStockThreshold: 0, status: 'prospect',
+        category: 'General Store', pricePerPacket: 0,
+        packetsAllocated: 0, cartonsAllocated: 0, lowStockThreshold: 0,
+        status: 'prospect', ...distLink,
         addedBy: appUser!.uid, addedByName: appUser!.name, createdAt: Date.now(),
       })
-      const newParty: Party = { id: ref.id, name: newShop.name.trim(), type: newShop.type, category: 'General Store', phone: newShop.phone, address: newShop.address, place: newShop.place, pricePerPacket: 0, packetsAllocated: 0, cartonsAllocated: 0, lowStockThreshold: 0, addedBy: appUser!.uid, addedByName: appUser!.name, createdAt: Date.now() }
-      setSelectedParty(newParty)
-      setNewShop({ name: '', phone: '', address: '', place: '', type: 'retailer' })
+      setSelectedParty({
+        id: ref.id, name: newShop.name.trim(), type: newShop.type,
+        category: 'General Store', phone: newShop.phone, address: newShop.address,
+        place: newShop.place, pricePerPacket: 0, packetsAllocated: 0,
+        cartonsAllocated: 0, lowStockThreshold: 0, ...distLink,
+        addedBy: appUser!.uid, addedByName: appUser!.name, createdAt: Date.now(),
+      })
+      setNewShop({ name: '', phone: '', address: '', place: '', type: 'retailer', underDistributorId: '' })
       setStep('markOutcome')
     } finally { setSaving(false) }
   }
 
-  const saveEndNote = async () => {
-    if (!todayLog?.id) return
-    await updateDoc(doc(db, 'visit_logs', todayLog.id), { endOfDayNote: endNote })
+  const handleFinishDay = async () => {
+    if (todayLog?.id && endNote.trim()) {
+      await updateDoc(doc(db, 'visit_logs', todayLog.id), { endOfDayNote: endNote })
+    }
+    onBack()
   }
 
-  const s = { fontSize: 15, color: t.text, background: t.bg3, border: `1.5px solid ${t.border2}`, borderRadius: 12, padding: '13px 16px', width: '100%', outline: 'none', boxSizing: 'border-box' as const }
-
   const partyOptions = parties.map(p => ({
-    value: p.id!, label: `${p.type === 'distributor' ? '🚚' : '🏪'} ${p.name}`,
+    value: p.id!,
+    label: `${p.type === 'distributor' ? '🚚' : '🏪'} ${p.name}`,
     sub: `${(p as any).status === 'active' ? '🟢 Active' : '🟡 Prospect'} • ${p.place || p.address || ''}`,
     group: p.type === 'distributor' ? 'Distributors' : 'Retailers',
   }))
 
+  const inputStyle: React.CSSProperties = {
+    width: '100%', background: t.bg3, border: `1.5px solid ${t.border2}`,
+    borderRadius: 12, padding: '13px 16px', fontSize: 16,
+    color: t.text, outline: 'none', boxSizing: 'border-box',
+  }
+
   // ── HOME ──────────────────────────────────────────────────────────────────
   if (step === 'home') return (
     <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
-      <div style={{ background: 'linear-gradient(135deg,#0d3d2e,#1a5c42)', padding: '20px 20px 20px' }}>
-        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#6ee7b7', padding: '6px 14px', borderRadius: 20, fontSize: 13, marginBottom: 14 }}>← Back</button>
-        <div style={{ color: '#6ee7b7', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Today's Visits</div>
-        <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', marginBottom: 4 }}>{todayStr()}</div>
+      {/* Confirm modal */}
+      {showFinishModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px 16px' }}>
+          <div style={{ background: t.card, borderRadius: 20, padding: '28px 20px', width: '100%', maxWidth: 420, boxShadow: '0 24px 64px rgba(0,0,0,0.4)', border: `1px solid ${t.border2}` }}>
+            <div style={{ fontSize: 20, fontWeight: 900, color: t.text, marginBottom: 6 }}>Submit Today's Log?</div>
+            <div style={{ fontSize: 14, color: t.text2, marginBottom: 18, lineHeight: 1.6 }}>
+              {visits.length} visit{visits.length !== 1 ? 's' : ''} recorded for <strong style={{ color: t.text }}>{todayStr()}</strong>.
+              You can still add more visits today.
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
+              {[
+                { label: 'Visited', val: visits.length, color: t.text, bg: t.bg3 },
+                { label: 'Interested', val: visits.filter(v => v.outcome === 'interested').length, color: '#16a34a', bg: 'rgba(22,163,74,0.1)' },
+                { label: 'Declined', val: visits.filter(v => v.outcome === 'not_interested').length, color: '#dc2626', bg: 'rgba(220,38,38,0.08)' },
+              ].map(s => (
+                <div key={s.label} style={{ flex: 1, background: s.bg, borderRadius: 10, padding: '10px 6px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 22, fontWeight: 900, color: s.color }}>{s.val}</div>
+                  <div style={{ fontSize: 12, color: t.text3, marginTop: 2 }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+            {endNote.trim() && (
+              <div style={{ background: t.bg3, borderRadius: 10, padding: '10px 14px', fontSize: 13, color: t.text2, marginBottom: 16 }}>
+                Note: {endNote}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setShowFinishModal(false)}
+                style={{ flex: 1, background: t.bg3, color: t.text2, border: `1px solid ${t.border}`, borderRadius: 14, padding: '14px', fontSize: 14, fontWeight: 700 }}>
+                Keep Logging
+              </button>
+              <button onClick={async () => { setShowFinishModal(false); await handleFinishDay() }}
+                style={{ flex: 2, background: 'linear-gradient(135deg,#065f46,#047857)', color: '#fff', border: 'none', borderRadius: 14, padding: '14px', fontSize: 15, fontWeight: 900 }}>
+                Done ✓
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-        {/* Stats */}
+      <div style={{ background: 'linear-gradient(135deg,#0d3d2e,#1a5c42)', padding: '20px 20px 20px' }}>
+        <div style={{ marginBottom: 14 }}>
+          <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#6ee7b7', padding: '6px 14px', borderRadius: 20, fontSize: 13 }}>← Back</button>
+        </div>
+        <div style={{ color: '#6ee7b7', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Visit Log</div>
+        <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', marginBottom: 4 }}>{todayStr()}</div>
         <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
           {[
             { label: 'Visited', val: visits.length, color: '#fff' },
             { label: 'Interested', val: visits.filter(v => v.outcome === 'interested').length, color: '#86efac' },
-            { label: 'Not Interested', val: visits.filter(v => v.outcome === 'not_interested').length, color: '#fca5a5' },
+            { label: 'Not Int.', val: visits.filter(v => v.outcome === 'not_interested').length, color: '#fca5a5' },
           ].map(s => (
             <div key={s.label} style={{ flex: 1, background: 'rgba(0,0,0,0.2)', borderRadius: 12, padding: '12px 8px', textAlign: 'center' }}>
               <div style={{ fontSize: 24, fontWeight: 900, color: s.color }}>{s.val}</div>
-              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>{s.label}</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>{s.label}</div>
             </div>
           ))}
         </div>
       </div>
 
       <div style={{ padding: '16px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {/* Add visit button */}
+        {/* Log visit button */}
         <button onClick={() => setStep('selectShop')}
           style={{ background: 'linear-gradient(135deg,#0d3d2e,#1a5c42)', color: '#fff', border: 'none', borderRadius: 16, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 14, boxShadow: '0 8px 24px rgba(13,61,46,0.3)' }}>
-          <span style={{ fontSize: 28 }}>🏪</span>
+          <span style={{ fontSize: 28 }}>📋</span>
           <div style={{ textAlign: 'left' }}>
-            <div style={{ fontWeight: 800, fontSize: 16 }}>Log a Visit</div>
-            <div style={{ fontSize: 13, color: '#a7f3d0', marginTop: 2 }}>Select shop or add new</div>
+            <div style={{ fontWeight: 800, fontSize: 17 }}>Log a Visit</div>
+            <div style={{ fontSize: 14, color: '#a7f3d0', marginTop: 2 }}>Distributor or Retailer visit</div>
           </div>
           <span style={{ marginLeft: 'auto', fontSize: 22 }}>›</span>
         </button>
 
-        {/* Today's visits list */}
+        {/* Today's visits */}
         {visits.length > 0 && (
           <>
-            <div style={{ fontSize: 13, color: t.text2, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginTop: 4 }}>Today's Visits</div>
-            {visits.map((v, i) => (
-              <div key={i} style={{ background: t.card, borderRadius: 14, padding: '14px 16px', border: `1px solid ${v.outcome === 'interested' ? 'rgba(22,163,74,0.25)' : 'rgba(220,38,38,0.15)'}` }}>
+            <div style={{ fontSize: 13, color: t.text2, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginTop: 4 }}>
+              Visits Today ({visits.length})
+            </div>
+            {visits.map((v, i) => {
+              const vParty = parties.find(p => p.id === v.partyId)
+              const typeLabel = vParty?.type === 'distributor' ? '🚚 Distributor' : '🏪 Retailer'
+              return (
+              <div key={i} style={{ background: t.card, borderRadius: 14, padding: '14px 16px', border: `1px solid ${v.outcome === 'interested' ? 'rgba(22,163,74,0.25)' : v.outcome === 'follow_up' ? 'rgba(217,119,6,0.2)' : 'rgba(220,38,38,0.15)'}` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 20 }}>{v.outcome === 'interested' ? '✅' : '❌'}</span>
+                  <span style={{ fontSize: 22 }}>{v.outcome === 'interested' ? '✅' : v.outcome === 'follow_up' ? '🔄' : '❌'}</span>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 700, fontSize: 15, color: t.text }}>{v.partyName}</div>
+                    <div style={{ fontSize: 11, color: t.text3, marginTop: 1 }}>{typeLabel}</div>
                     {v.outcome === 'interested' && v.productName && (
-                      <div style={{ fontSize: 12, color: '#16a34a', marginTop: 2 }}>📦 {v.productName} • allocation created</div>
+                      <div style={{ fontSize: 13, color: '#16a34a', marginTop: 2 }}>{v.productName} — allocation created</div>
                     )}
                     {v.outcome === 'not_interested' && (
-                      <div style={{ fontSize: 12, color: '#dc2626', marginTop: 2 }}>{v.notInterestedReason}{v.otherReason ? `: ${v.otherReason}` : ''}</div>
+                      <div style={{ fontSize: 13, color: '#dc2626', marginTop: 2 }}>{v.notInterestedReason}</div>
+                    )}
+                    {v.outcome === 'follow_up' && (
+                      <div style={{ fontSize: 13, color: '#d97706', marginTop: 2 }}>Follow up needed</div>
                     )}
                   </div>
                 </div>
               </div>
-            ))}
+            )})}
 
-            {/* End of day note */}
-            <div style={{ background: t.card, borderRadius: 14, padding: 16, border: `1px solid ${t.border}` }}>
-              <div style={{ fontSize: 13, color: t.text2, fontWeight: 700, marginBottom: 8 }}>📝 End of Day Note</div>
-              <textarea value={endNote} onChange={e => setEndNote(e.target.value)}
-                onBlur={saveEndNote}
-                placeholder="Anything to note for today? (optional)"
-                rows={2}
-                style={{ width: '100%', background: t.bg3, border: `1px solid ${t.border}`, borderRadius: 10, padding: '10px 12px', fontSize: 14, color: t.text, outline: 'none', resize: 'none', boxSizing: 'border-box' }} />
-            </div>
           </>
         )}
-      </div>
-    </div>
-  )
 
-  // ── SELECT SHOP ───────────────────────────────────────────────────────────
-  if (step === 'selectShop') return (
-    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
-      <div style={{ background: 'linear-gradient(135deg,#0d3d2e,#1a5c42)', padding: '20px 20px 20px' }}>
-        <button onClick={() => setStep('home')} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#6ee7b7', padding: '6px 14px', borderRadius: 20, fontSize: 13, marginBottom: 14 }}>← Back</button>
-        <div style={{ fontSize: 20, fontWeight: 900, color: '#fff' }}>Select Shop</div>
-        <div style={{ fontSize: 13, color: '#a7f3d0', marginTop: 4 }}>Choose from existing or add new</div>
-      </div>
-      <div style={{ padding: '16px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <CustomSelect value={selectedParty?.id || ''}
-          onChange={v => {
-            const p = parties.find(p => p.id === v)
-            if (p) { setSelectedParty(p); setStep('markOutcome') }
-          }}
-          placeholder="Search shops..."
-          options={partyOptions} />
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ flex: 1, height: 1, background: t.border }} />
-          <span style={{ fontSize: 12, color: t.text3 }}>or</span>
-          <div style={{ flex: 1, height: 1, background: t.border }} />
+        {/* End of day note — always visible */}
+        <div style={{ background: t.card, borderRadius: 14, padding: 16, border: `1px solid ${t.border}` }}>
+          <div style={{ fontSize: 14, color: t.text2, fontWeight: 700, marginBottom: 10 }}>End of Day Note</div>
+          <textarea value={endNote} onChange={e => setEndNote(e.target.value)}
+            placeholder="Anything to note for today? (optional)" rows={3}
+            style={{ width: '100%', background: t.bg3, border: `1px solid ${t.border}`, borderRadius: 10, padding: '12px 14px', fontSize: 14, color: t.text, outline: 'none', resize: 'none', boxSizing: 'border-box' }} />
         </div>
 
-        <button onClick={() => setStep('addNewShop')}
-          style={{ background: t.card, border: `1.5px dashed ${t.border2}`, color: t.text, borderRadius: 14, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12, fontSize: 15 }}>
-          <span style={{ fontSize: 24 }}>🆕</span>
-          <div>
-            <div style={{ fontWeight: 700 }}>Add New Shop</div>
-            <div style={{ fontSize: 13, color: t.text2, marginTop: 2 }}>Distributor or retailer not in the list</div>
-          </div>
+        {/* Submit / update day log */}
+        <button
+          onClick={() => visits.length > 0 ? setShowFinishModal(true) : handleFinishDay()}
+          style={{ width: '100%', background: visits.length > 0 ? 'linear-gradient(135deg,#065f46,#047857)' : t.bg3, color: visits.length > 0 ? '#fff' : t.text2, border: visits.length > 0 ? 'none' : `1.5px solid ${t.border}`, borderRadius: 16, padding: '18px', fontSize: 17, fontWeight: 900, boxShadow: visits.length > 0 ? '0 8px 24px rgba(4,120,87,0.35)' : 'none' }}>
+          {visits.length === 0
+            ? '← Back to Dashboard'
+            : todayLog?.updatedAt && todayLog.updatedAt !== todayLog.createdAt
+              ? `📝 Update Entry — ${visits.length} visit${visits.length > 1 ? 's' : ''}`
+              : `✅ Submit Day Log — ${visits.length} visit${visits.length > 1 ? 's' : ''}`}
         </button>
       </div>
     </div>
   )
 
-  // ── ADD NEW SHOP ──────────────────────────────────────────────────────────
+  // ── SELECT PARTY ─────────────────────────────────────────────────────────
+  if (step === 'selectShop') return (
+    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
+      <div style={{ background: 'linear-gradient(135deg,#0d3d2e,#1a5c42)', padding: '20px 20px 20px' }}>
+        <button onClick={() => setStep('home')} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#6ee7b7', padding: '6px 14px', borderRadius: 20, fontSize: 13, marginBottom: 14 }}>← Back</button>
+        <div style={{ fontSize: 20, fontWeight: 900, color: '#fff' }}>Select Party</div>
+        <div style={{ fontSize: 14, color: '#a7f3d0', marginTop: 4 }}>Active → Revisit  ·  Prospect → Mark outcome</div>
+      </div>
+
+      <div style={{ padding: '16px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <CustomSelect
+          value={selectedParty?.id || ''}
+          onChange={v => {
+            const p = parties.find(p => p.id === v)
+            if (!p) return
+            setSelectedParty(p)
+            setStep((p as any).status === 'active' ? 'revisit' : 'markOutcome')
+          }}
+          placeholder="🔍 Search by name, place, area..."
+          options={partyOptions}
+          searchable />
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ flex: 1, height: 1, background: t.border }} />
+          <span style={{ fontSize: 13, color: t.text3 }}>or</span>
+          <div style={{ flex: 1, height: 1, background: t.border }} />
+        </div>
+
+        <button onClick={() => setStep('addNewShop')}
+          style={{ background: t.card, border: `1.5px dashed ${t.border2}`, color: t.text, borderRadius: 14, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 26 }}>🆕</span>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>Add New Party</div>
+            <div style={{ fontSize: 13, color: t.text2, marginTop: 2 }}>Not in the list yet</div>
+          </div>
+        </button>
+
+        <div style={{ display: 'flex', gap: 16 }}>
+          <div style={{ fontSize: 13, color: t.text3 }}>Active → Revisit</div>
+          <div style={{ fontSize: 13, color: t.text3 }}>Prospect → First outcome</div>
+        </div>
+      </div>
+    </div>
+  )
+
+  // ── ADD NEW PARTY ─────────────────────────────────────────────────────────
   if (step === 'addNewShop') return (
     <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
       <div style={{ background: 'linear-gradient(135deg,#0d3d2e,#1a5c42)', padding: '20px 20px 20px' }}>
         <button onClick={() => setStep('selectShop')} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#6ee7b7', padding: '6px 14px', borderRadius: 20, fontSize: 13, marginBottom: 14 }}>← Back</button>
-        <div style={{ fontSize: 20, fontWeight: 900, color: '#fff' }}>Add New Shop</div>
+        <div style={{ fontSize: 20, fontWeight: 900, color: '#fff' }}>New Party</div>
+        <div style={{ fontSize: 13, color: '#a7f3d0', marginTop: 4 }}>Added as Prospect</div>
       </div>
       <div style={{ padding: '16px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {/* Type */}
         <div style={{ display: 'flex', gap: 8 }}>
           {(['distributor', 'retailer'] as const).map(tp => (
             <button key={tp} onClick={() => setNewShop({ ...newShop, type: tp })}
-              style={{ flex: 1, background: newShop.type === tp ? 'rgba(8,145,178,0.15)' : t.bg3, color: newShop.type === tp ? '#0891b2' : t.text2, border: `1.5px solid ${newShop.type === tp ? '#0891b2' : t.border2}`, borderRadius: 12, padding: '12px', fontSize: 14, fontWeight: 800 }}>
+              style={{ flex: 1, background: newShop.type === tp ? 'rgba(8,145,178,0.15)' : t.bg3, color: newShop.type === tp ? '#0891b2' : t.text2, border: `1.5px solid ${newShop.type === tp ? '#0891b2' : t.border2}`, borderRadius: 12, padding: '13px', fontSize: 15, fontWeight: 800 }}>
               {tp === 'distributor' ? '🚚 Distributor' : '🏪 Retailer'}
             </button>
           ))}
         </div>
+        {newShop.type === 'retailer' && parties.some(p => p.type === 'distributor') && (
+          <div>
+            <div style={{ fontSize: 12, color: t.text2, marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>Under Distributor</div>
+            <CustomSelect
+              value={newShop.underDistributorId}
+              onChange={v => setNewShop({ ...newShop, underDistributorId: v })}
+              placeholder="Independent — no distributor"
+              options={[
+                { value: '', label: '🟢 Independent retailer' },
+                ...parties.filter(p => p.type === 'distributor').map(d => ({ value: d.id!, label: `🚚 ${d.name}` })),
+              ]}
+            />
+            {newShop.underDistributorId && (
+              <div style={{ fontSize: 11, color: '#d97706', marginTop: 6 }}>
+                ⚠️ Allocation will be blocked — must go through the distributor
+              </div>
+            )}
+          </div>
+        )}
+
         {[
-          { label: 'Shop Name *', key: 'name', placeholder: 'e.g. Rajan Medical Store', type: 'text' },
+          { label: 'Name *', key: 'name', placeholder: 'e.g. Rajan Enterprises', type: 'text' },
           { label: 'Phone Number', key: 'phone', placeholder: '10-digit number', type: 'tel' },
           { label: 'Address', key: 'address', placeholder: 'Full address', type: 'text' },
-          { label: 'Area / Place', key: 'place', placeholder: 'e.g. Koramangala', type: 'text' },
+          { label: 'Area / Place', key: 'place', placeholder: 'e.g. Ernakulam', type: 'text' },
         ].map(f => (
           <div key={f.key}>
             <div style={{ fontSize: 12, color: t.text2, marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>{f.label}</div>
             <input type={f.type} value={(newShop as any)[f.key]}
               onChange={e => setNewShop({ ...newShop, [f.key]: e.target.value })}
-              placeholder={f.placeholder} style={s} />
+              placeholder={f.placeholder} style={inputStyle} />
           </div>
         ))}
         <button onClick={handleAddNewShop} disabled={saving || !newShop.name.trim()}
-          style={{ background: saving ? '#475569' : 'linear-gradient(135deg,#0d3d2e,#1a5c42)', color: '#fff', border: 'none', borderRadius: 14, padding: 16, fontSize: 15, fontWeight: 800, opacity: !newShop.name.trim() ? 0.5 : 1 }}>
-          {saving ? 'Saving...' : 'Add & Mark Outcome →'}
+          style={{ background: !newShop.name.trim() || saving ? '#475569' : 'linear-gradient(135deg,#0d3d2e,#1a5c42)', color: '#fff', border: 'none', borderRadius: 14, padding: 17, fontSize: 16, fontWeight: 800 }}>
+          {saving ? 'Saving...' : 'Add & Continue →'}
         </button>
       </div>
     </div>
   )
 
-  // ── MARK OUTCOME ──────────────────────────────────────────────────────────
+  // ── MARK OUTCOME (prospect / first visit) ─────────────────────────────────
   if (step === 'markOutcome' && selectedParty) return (
     <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
       <div style={{ background: 'linear-gradient(135deg,#0d3d2e,#1a5c42)', padding: '20px 20px 20px' }}>
-        <button onClick={() => { setStep('selectShop'); resetVisitState() }} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#6ee7b7', padding: '6px 14px', borderRadius: 20, fontSize: 13, marginBottom: 14 }}>← Back</button>
-        <div style={{ fontSize: 14, color: '#a7f3d0' }}>Visit outcome for</div>
+        <button onClick={() => { setStep('selectShop'); resetVisit() }} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#6ee7b7', padding: '6px 14px', borderRadius: 20, fontSize: 13, marginBottom: 14 }}>← Back</button>
+        <div style={{ fontSize: 13, color: '#a7f3d0' }}>Prospect Visit</div>
         <div style={{ fontSize: 22, fontWeight: 900, color: '#fff' }}>{selectedParty.name}</div>
-        <div style={{ fontSize: 13, color: '#a7f3d0', marginTop: 2 }}>{selectedParty.type === 'distributor' ? '🚚 Distributor' : '🏪 Retailer'} • {selectedParty.place || selectedParty.address}</div>
+        <div style={{ fontSize: 13, color: '#a7f3d0', marginTop: 2 }}>{selectedParty.place || selectedParty.address}</div>
       </div>
 
-      <div style={{ padding: '16px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* Outcome selection */}
-        <div>
-          <div style={{ fontSize: 13, color: t.text2, fontWeight: 700, marginBottom: 10, letterSpacing: 1, textTransform: 'uppercase' }}>Are they interested?</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <button onClick={() => setOutcome('interested')}
-              style={{ background: outcome === 'interested' ? 'rgba(22,163,74,0.15)' : t.card, border: `2px solid ${outcome === 'interested' ? '#16a34a' : t.border}`, borderRadius: 14, padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left' }}>
-              <span style={{ fontSize: 28 }}>✅</span>
-              <div>
-                <div style={{ fontWeight: 800, fontSize: 16, color: outcome === 'interested' ? '#16a34a' : t.text }}>Yes, Interested!</div>
-                <div style={{ fontSize: 13, color: t.text2, marginTop: 2 }}>Will take our product — create allocation</div>
-              </div>
-            </button>
-            <button onClick={() => setOutcome('not_interested')}
-              style={{ background: outcome === 'not_interested' ? 'rgba(220,38,38,0.1)' : t.card, border: `2px solid ${outcome === 'not_interested' ? '#dc2626' : t.border}`, borderRadius: 14, padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left' }}>
-              <span style={{ fontSize: 28 }}>❌</span>
-              <div>
-                <div style={{ fontWeight: 800, fontSize: 16, color: outcome === 'not_interested' ? '#dc2626' : t.text }}>Not Interested</div>
-                <div style={{ fontSize: 13, color: t.text2, marginTop: 2 }}>Select reason below</div>
-              </div>
-            </button>
-            <button onClick={() => setOutcome('follow_up')}
-              style={{ background: outcome === 'follow_up' ? 'rgba(217,119,6,0.1)' : t.card, border: `2px solid ${outcome === 'follow_up' ? '#d97706' : t.border}`, borderRadius: 14, padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left' }}>
-              <span style={{ fontSize: 28 }}>🔄</span>
-              <div>
-                <div style={{ fontWeight: 800, fontSize: 16, color: outcome === 'follow_up' ? '#d97706' : t.text }}>Follow Up Later</div>
-                <div style={{ fontSize: 13, color: t.text2, marginTop: 2 }}>Interested but needs more time</div>
-              </div>
-            </button>
-          </div>
-        </div>
+      <div style={{ padding: '16px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ fontSize: 14, color: t.text2, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Visit Outcome</div>
 
-        {/* Not interested reasons */}
-        {outcome === 'not_interested' && (
-          <div>
-            <div style={{ fontSize: 13, color: t.text2, fontWeight: 700, marginBottom: 10, letterSpacing: 1, textTransform: 'uppercase' }}>Why not interested?</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {NOT_INTERESTED_REASONS.map(r => (
-                <button key={r} onClick={() => setNotInterestedReason(r)}
-                  style={{ background: notInterestedReason === r ? 'rgba(220,38,38,0.12)' : t.bg3, color: notInterestedReason === r ? '#dc2626' : t.text2, border: `1.5px solid ${notInterestedReason === r ? '#dc2626' : t.border}`, borderRadius: 10, padding: '12px 14px', fontSize: 14, fontWeight: notInterestedReason === r ? 700 : 500, textAlign: 'left' }}>
-                  {notInterestedReason === r ? '● ' : '○ '}{r}
-                </button>
-              ))}
+        {[
+          { val: 'interested',     emoji: '✅', label: 'Yes, Interested!',    sub: 'Will take our product — create allocation', color: '#16a34a' },
+          { val: 'not_interested', emoji: '❌', label: 'Not Interested',       sub: 'Select reason below', color: '#dc2626' },
+          { val: 'follow_up',      emoji: '🔄', label: 'Follow Up Later',      sub: 'Needs more time to decide', color: '#d97706' },
+        ].map(o => (
+          <button key={o.val} onClick={() => setOutcome(o.val as VisitOutcome)}
+            style={{ background: outcome === o.val ? `${o.color}22` : t.card, border: `2px solid ${outcome === o.val ? o.color : t.border}`, borderRadius: 14, padding: '17px 18px', display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left' }}>
+            <span style={{ fontSize: 28 }}>{o.emoji}</span>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 16, color: outcome === o.val ? o.color : t.text }}>{o.label}</div>
+              <div style={{ fontSize: 13, color: t.text2, marginTop: 2 }}>{o.sub}</div>
             </div>
+          </button>
+        ))}
+
+        {outcome === 'not_interested' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: 14, color: t.text2, fontWeight: 700 }}>Why not interested?</div>
+            {NOT_INTERESTED_REASONS.map(r => (
+              <button key={r} onClick={() => setNotInterestedReason(r)}
+                style={{ background: notInterestedReason === r ? 'rgba(220,38,38,0.12)' : t.bg3, color: notInterestedReason === r ? '#dc2626' : t.text2, border: `1.5px solid ${notInterestedReason === r ? '#dc2626' : t.border}`, borderRadius: 10, padding: '12px 14px', fontSize: 14, textAlign: 'left', fontWeight: notInterestedReason === r ? 700 : 400 }}>
+                {notInterestedReason === r ? '● ' : '○ '}{r}
+              </button>
+            ))}
             {notInterestedReason === 'Other' && (
               <textarea value={otherReason} onChange={e => setOtherReason(e.target.value)}
-                placeholder="Please specify..."
-                rows={2}
-                style={{ width: '100%', background: t.bg3, border: `1.5px solid ${t.border2}`, borderRadius: 10, padding: '10px 12px', fontSize: 14, color: t.text, outline: 'none', resize: 'none', boxSizing: 'border-box', marginTop: 8 }} />
+                placeholder="Please specify..." rows={2}
+                style={{ width: '100%', background: t.bg3, border: `1.5px solid ${t.border2}`, borderRadius: 10, padding: '12px', fontSize: 14, color: t.text, outline: 'none', resize: 'none', boxSizing: 'border-box' }} />
             )}
           </div>
         )}
 
-        {/* Interested — product + allocation */}
-        {outcome === 'interested' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div>
-              <div style={{ fontSize: 13, color: t.text2, fontWeight: 700, marginBottom: 10, letterSpacing: 1, textTransform: 'uppercase' }}>Which Product?</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {products.map(p => (
-                  <button key={p.id} onClick={() => setSelectedProduct(p)}
-                    style={{ background: selectedProduct?.id === p.id ? 'rgba(22,163,74,0.12)' : t.bg3, border: `1.5px solid ${selectedProduct?.id === p.id ? '#16a34a' : t.border}`, borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}>
-                    <span style={{ fontSize: 22 }}>📦</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 700, fontSize: 15, color: selectedProduct?.id === p.id ? '#16a34a' : t.text }}>{p.name}</div>
-                      <div style={{ fontSize: 12, color: t.text2, marginTop: 2 }}>Default: ₹{p.defaultPricePerUnit}/{p.unitLabel}</div>
-                    </div>
-                    {selectedProduct?.id === p.id && <span style={{ color: '#16a34a', fontSize: 18 }}>✓</span>}
-                  </button>
-                ))}
-              </div>
+        {outcome === 'interested' && selectedParty.underDistributorId && (
+          <div style={{ background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.3)', borderRadius: 14, padding: 16 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: '#d97706', marginBottom: 6 }}>⚠️ Allocation via Distributor</div>
+            <div style={{ fontSize: 13, color: '#fbbf24', lineHeight: 1.5 }}>
+              This retailer is under <strong>{selectedParty.underDistributorName || 'a distributor'}</strong>.
+              Direct allocation is blocked — stock must flow through the distributor.
             </div>
+            <div style={{ fontSize: 12, color: '#d97706', marginTop: 8 }}>
+              Log this as interested and inform the distributor.
+            </div>
+          </div>
+        )}
 
+        {outcome === 'interested' && !selectedParty.underDistributorId && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ fontSize: 14, color: t.text2, fontWeight: 700 }}>Which Product?</div>
+            {products.length === 0 ? (
+              <div style={{ background: 'rgba(220,38,38,0.08)', borderRadius: 10, padding: 14, fontSize: 14, color: '#dc2626' }}>
+                ⚠️ No active products found. Ask admin to add products first.
+              </div>
+            ) : products.map(p => (
+              <button key={p.id} onClick={() => setSelectedProduct(p)}
+                style={{ background: selectedProduct?.id === p.id ? 'rgba(22,163,74,0.12)' : t.bg3, border: `1.5px solid ${selectedProduct?.id === p.id ? '#16a34a' : t.border}`, borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}>
+                <span style={{ fontSize: 22 }}>📦</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: selectedProduct?.id === p.id ? '#16a34a' : t.text }}>{p.name}</div>
+                  <div style={{ fontSize: 13, color: t.text2 }}>₹{p.defaultPricePerUnit}/{p.unitLabel}</div>
+                </div>
+                {selectedProduct?.id === p.id && <span style={{ color: '#16a34a', fontSize: 20 }}>✓</span>}
+              </button>
+            ))}
             {selectedProduct && (
               <>
-                <div>
-                  <div style={{ fontSize: 12, color: t.text2, marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>Quantity ({selectedProduct.unitLabel})</div>
-                  <input type="number" value={allocQty} onChange={e => setAllocQty(e.target.value)}
-                    placeholder={`No. of ${selectedProduct.unitLabel}`} style={s} />
-                  {allocQty && <div style={{ fontSize: 12, color: '#6ee7b7', marginTop: 5, fontWeight: 600 }}>
-                    = {Math.floor(parseInt(allocQty) / selectedProduct.unitsPerCarton)} cartons ({allocQty} {selectedProduct.unitLabel})
-                    {allocPrice && ` • ₹${(parseInt(allocQty) * parseFloat(allocPrice)).toLocaleString()}`}
-                  </div>}
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, color: t.text2, marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>Price per {selectedProduct.unitLabel} (₹)</div>
-                  <input type="number" value={allocPrice} onChange={e => setAllocPrice(e.target.value)}
-                    placeholder={`Default: ₹${selectedProduct.defaultPricePerUnit}`} style={s} />
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, color: t.text2, marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>Payment Type</div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    {([['cash', '💵 Cash'], ['credit', '📋 Credit']] as const).map(([val, label]) => (
-                      <button key={val} onClick={() => setAllocPayment(val)}
-                        style={{ flex: 1, background: allocPayment === val ? (val === 'cash' ? 'rgba(22,163,74,0.15)' : 'rgba(217,119,6,0.15)') : t.bg3, color: allocPayment === val ? (val === 'cash' ? '#16a34a' : '#d97706') : t.text2, border: `1.5px solid ${allocPayment === val ? (val === 'cash' ? '#16a34a' : '#d97706') : t.border}`, borderRadius: 12, padding: '12px', fontSize: 14, fontWeight: 800 }}>
-                        {label}
-                      </button>
-                    ))}
+                <input type="number" value={allocQty} onChange={e => setAllocQty(e.target.value)}
+                  placeholder={`Qty (${selectedProduct.unitLabel})`} style={inputStyle} />
+                <input type="number" value={allocPrice} onChange={e => setAllocPrice(e.target.value)}
+                  placeholder={`Price per ${selectedProduct.unitLabel} (₹)`} style={inputStyle} />
+                {allocQty && allocPrice && (
+                  <div style={{ fontSize: 14, color: '#6ee7b7', fontWeight: 600 }}>
+                    Total: ₹{(parseInt(allocQty) * parseFloat(allocPrice)).toLocaleString()}
                   </div>
+                )}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {([['cash', '💵 Cash'], ['credit', '📋 Credit']] as const).map(([val, label]) => (
+                    <button key={val} onClick={() => setAllocPayment(val)}
+                      style={{ flex: 1, background: allocPayment === val ? (val === 'cash' ? 'rgba(22,163,74,0.15)' : 'rgba(217,119,6,0.15)') : t.bg3, color: allocPayment === val ? (val === 'cash' ? '#16a34a' : '#d97706') : t.text2, border: `1.5px solid ${allocPayment === val ? (val === 'cash' ? '#16a34a' : '#d97706') : t.border}`, borderRadius: 12, padding: '12px', fontSize: 14, fontWeight: 800 }}>
+                      {label}
+                    </button>
+                  ))}
                 </div>
                 <div>
-                  <div style={{ fontSize: 12, color: t.text2, marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>Planned Send Date</div>
-                  <input type="date" value={allocDate} onChange={e => setAllocDate(e.target.value)} style={s} />
+                  <div style={{ fontSize: 12, color: t.text2, marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>Planned Delivery Date</div>
+                  <input type="date" value={allocDate} onChange={e => setAllocDate(e.target.value)} style={inputStyle} />
                 </div>
               </>
             )}
           </div>
         )}
 
-        {/* Submit */}
+        {saveError && (
+          <div style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.3)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#dc2626' }}>
+            ⚠️ {saveError}
+          </div>
+        )}
+
+        {/* Save button */}
         {outcome && (
           <button onClick={handleAddVisit} disabled={saving ||
             (outcome === 'not_interested' && !notInterestedReason) ||
-            (outcome === 'interested' && (!selectedProduct || !allocQty))}
-            style={{ background: saving ? '#475569' : 'linear-gradient(135deg,#0d3d2e,#1a5c42)', color: '#fff', border: 'none', borderRadius: 14, padding: 18, fontSize: 16, fontWeight: 800, marginTop: 4, opacity: (!outcome || (outcome === 'not_interested' && !notInterestedReason) || (outcome === 'interested' && (!selectedProduct || !allocQty))) ? 0.5 : 1 }}>
+            (outcome === 'interested' && !selectedParty.underDistributorId && (!selectedProduct || !allocQty))}
+            style={{
+              background: saving ? '#475569' : 'linear-gradient(135deg,#0d3d2e,#1a5c42)',
+              color: '#fff', border: 'none', borderRadius: 14, padding: 18,
+              fontSize: 16, fontWeight: 800, marginTop: 4,
+              opacity: (outcome === 'not_interested' && !notInterestedReason) || (outcome === 'interested' && !selectedParty.underDistributorId && (!selectedProduct || !allocQty)) ? 0.4 : 1
+            }}>
             {saving ? 'Saving...' : 'Save Visit ✅'}
           </button>
         )}

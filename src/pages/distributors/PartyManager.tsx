@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc } from 'firebase/firestore'
+import { collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, deleteField } from 'firebase/firestore'
 import { db } from '../../firebase'
 import { Party, PartyType, PartyCategory, Dispatch } from '../../types'
 import { useAuth } from '../../context/AuthContext'
@@ -32,7 +32,7 @@ function inputStyle(hasError?: boolean): React.CSSProperties {
   return {
     width: '100%', background: 'rgba(255,255,255,0.06)',
     border: `1.5px solid ${hasError ? '#dc2626' : 'rgba(255,255,255,0.1)'}`,
-    borderRadius: 12, padding: '13px 16px', fontSize: 14, color: '#fff',
+    borderRadius: 12, padding: '13px 16px', fontSize: 16, color: '#fff',
     outline: 'none', boxSizing: 'border-box',
   }
 }
@@ -52,6 +52,7 @@ export default function PartyManager({ onBack }: Props) {
   const [expandedDispatch, setExpandedDispatch] = useState<string | null>(null)
   const [typeFilter, setTypeFilter] = useState<'all' | 'distributor' | 'retailer'>('all')
   const [categoryFilter, setCategoryFilter] = useState<'all' | PartyCategory>('all')
+  const [distributorFilter, setDistributorFilter] = useState<'all' | 'independent' | string>('all')
   const [placeSearch, setPlaceSearch] = useState('')
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
@@ -59,6 +60,7 @@ export default function PartyManager({ onBack }: Props) {
   const [unit, setUnit] = useState<'packets' | 'cartons'>('packets')
   const [form, setForm] = useState(emptyForm)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [focusParent, setFocusParent] = useState(false)
 
   const isAdmin = appUser?.role === 'super_admin' || appUser?.role === 'admin'
   const distributors = parties.filter(p => p.type === 'distributor')
@@ -73,10 +75,13 @@ export default function PartyManager({ onBack }: Props) {
     return () => { u1(); u2() }
   }, [])
 
-  // Safe filter — handle missing place field
   const filtered = parties.filter(p => {
     if (typeFilter !== 'all' && p.type !== typeFilter) return false
     if (categoryFilter !== 'all' && p.category !== categoryFilter) return false
+    if (p.type === 'retailer' && distributorFilter !== 'all') {
+      if (distributorFilter === 'independent' && (p as any).underDistributorId) return false
+      if (distributorFilter !== 'independent' && (p as any).underDistributorId !== distributorFilter) return false
+    }
     if (placeSearch.trim()) {
       const search = placeSearch.toLowerCase()
       const addr = (p.address || '').toLowerCase()
@@ -97,8 +102,6 @@ export default function PartyManager({ onBack }: Props) {
     if (!validatePhone(form.phone)) e.phone = 'Enter valid 10-digit Indian mobile number'
     if (!form.address.trim()) e.address = 'Address is required'
     if (!form.place.trim()) e.place = 'Place / area is required'
-    if (!form.pricePerPacket || parseFloat(form.pricePerPacket) <= 0) e.pricePerPacket = 'Enter a valid price'
-    if (!form.quantity || parseInt(form.quantity) <= 0) e.quantity = 'Enter quantity'
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -115,7 +118,13 @@ export default function PartyManager({ onBack }: Props) {
     })
     setUnit('packets')
     setEditingId(p.id!)
+    setFocusParent(false)
     setTab('add')
+  }
+
+  const startChangeParent = (p: Party) => {
+    startEdit(p)
+    setFocusParent(true)
   }
 
   const handleSave = async () => {
@@ -128,13 +137,18 @@ export default function PartyManager({ onBack }: Props) {
       const data: any = {
         name: form.name.trim(), type: form.type, category: form.category,
         phone: form.phone.trim(), address: form.address.trim(), place: form.place.trim(),
-        pricePerPacket: parseFloat(form.pricePerPacket),
+        pricePerPacket: parseFloat(form.pricePerPacket) || 0,
         packetsAllocated: packets, cartonsAllocated: cartons,
         lowStockThreshold: parseInt(form.lowStockThreshold) || 0,
       }
-      if (form.type === 'retailer' && form.underDistributorId) {
-        data.underDistributorId = form.underDistributorId
-        data.underDistributorName = underDist?.name || ''
+      if (form.type === 'retailer') {
+        if (form.underDistributorId) {
+          data.underDistributorId = form.underDistributorId
+          data.underDistributorName = underDist?.name || ''
+        } else {
+          data.underDistributorId = deleteField()
+          data.underDistributorName = deleteField()
+        }
       }
 
       if (editingId) {
@@ -155,6 +169,7 @@ export default function PartyManager({ onBack }: Props) {
       }
       setForm(emptyForm)
       setErrors({})
+      setFocusParent(false)
       setTab('list')
     } finally {
       setSaving(false)
@@ -210,12 +225,29 @@ export default function PartyManager({ onBack }: Props) {
                 style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#fff', outline: 'none', boxSizing: 'border-box', marginBottom: 10 }} />
               <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
                 {(['all', 'distributor', 'retailer'] as const).map(f => (
-                  <button key={f} onClick={() => setTypeFilter(f)}
+                  <button key={f} onClick={() => { setTypeFilter(f); if (f === 'distributor') setDistributorFilter('all') }}
                     style={{ background: typeFilter === f ? '#0891b2' : 'rgba(255,255,255,0.04)', color: typeFilter === f ? '#fff' : '#64748b', border: `1px solid ${typeFilter === f ? '#0891b2' : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700 }}>
                     {f === 'all' ? 'All' : f === 'distributor' ? '🚚 Dist' : '🏪 Retailer'}
                   </button>
                 ))}
               </div>
+
+              {/* Distributor sub-filter — shown when retailers are visible */}
+              {typeFilter !== 'distributor' && distributors.length > 0 && (
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: 10, color: '#475569', marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>Under Distributor</div>
+                  <CustomSelect
+                    value={distributorFilter}
+                    onChange={setDistributorFilter}
+                    placeholder="All retailers"
+                    options={[
+                      { value: 'all', label: '📋 All retailers' },
+                      { value: 'independent', label: '🟢 Independent retailers' },
+                      ...distributors.map(d => ({ value: d.id!, label: `🚚 ${d.name}`, sub: d.place || d.address })),
+                    ]}
+                  />
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {(['all', ...CATEGORIES] as ('all' | PartyCategory)[]).map(c => (
                   <button key={c} onClick={() => setCategoryFilter(c)}
@@ -250,6 +282,12 @@ export default function PartyManager({ onBack }: Props) {
                       <div style={{ fontSize: 12, color: '#64748b' }}>📍 {p.address}</div>
                       {p.place && <div style={{ fontSize: 11, color: '#475569' }}>🏘️ {p.place}</div>}
                       {p.underDistributorName && <div style={{ fontSize: 11, color: '#0891b2', marginTop: 2 }}>Under: {p.underDistributorName}</div>}
+                      {p.type === 'retailer' && (
+                        <button onClick={() => startChangeParent(p)}
+                          style={{ background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.2)', color: '#a78bfa', borderRadius: 8, padding: '4px 10px', fontSize: 10, marginTop: 6, cursor: 'pointer' }}>
+                          🔀 Change Parent
+                        </button>
+                      )}
                       <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                         {isAdmin && <span style={{ fontSize: 11, background: 'rgba(22,163,74,0.15)', color: '#16a34a', padding: '3px 10px', borderRadius: 99, fontWeight: 700 }}>₹{p.pricePerPacket}/pkt</span>}
                         <span style={{ fontSize: 11, background: 'rgba(8,145,178,0.15)', color: '#0891b2', padding: '3px 10px', borderRadius: 99, fontWeight: 700 }}>
@@ -343,14 +381,29 @@ export default function PartyManager({ onBack }: Props) {
 
             {/* Under distributor */}
             {form.type === 'retailer' && distributors.length > 0 && (
-              <Field label="Under Distributor (optional)">
+              <div style={{
+                background: focusParent ? 'rgba(124,58,237,0.08)' : 'rgba(255,255,255,0.02)',
+                border: `1.5px solid ${focusParent ? '#a78bfa' : 'rgba(255,255,255,0.06)'}`,
+                borderRadius: 12, padding: 14,
+              }}>
+                {focusParent && (
+                  <div style={{ fontSize: 10, color: '#a78bfa', marginBottom: 8, fontWeight: 700, letterSpacing: 1 }}>
+                    🔀 CHANGE PARENT DISTRIBUTOR
+                  </div>
+                )}
+                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8, letterSpacing: 1, textTransform: 'uppercase' }}>
+                  Parent Distributor (optional)
+                </div>
+                <div style={{ fontSize: 11, color: '#475569', marginBottom: 10 }}>
+                  Link this retailer to a distributor to enable distribution tracking. Unlinked = independent retailer.
+                </div>
                 <CustomSelect
                   value={form.underDistributorId}
-                  onChange={v => setForm({ ...form, underDistributorId: v })}
+                  onChange={v => { setForm({ ...form, underDistributorId: v }); setFocusParent(false) }}
                   placeholder="Independent retailer"
                   options={[{ value: '', label: 'Independent retailer' }, ...distributorOptions]}
                 />
-              </Field>
+              </div>
             )}
 
             <Field label="Full Name" error={errors.name}>
@@ -411,7 +464,7 @@ export default function PartyManager({ onBack }: Props) {
             )}
 
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => { setTab('list'); setEditingId(null); setForm(emptyForm); setErrors({}) }}
+              <button onClick={() => { setTab('list'); setEditingId(null); setForm(emptyForm); setErrors({}); setFocusParent(false) }}
                 style={{ flex: 1, background: 'rgba(255,255,255,0.06)', color: '#64748b', border: 'none', borderRadius: 14, padding: 14, fontSize: 14, fontWeight: 700 }}>
                 Cancel
               </button>

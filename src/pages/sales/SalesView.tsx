@@ -10,7 +10,8 @@ import ExpenseLogger from '../stock/ExpenseLogger'
 import CreditBook from '../credit/CreditBook'
 import AllocationManager from '../distributors/AllocationManager'
 import VisitLogger from './VisitLogger'
-import { CheckIn } from '../../types'
+import VisitHistoryScreen from './VisitHistoryScreen'
+import { CheckIn, Party, DailyVisitLog } from '../../types'
 
 interface Props { name: string }
 
@@ -18,7 +19,7 @@ const todayStr = () => new Date().toISOString().split('T')[0]
 const currentMonth = () => new Date().toISOString().slice(0, 7)
 const isLocked = (createdAt: number) => Date.now() - createdAt > 24 * 60 * 60 * 1000
 
-type SubScreen = 'home' | 'visits' | 'parties' | 'stock' | 'expenses' | 'credits' | 'allocations'
+type SubScreen = 'home' | 'visits' | 'parties' | 'stock' | 'expenses' | 'credits' | 'allocations' | 'history'
 
 export default function SalesView({ name }: Props) {
   const { appUser } = useAuth()
@@ -26,6 +27,26 @@ export default function SalesView({ name }: Props) {
   const isOnline = appUser?.role === 'online_sales'
   const [screen, setScreen] = useState<SubScreen>('home')
   const [checkIns, setCheckIns] = useState<CheckIn[]>([])
+  const [parties, setParties] = useState<Party[]>([])
+  const [todayVisitLog, setTodayVisitLog] = useState<DailyVisitLog | null>(null)
+
+  useEffect(() => {
+    return onSnapshot(collection(db, 'parties'), snap => {
+      setParties(snap.docs.map(d => ({ id: d.id, ...d.data() } as Party)))
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!appUser) return
+    const q = query(
+      collection(db, 'visit_logs'),
+      where('salesPersonId', '==', appUser.uid),
+      where('date', '==', todayStr())
+    )
+    return onSnapshot(q, snap => {
+      setTodayVisitLog(snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() } as DailyVisitLog)
+    })
+  }, [appUser])
 
   useEffect(() => {
     if (!appUser) return
@@ -44,7 +65,8 @@ export default function SalesView({ name }: Props) {
   if (screen === 'stock')       return <StockManager onBack={() => setScreen('home')} />
   if (screen === 'expenses')    return <ExpenseLogger onBack={() => setScreen('home')} />
   if (screen === 'credits')     return <CreditBook onBack={() => setScreen('home')} />
-  if (screen === 'allocations') return <AllocationManager onBack={() => setScreen('home')} parties={[]} isAdmin={false} />
+  if (screen === 'allocations') return <AllocationManager onBack={() => setScreen('home')} parties={parties} isAdmin={false} />
+  if (screen === 'history')     return <VisitHistoryScreen onBack={() => setScreen('home')} />
 
   // Online Sales — disabled
   if (isOnline) return (
@@ -70,11 +92,12 @@ export default function SalesView({ name }: Props) {
       action: () => setScreen('visits'),
       primary: true,
     },
-    { emoji: '🤝', label: 'Distributors & Retailers', sub: 'View & manage network', action: () => setScreen('parties') },
+    { emoji: '🤝', label: 'Network', sub: 'Distributors & retailers', action: () => setScreen('parties') },
     { emoji: '📦', label: 'Allocations', sub: 'View & create stock requests', action: () => setScreen('allocations') },
-    { emoji: '📊', label: 'Stock Overview', sub: 'Check available stock', action: () => setScreen('stock') },
+    { emoji: '📅', label: 'Visit History', sub: 'Past logs by day & month', action: () => setScreen('history') },
+    { emoji: '📊', label: 'Stock', sub: 'Available inventory', action: () => setScreen('stock') },
     { emoji: '💜', label: 'Credit Book', sub: 'Outstanding & settlements', action: () => setScreen('credits') },
-    { emoji: '💸', label: 'Log an Expense', sub: 'Travel, food, misc', action: () => setScreen('expenses') },
+    { emoji: '💸', label: 'Expenses', sub: 'Travel, food, misc', action: () => setScreen('expenses') },
   ]
 
   return (
@@ -92,8 +115,8 @@ export default function SalesView({ name }: Props) {
         {/* Today summary */}
         <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
           {[
-            { label: 'Visits Today', val: '—', color: theme === 'dark' ? '#fff' : '#0d3d2e' },
-            { label: 'Interested', val: '—', color: theme === 'dark' ? '#86efac' : '#16a34a' },
+            { label: 'Visits Today', val: todayVisitLog ? todayVisitLog.totalVisited : '—', color: theme === 'dark' ? '#fff' : '#0d3d2e' },
+            { label: 'Interested', val: todayVisitLog ? todayVisitLog.totalInterested : '—', color: theme === 'dark' ? '#86efac' : '#16a34a' },
             { label: 'This Month', val: `${checkIns.length} logs`, color: theme === 'dark' ? '#bae6fd' : '#0891b2' },
           ].map(s => (
             <div key={s.label} style={{ flex: 1, background: theme === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.5)', borderRadius: 12, padding: '12px 8px', textAlign: 'center' }}>

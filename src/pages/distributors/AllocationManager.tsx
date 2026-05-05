@@ -31,7 +31,7 @@ function inputStyle(hasError?: boolean): React.CSSProperties {
   return {
     width: '100%', background: 'rgba(255,255,255,0.06)',
     border: `1.5px solid ${hasError ? '#dc2626' : 'rgba(255,255,255,0.1)'}`,
-    borderRadius: 12, padding: '13px 16px', fontSize: 14,
+    borderRadius: 12, padding: '13px 16px', fontSize: 16,
     color: '#fff', outline: 'none', boxSizing: 'border-box',
   }
 }
@@ -40,7 +40,8 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
   const { appUser } = useAuth()
   const { config } = useStockConfig()
   const [allocations, setAllocations] = useState<UnifiedAllocation[]>([])
-  const [tab, setTab] = useState<'list' | 'add'>('list')
+  const [stockMovements, setStockMovements] = useState<any[]>([])
+  const [tab, setTab] = useState<'list' | 'add' | 'network'>('list')
   const [saving, setSaving] = useState(false)
   const [acting, setActing] = useState<string | null>(null)
   const [defaultPrice, setDefaultPriceState] = useState(0)
@@ -74,6 +75,12 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
       setAllocations(processed.sort((a, b) => a.plannedDate.localeCompare(b.plannedDate)))
     })
   }, [today])
+
+  useEffect(() => {
+    return onSnapshot(collection(db, 'stock_movements'), snap => {
+      setStockMovements(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a: any, b: any) => b.createdAt - a.createdAt))
+    })
+  }, [])
 
   // Load default price
   useEffect(() => {
@@ -201,11 +208,15 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
   }
   const totalCredit = allocations.filter(a => a.status === 'sent' && a.paymentType === 'credit').reduce((s, a) => s + a.totalAmount, 0)
 
-  const partyOptions = parties.map(p => ({
-    value: p.id!, label: `${p.type === 'distributor' ? '🚚' : '🏪'} ${p.name}`,
-    sub: `${p.category} • ${p.place || p.address}`,
-    group: p.type === 'distributor' ? 'Distributors' : 'Retailers',
-  }))
+  const partyOptions = parties
+    .filter(p => !(p.type === 'retailer' && (p as any).underDistributorId))
+    .map(p => ({
+      value: p.id!, label: `${p.type === 'distributor' ? '🚚' : '🏪'} ${p.name}`,
+      sub: `${p.category} • ${p.place || p.address}`,
+      group: p.type === 'distributor' ? 'Distributors' : 'Independent Retailers',
+    }))
+
+  const blockedRetailersCount = parties.filter(p => p.type === 'retailer' && (p as any).underDistributorId).length
 
   const selectedParty = parties.find(p => p.id === form.partyId)
 
@@ -229,10 +240,14 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
         </div>
 
         <div style={{ display: 'flex', gap: 8 }}>
-          {(['list', 'add'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)}
-              style={{ background: tab === t ? 'rgba(255,255,255,0.2)' : 'transparent', color: tab === t ? '#fff' : 'rgba(255,255,255,0.5)', border: 'none', borderRadius: '12px 12px 0 0', padding: '9px 18px', fontSize: 12, fontWeight: 700 }}>
-              {t === 'list' ? '📋 All Allocations' : '➕ New Allocation'}
+          {([
+            { id: 'list',    label: '📋 List' },
+            { id: 'add',     label: '➕ New' },
+            { id: 'network', label: '🌐 Network' },
+          ] as const).map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              style={{ background: tab === t.id ? 'rgba(255,255,255,0.2)' : 'transparent', color: tab === t.id ? '#fff' : 'rgba(255,255,255,0.5)', border: 'none', borderRadius: '12px 12px 0 0', padding: '9px 18px', fontSize: 12, fontWeight: 700 }}>
+              {t.label}
             </button>
           ))}
         </div>
@@ -373,6 +388,11 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
             <div style={{ background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.12)', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#6ee7b7' }}>
               💡 Create a plan to send stock. Admin will dispatch it on or before the planned date.
             </div>
+            {blockedRetailersCount > 0 && (
+              <div style={{ background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#d97706' }}>
+                ⚠️ {blockedRetailersCount} retailer{blockedRetailersCount > 1 ? 's' : ''} under distributors are hidden — allocate via their parent distributor.
+              </div>
+            )}
 
             <Field label="Distributor / Retailer" error={errors.partyId}>
               <CustomSelect value={form.partyId} onChange={v => setForm({ ...form, partyId: v })}
@@ -431,7 +451,7 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
               <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}
                 placeholder="Any notes about this allocation..."
                 rows={2}
-                style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '13px 16px', fontSize: 14, color: '#fff', outline: 'none', resize: 'none', boxSizing: 'border-box' }} />
+                style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '13px 16px', fontSize: 16, color: '#fff', outline: 'none', resize: 'none', boxSizing: 'border-box' }} />
             </Field>
 
             <button onClick={handleCreate} disabled={saving}
@@ -440,6 +460,138 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
             </button>
           </div>
         )}
+
+        {/* ── NETWORK TAB ──────────────────────────────────────────────── */}
+        {tab === 'network' && (() => {
+          const distributors = parties.filter(p => p.type === 'distributor')
+          const independents = parties.filter(p => p.type === 'retailer' && !(p as any).underDistributorId)
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ fontSize: 11, color: '#64748b' }}>
+                {distributors.length} distributor{distributors.length !== 1 ? 's' : ''} •{' '}
+                {parties.filter(p => p.type === 'retailer').length} retailer{parties.filter(p => p.type === 'retailer').length !== 1 ? 's' : ''} total
+              </div>
+
+              {distributors.length === 0 && (
+                <div style={{ textAlign: 'center', padding: 32, color: '#475569' }}>
+                  <div style={{ fontSize: 32, marginBottom: 10 }}>🚚</div>
+                  <div style={{ fontWeight: 700 }}>No distributors yet</div>
+                </div>
+              )}
+
+              {distributors.map(dist => {
+                const distAllocs = allocations.filter(a => a.partyId === dist.id)
+                const sentPackets = distAllocs.filter(a => a.status === 'sent' || a.status === 'paid').reduce((s, a) => s + a.packets, 0)
+                const pendingPackets = distAllocs.filter(a => a.status === 'pending' || a.status === 'overdue').reduce((s, a) => s + a.packets, 0)
+                const creditDue = distAllocs.filter(a => a.status === 'sent' && a.paymentType === 'credit').reduce((s, a) => s + a.totalAmount, 0)
+                const subRetailers = parties.filter(p => p.type === 'retailer' && (p as any).underDistributorId === dist.id)
+
+                return (
+                  <div key={dist.id} style={{ background: '#161b22', borderRadius: 16, border: '1.5px solid rgba(8,145,178,0.2)', overflow: 'hidden' }}>
+                    {/* Distributor header */}
+                    <div style={{ background: 'rgba(8,145,178,0.08)', padding: '14px 16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                        <span style={{ fontSize: 24 }}>🚚</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 800, fontSize: 15 }}>{dist.name}</div>
+                          <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>{dist.place || dist.address} • 📞 {dist.phone}</div>
+                        </div>
+                        <span style={{ fontSize: 11, color: (dist as any).status === 'active' ? '#16a34a' : '#d97706', background: (dist as any).status === 'active' ? 'rgba(22,163,74,0.1)' : 'rgba(217,119,6,0.1)', padding: '3px 9px', borderRadius: 99, fontWeight: 700 }}>
+                          {(dist as any).status === 'active' ? '🟢 Active' : '🟡 Prospect'}
+                        </span>
+                      </div>
+                      {/* Allocation stats */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginTop: 10 }}>
+                        {[
+                          { label: 'Sent', val: toDisplay(sentPackets, config.packetsPerCarton), color: '#0891b2' },
+                          { label: 'Pending', val: toDisplay(pendingPackets, config.packetsPerCarton), color: '#d97706' },
+                          { label: 'Credit Due', val: creditDue > 0 ? `₹${(creditDue / 1000).toFixed(0)}k` : '—', color: '#7c3aed' },
+                        ].map(s => (
+                          <div key={s.label} style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: '7px', textAlign: 'center' }}>
+                            <div style={{ fontSize: 12, fontWeight: 900, color: s.color }}>{s.val}</div>
+                            <div style={{ fontSize: 9, color: '#64748b', marginTop: 1 }}>{s.label}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Retailers under this distributor */}
+                    <div style={{ padding: '10px 16px 14px' }}>
+                      <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>
+                        Retailers ({subRetailers.length})
+                      </div>
+                      {subRetailers.length === 0 ? (
+                        <div style={{ fontSize: 12, color: '#334155', fontStyle: 'italic' }}>No retailers linked yet</div>
+                      ) : subRetailers.map((r, i) => {
+                        const rMovements = stockMovements.filter((m: any) => m.fromId === dist.id && m.toPartyId === r.id)
+                        const rTotalPackets = rMovements.reduce((s: number, m: any) => s + (m.packets || 0), 0)
+                        const rCreditDue = rMovements.filter((m: any) => m.paymentType === 'credit').reduce((s: number, m: any) => s + (m.totalAmount || 0), 0)
+                        return (
+                        <div key={r.id} style={{ paddingTop: i > 0 ? 10 : 0, marginTop: i > 0 ? 10 : 0, borderTop: i > 0 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <span style={{ fontSize: 16 }}>🏪</span>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 13, fontWeight: 700 }}>{r.name}</div>
+                              <div style={{ fontSize: 11, color: '#64748b' }}>{r.place || r.address}</div>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ fontSize: 10, color: (r as any).status === 'active' ? '#16a34a' : '#d97706', fontWeight: 700 }}>
+                                {(r as any).status === 'active' ? '🟢' : '🟡'}
+                              </div>
+                              {rTotalPackets > 0 && <div style={{ fontSize: 10, color: '#0891b2', marginTop: 1 }}>{rTotalPackets} pkts sent</div>}
+                              {rCreditDue > 0 && <div style={{ fontSize: 10, color: '#7c3aed' }}>₹{rCreditDue.toLocaleString()} due</div>}
+                            </div>
+                          </div>
+                          {/* Recent distribution logs */}
+                          {rMovements.slice(0, 3).map((m: any) => (
+                            <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(255,255,255,0.03)', borderRadius: 6, padding: '5px 8px', marginTop: 5, fontSize: 11 }}>
+                              <span style={{ color: '#64748b' }}>{m.date} — {m.packets} pkts</span>
+                              <span style={{ color: m.paymentType === 'cash' ? '#16a34a' : '#d97706', fontWeight: 700 }}>
+                                {m.paymentType === 'cash' ? '💵' : '📋'} ₹{(m.totalAmount || 0).toLocaleString()}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+
+              {/* Independent retailers */}
+              {independents.length > 0 && (
+                <div style={{ background: '#161b22', borderRadius: 16, border: '1.5px solid rgba(22,163,74,0.15)', overflow: 'hidden' }}>
+                  <div style={{ background: 'rgba(22,163,74,0.06)', padding: '12px 16px', fontSize: 12, color: '#6ee7b7', fontWeight: 700 }}>
+                    🏪 Independent Retailers ({independents.length})
+                  </div>
+                  <div style={{ padding: '10px 16px 14px', display: 'flex', flexDirection: 'column', gap: 0 }}>
+                    {independents.map((r, i) => {
+                      const rAllocs = allocations.filter(a => a.partyId === r.id)
+                      const rCredit = rAllocs.filter(a => a.status === 'sent' && a.paymentType === 'credit').reduce((s, a) => s + a.totalAmount, 0)
+                      return (
+                        <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: i > 0 ? 10 : 0, marginTop: i > 0 ? 10 : 0, borderTop: i > 0 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                          <span style={{ fontSize: 16 }}>🏪</span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 13, fontWeight: 700 }}>{r.name}</div>
+                            <div style={{ fontSize: 11, color: '#64748b' }}>{r.place || r.address}</div>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: 10, color: (r as any).status === 'active' ? '#16a34a' : '#d97706', fontWeight: 700 }}>
+                              {(r as any).status === 'active' ? '🟢 Active' : '🟡 Prospect'}
+                            </div>
+                            {rCredit > 0 && <div style={{ fontSize: 10, color: '#7c3aed', marginTop: 1 }}>₹{rCredit.toLocaleString()} due</div>}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })()}
       </div>
     </div>
   )
