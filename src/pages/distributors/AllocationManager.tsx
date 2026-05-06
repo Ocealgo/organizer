@@ -8,6 +8,7 @@ import { useStockConfig, updateStockConfig, toDisplay } from '../../hooks/useFir
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
 import { useConfirm } from '../../hooks/useConfirm'
+import { localDateStr, localMonthStr, localDateOffset } from '../../utils/date'
 
 interface Props { onBack: () => void; parties: Party[]; isAdmin?: boolean }
 
@@ -76,12 +77,12 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
     fromId: '',   // distributorId when fromType='distributor'
     partyId: '', productId: '', packets: '', pricePerPacket: '',
     paymentType: 'cash' as PaymentType,
-    plannedDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+    plannedDate: localDateOffset(1),
     notes: '',
   }
   const [form, setForm] = useState(emptyForm)
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = localDateStr()
   const available = config.total - config.locked
 
   useEffect(() => {
@@ -224,9 +225,9 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
         toPartyId: indent.retailerId, toPartyName: indent.retailerName,
         packets: qty, cartons: 0, pricePerPacket: 0, totalAmount: 0,
         paymentType: 'cash', notes: 'Indent fulfilled',
-        month: new Date().toISOString().slice(0, 7),
+        month: localMonthStr(),
         loggedBy: appUser!.uid, loggedByName: appUser!.name,
-        date: new Date().toISOString().split('T')[0], createdAt: Date.now(),
+        date: localDateStr(), createdAt: Date.now(),
         productId: indent.productId, productName: indent.productName, indentId: indent.id,
       })
       setIndentSendQty(prev => { const n = { ...prev }; delete n[indent.id!]; return n })

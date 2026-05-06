@@ -4,6 +4,7 @@ import { db } from '../../firebase'
 import { Reminder, WorkspaceCategory, ReminderType } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import DateInput from '../../components/DateInput'
+import { localDateStr, localMonthStr } from '../../utils/date'
 
 const CATEGORIES: WorkspaceCategory[] = ['Finance', 'Operations', 'Sales', 'Marketing', 'General']
 
@@ -59,7 +60,7 @@ export default function RemindersView() {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
     title: '',
-    date: new Date().toISOString().split('T')[0],
+    date: localDateStr(),
     category: 'General' as WorkspaceCategory,
   })
 
@@ -88,7 +89,7 @@ export default function RemindersView() {
         done: false,
         createdAt: Date.now(),
       })
-      setForm({ title: '', date: new Date().toISOString().split('T')[0], category: 'General' })
+      setForm({ title: '', date: localDateStr(), category: 'General' })
       setShowAdd(false)
     } finally { setSaving(false) }
   }
@@ -98,7 +99,7 @@ export default function RemindersView() {
     await updateDoc(doc(db, 'reminders', r.id), { done: !r.done })
   }
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = localDateStr()
   const year  = calDate.getFullYear()
   const month = calDate.getMonth()
   const daysInMonth = getDaysInMonth(year, month)

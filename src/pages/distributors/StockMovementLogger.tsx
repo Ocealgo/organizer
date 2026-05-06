@@ -6,6 +6,7 @@ import DateInput from '../../components/DateInput'
 import { useAuth } from '../../context/AuthContext'
 import { useStockConfig, toDisplay } from '../../hooks/useFirebase'
 import CustomSelect from '../../components/CustomSelect'
+import { localDateStr, localMonthStr } from '../../utils/date'
 
 interface Props { onBack: () => void; parties: Party[] }
 
@@ -29,7 +30,7 @@ export default function StockMovementLogger({ onBack, parties }: Props) {
   const [tab, setTab] = useState<'log' | 'history'>('log')
   const [saving, setSaving] = useState(false)
   const [unit, setUnit] = useState<'packets' | 'cartons'>('packets')
-  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
+  const [selectedMonth, setSelectedMonth] = useState(localMonthStr())
   const [form, setForm] = useState({ fromId: '', toPartyId: '', quantity: '', pricePerPacket: '', paymentType: 'cash' as PaymentType, notes: '' })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -93,7 +94,7 @@ export default function StockMovementLogger({ onBack, parties }: Props) {
         month: selectedMonth,
         loggedBy: appUser!.uid,
         loggedByName: appUser!.name,
-        date: new Date().toISOString().split('T')[0],
+        date: localDateStr(),
         createdAt: Date.now(),
       })
       setForm({ fromId: '', toPartyId: '', quantity: '', pricePerPacket: '', paymentType: 'cash', notes: '' })

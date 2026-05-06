@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useStockConfig, updateStockConfig, toDisplay, setProductStock } from '../../hooks/useFirebase'
 import CustomSelect from '../../components/CustomSelect'
 import { useConfirm } from '../../hooks/useConfirm'
+import { localDateStr, localMonthStr } from '../../utils/date'
 
 interface Props { onBack: () => void }
 
@@ -71,7 +72,7 @@ export default function StockManager({ onBack }: Props) {
   const [requests, setRequests] = useState<MonthlyRequest[]>([])
   const [tab, setTab] = useState<'overview' | 'dispatch' | 'history' | 'monthly'>('overview')
   const [unit, setUnit] = useState<'packets' | 'cartons'>('packets')
-  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
+  const [selectedMonth, setSelectedMonth] = useState(localMonthStr())
   const [saving, setSaving] = useState(false)
   const [editCarton, setEditCarton] = useState(false)
   const [newCarton, setNewCarton] = useState('')
@@ -141,7 +142,7 @@ export default function StockManager({ onBack }: Props) {
         paymentType: form.paymentType, notes: form.notes,
         month: selectedMonth,
         dispatchedBy: appUser!.uid, dispatchedByName: appUser!.name,
-        dispatchedAt: now, date: new Date().toISOString().split('T')[0],
+        dispatchedAt: now, date: localDateStr(),
         createdAt: now,
       }
 
@@ -178,7 +179,7 @@ export default function StockManager({ onBack }: Props) {
         // Auto-create workspace reminder
         await addDoc(collection(db, 'reminders'), {
           title: `⚠️ Restock: ${party.name} — only ${toDisplay(remaining, config.packetsPerCarton)} remaining`,
-          date: new Date().toISOString().split('T')[0],
+          date: localDateStr(),
           category: 'Operations',
           type: 'low_stock',
           linkedId: form.partyId,

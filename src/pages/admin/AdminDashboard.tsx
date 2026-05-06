@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import DateInput from '../../components/DateInput'
-import { collection, onSnapshot } from 'firebase/firestore'
+import { collection, onSnapshot, addDoc, doc, updateDoc } from 'firebase/firestore'
 import { db } from '../../firebase'
 import { usePostStatuses } from '../../hooks/useFirebase'
 import { MAY_POSTS, FORMAT_EMOJI, PILLAR_COLORS, STATUS_CONFIG } from '../../data'
-import { CheckIn, AppUser, Party } from '../../types'
+import { CheckIn, AppUser, Party, LeaveRecord } from '../../types'
 import StockManager from '../stock/StockManager'
 import WorkspaceDashboard from '../workspace/WorkspaceDashboard'
 import PartyManager from '../distributors/PartyManager'
@@ -12,22 +12,29 @@ import CreditBook from '../credit/CreditBook'
 import ExpenseLogger from '../stock/ExpenseLogger'
 import AllocationManager from '../distributors/AllocationManager'
 import ProductManager from '../products/ProductManager'
+import LeaveTracker from '../sales/LeaveTracker'
 import CustomSelect from '../../components/CustomSelect'
 import { useTheme } from '../../context/ThemeContext'
+import { useAuth } from '../../context/AuthContext'
+import { useConfirm } from '../../hooks/useConfirm'
+import { localDateStr, localMonthStr } from '../../utils/date'
 
 const MONTH = '2026-05'
 
 type MainTab = 'overview' | 'sales' | 'marketing' | 'workspace'
 type SalesTab = 'offline' | 'online'
 type MarketingTab = 'offline' | 'online'
-type SubScreen = 'dashboard' | 'stock' | 'parties' | 'credits' | 'expenses' | 'allocations' | 'products'
+type SubScreen = 'dashboard' | 'stock' | 'parties' | 'credits' | 'expenses' | 'allocations' | 'products' | 'leaves'
 
 export default function AdminDashboard() {
   const { t, theme } = useTheme()
+  const { appUser } = useAuth()
+  const { modal: adminLeaveModal, showConfirm: showAdminLeaveConfirm } = useConfirm()
   const [subScreen, setSubScreen] = useState<SubScreen>('dashboard')
   const [allocations, setAllocations] = useState<any[]>([])
   const [visitLogs, setVisitLogs] = useState<any[]>([])
   const [pendingPayments, setPendingPayments] = useState<any[]>([])
+  const [leaveRecords, setLeaveRecords] = useState<LeaveRecord[]>([])
   const [parties, setParties] = useState<Party[]>([])
   const [mainTab, setMainTab] = useState<MainTab>('overview')
   const [salesTab, setSalesTab] = useState<SalesTab>('offline')
@@ -42,10 +49,10 @@ export default function AdminDashboard() {
   const [visitPartyType, setVisitPartyType] = useState<'all' | 'distributor' | 'retailer'>('all')
   const [visitDistSub, setVisitDistSub] = useState<string>('all')
   const [visitPartyStatus, setVisitPartyStatus] = useState<'all' | 'active' | 'inactive' | 'prospect'>('all')
-  const [dateDay, setDateDay] = useState(new Date().toISOString().split('T')[0])
-  const [dateMonth, setDateMonth] = useState(new Date().toISOString().slice(0, 7))
-  const [datePeriodFrom, setDatePeriodFrom] = useState(new Date().toISOString().split('T')[0])
-  const [datePeriodTo, setDatePeriodTo] = useState(new Date().toISOString().split('T')[0])
+  const [dateDay, setDateDay] = useState(localDateStr())
+  const [dateMonth, setDateMonth] = useState(localMonthStr())
+  const [datePeriodFrom, setDatePeriodFrom] = useState(localDateStr())
+  const [datePeriodTo, setDatePeriodTo] = useState(localDateStr())
   const [allCheckIns, setAllCheckIns] = useState<CheckIn[]>([])
 
   useEffect(() => {
@@ -71,7 +78,10 @@ export default function AdminDashboard() {
       })
       setPendingPayments(pending)
     })
-    return () => { u0(); u3(); u4(); u5() }
+    const u6 = onSnapshot(collection(db, 'leave_records'), snap => {
+      setLeaveRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as LeaveRecord)))
+    })
+    return () => { u0(); u3(); u4(); u5(); u6() }
   }, [])
 
   useEffect(() => {
@@ -131,12 +141,23 @@ export default function AdminDashboard() {
     _fv: (log.visits || []).filter(visitMatchesPartyFilter),
   })).filter((log: any) => log._fv.length > 0)
 
+  // Full day leave entries with no corresponding visit log in the filtered range
+  const fullDayLeaveCards = leaveRecords.filter(l => {
+    if (l.leaveType !== 'full_day' || l.status === 'removed') return false
+    const uName = salesUsers.find(u => u.uid === l.uid)?.name
+    if (selectedUser !== 'all' && uName !== selectedUser) return false
+    if (dateMode === 'day') return l.date === dateDay
+    if (dateMode === 'month') return l.date.startsWith(dateMonth)
+    if (dateMode === 'period') return l.date >= datePeriodFrom && l.date <= datePeriodTo
+    return true
+  }).filter(l => !filteredVisitLogs.some((log: any) => log.salesPersonId === l.uid && log.date === l.date))
+
   const allFV: any[] = filteredLogsWithVisits.flatMap((l: any) => l._fv)
   const fvInterested = allFV.filter(v => v.outcome === 'interested').length
   const fvDistCount = new Set(allFV.filter(v => partyMap.get(v.partyId)?.type === 'distributor').map(v => v.partyId)).size
   const fvRetailCount = new Set(allFV.filter(v => partyMap.get(v.partyId)?.type === 'retailer').map(v => v.partyId)).size
 
-  const todayStr = new Date().toISOString().split('T')[0]
+  const todayStr = localDateStr()
 
   // Marketing stats
   const done   = MAY_POSTS.filter(p => statuses[p.id] === 'posted').length
@@ -153,6 +174,26 @@ export default function AdminDashboard() {
   if (subScreen === 'parties')  return <PartyManager onBack={() => setSubScreen('dashboard')} />
   if (subScreen === 'credits')  return <CreditBook onBack={() => setSubScreen('dashboard')} />
   if (subScreen === 'expenses') return <ExpenseLogger onBack={() => setSubScreen('dashboard')} />
+  if (subScreen === 'leaves')   return <LeaveTracker onBack={() => setSubScreen('dashboard')} />
+
+  const handleAdminMarkLeave = async (uid: string, name: string, role: string, date: string, type: 'full_day' | 'half_day') => {
+    const existing = leaveRecords.find(l => l.uid === uid && l.date === date && l.status !== 'removed' && l.status !== 'rejected')
+    if (existing) { await showAdminLeaveConfirm('Already on leave', 'This person already has a leave record for this date.'); return }
+    const confirmed = await showAdminLeaveConfirm(
+      `Mark ${type === 'full_day' ? 'Full Day' : 'Half Day'} Leave?`,
+      `${name} on ${date}`
+    )
+    if (!confirmed) return
+    await addDoc(collection(db, 'leave_records'), {
+      uid, name, role, date, leaveType: type,
+      markedAt: Date.now(), markedBy: appUser!.uid, markedByName: appUser!.name,
+      status: 'active',
+      auditLog: [{ action: 'admin_marked', by: appUser!.uid, byName: appUser!.name, at: Date.now() }],
+    })
+  }
+
+  const onLeaveTodayCount = leaveRecords.filter(l => l.date === todayStr && l.status === 'active').length
+  const pendingLeaveCount = leaveRecords.filter(l => l.status === 'pending_approval').length
 
   const quickLinks = [
     { emoji: '📦', label: 'Stock',        sub: 'Manage inventory',        screen: 'stock'       as SubScreen, color: '#16a34a' },
@@ -161,6 +202,7 @@ export default function AdminDashboard() {
     { emoji: '🛍️', label: 'Products',    sub: 'Add & manage products',   screen: 'products'    as SubScreen, color: '#7c3aed' },
     { emoji: '💜', label: 'Credit Book',  sub: 'Outstanding payments',    screen: 'credits'     as SubScreen, color: '#8b5cf6' },
     { emoji: '💸', label: 'Expenses',     sub: 'Team expenses log',       screen: 'expenses'    as SubScreen, color: '#dc2626' },
+    { emoji: '🏖️', label: 'Leave Tracker', sub: pendingLeaveCount > 0 ? `⏳ ${pendingLeaveCount} pending approval` : onLeaveTodayCount > 0 ? `${onLeaveTodayCount} on leave today` : 'Sales team attendance', screen: 'leaves' as SubScreen, color: '#0f766e', badge: pendingLeaveCount > 0 ? String(pendingLeaveCount) : onLeaveTodayCount > 0 ? String(onLeaveTodayCount) : undefined },
   ]
 
   return (
@@ -196,7 +238,12 @@ export default function AdminDashboard() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               {quickLinks.map(q => (
                 <button key={q.screen} onClick={() => setSubScreen(q.screen)}
-                  style={{ background: t.card, border: `1px solid ${q.color}33`, borderRadius: 14, padding: 14, textAlign: 'left', color: t.text }}>
+                  style={{ background: t.card, border: `1px solid ${(q as any).badge ? q.color + '55' : q.color + '33'}`, borderRadius: 14, padding: 14, textAlign: 'left', color: t.text, position: 'relative' }}>
+                  {(q as any).badge && (
+                    <div style={{ position: 'absolute', top: 10, right: 10, background: q.color, color: '#fff', fontSize: 10, fontWeight: 900, width: 18, height: 18, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {(q as any).badge}
+                    </div>
+                  )}
                   <div style={{ fontSize: 22, marginBottom: 6 }}>{q.emoji}</div>
                   <div style={{ fontWeight: 800, fontSize: 13, color: q.color }}>{q.label}</div>
                   <div style={{ fontSize: 12, color: t.text3, marginTop: 2 }}>{q.sub}</div>
@@ -229,7 +276,7 @@ export default function AdminDashboard() {
 
             {/* Allocation summary */}
             {(() => {
-              const today = new Date().toISOString().split('T')[0]
+              const today = localDateStr()
               const pending  = allocations.filter(a => a.status === 'pending' && a.plannedDate >= today).length
               const overdue  = allocations.filter(a => a.status === 'pending' && a.plannedDate < today).length
               const creditDue = allocations.filter(a => a.status === 'sent' && a.paymentType === 'credit').reduce((s: number, a: any) => s + a.totalAmount, 0)
@@ -335,12 +382,16 @@ export default function AdminDashboard() {
                         style={{ background: selectedUser === 'all' ? '#0891b2' : theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', color: selectedUser === 'all' ? '#fff' : t.text3, border: `1px solid ${selectedUser === 'all' ? '#0891b2' : t.border}`, borderRadius: 20, padding: '5px 14px', fontSize: 13, fontWeight: 700 }}>
                         All
                       </button>
-                      {salesUsers.map(u => (
-                        <button key={u.uid} onClick={() => setSelectedUser(u.name)}
-                          style={{ background: selectedUser === u.name ? '#0891b2' : theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', color: selectedUser === u.name ? '#fff' : t.text3, border: `1px solid ${selectedUser === u.name ? '#0891b2' : t.border}`, borderRadius: 20, padding: '5px 14px', fontSize: 13, fontWeight: 700 }}>
-                          {u.name}
-                        </button>
-                      ))}
+                      {salesUsers.map(u => {
+                        const onLeave = leaveRecords.some(l => l.uid === u.uid && l.date === todayStr)
+                        return (
+                          <button key={u.uid} onClick={() => setSelectedUser(u.name)}
+                            style={{ background: selectedUser === u.name ? '#0891b2' : theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', color: selectedUser === u.name ? '#fff' : t.text3, border: `1px solid ${selectedUser === u.name ? '#0891b2' : t.border}`, borderRadius: 20, padding: '5px 14px', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}>
+                            {u.name}
+                            {onLeave && <span style={{ fontSize: 12 }} title="On leave today">🏖️</span>}
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
 
@@ -451,7 +502,7 @@ export default function AdminDashboard() {
                   allocations
                     .filter((a: any) => {
                       if (selectedUser !== 'all' && a.createdByName !== selectedUser) return false
-                      const createdDate = a.createdAt ? new Date(a.createdAt).toISOString().split('T')[0] : ''
+                      const createdDate = a.createdAt ? localDateStr(new Date(a.createdAt)) : ''
                       if (dateMode === 'day') return createdDate === dateDay
                       if (dateMode === 'month') return createdDate.startsWith(dateMonth)
                       if (dateMode === 'period') return createdDate >= datePeriodFrom && createdDate <= datePeriodTo
@@ -526,79 +577,133 @@ export default function AdminDashboard() {
 
                 {/* Visit log list */}
                 <div style={{ fontSize: 13, color: t.text3, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>
-                  {filteredLogsWithVisits.length} Day{filteredLogsWithVisits.length !== 1 ? 's' : ''} logged
+                  {filteredLogsWithVisits.length + fullDayLeaveCards.length} {filteredLogsWithVisits.length + fullDayLeaveCards.length !== 1 ? 'entries' : 'entry'} logged
                 </div>
 
-                {filteredLogsWithVisits.length === 0 ? (
+                {filteredLogsWithVisits.length === 0 && fullDayLeaveCards.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: 32, color: t.text3 }}>
                     <div style={{ fontSize: 32, marginBottom: 10 }}>📋</div>
                     <div style={{ fontWeight: 700 }}>No visit logs for this filter</div>
                   </div>
-                ) : filteredLogsWithVisits.map((log: any) => {
-                  const fv: any[] = log._fv
-                  const fvInt = fv.filter((v: any) => v.outcome === 'interested').length
-                  const fvNot = fv.filter((v: any) => v.outcome === 'not_interested').length
-                  return (
-                    <div key={log.id} style={{ background: t.card, borderRadius: 14, padding: 14, border: `1px solid ${t.border}` }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                        <div style={{ width: 40, height: 40, background: 'linear-gradient(135deg,#0891b2,#0e7490)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 16, flexShrink: 0 }}>
-                          {log.salesPersonName?.[0] || '?'}
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 800, fontSize: 14 }}>{log.salesPersonName}</div>
-                          <div style={{ fontSize: 12, color: t.text3 }}>{log.date}</div>
-                        </div>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <div style={{ textAlign: 'center', background: 'rgba(8,145,178,0.1)', borderRadius: 8, padding: '6px 10px' }}>
-                            <div style={{ fontWeight: 900, fontSize: 16, color: '#0891b2' }}>{fv.length}</div>
-                            <div style={{ fontSize: 12, color: t.text3 }}>visited</div>
+                ) : (
+                  <>
+                    {/* Full day leave-only cards (no visit log) */}
+                    {fullDayLeaveCards.map(leave => (
+                      <div key={leave.id} style={{ background: 'rgba(245,158,11,0.06)', borderRadius: 14, padding: 14, border: '1.5px solid rgba(245,158,11,0.2)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{ width: 40, height: 40, background: 'linear-gradient(135deg,#d97706,#f59e0b)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 16, flexShrink: 0 }}>
+                            {leave.name?.[0] || '?'}
                           </div>
-                          <div style={{ textAlign: 'center', background: 'rgba(22,163,74,0.1)', borderRadius: 8, padding: '6px 10px' }}>
-                            <div style={{ fontWeight: 900, fontSize: 16, color: '#16a34a' }}>{fvInt}</div>
-                            <div style={{ fontSize: 12, color: t.text3 }}>interested</div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <div style={{ fontWeight: 800, fontSize: 14, color: t.text }}>{leave.name}</div>
+                              <span style={{ fontSize: 10, fontWeight: 800, background: 'rgba(245,158,11,0.2)', color: '#d97706', padding: '2px 8px', borderRadius: 99 }}>
+                                Full Day Leave{leave.status === 'unmark_requested' ? ' ⏳' : ''}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 12, color: t.text3 }}>{leave.date} · marked at {new Date(leave.markedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</div>
                           </div>
-                          <div style={{ textAlign: 'center', background: 'rgba(220,38,38,0.1)', borderRadius: 8, padding: '6px 10px' }}>
-                            <div style={{ fontWeight: 900, fontSize: 16, color: '#dc2626' }}>{fvNot}</div>
-                            <div style={{ fontSize: 12, color: t.text3 }}>declined</div>
+                          <div style={{ textAlign: 'center', background: 'rgba(245,158,11,0.1)', borderRadius: 8, padding: '8px 12px' }}>
+                            <div style={{ fontSize: 22 }}>🏖️</div>
+                            <div style={{ fontSize: 11, color: '#d97706', fontWeight: 700 }}>On Leave</div>
                           </div>
                         </div>
                       </div>
-                      {fv.map((v: any, i: number) => {
-                        const party = partyMap.get(v.partyId) as any
-                        const typeEmoji = party?.type === 'distributor' ? '🚚' : '🏪'
-                        const statusColor = party?.status === 'active' ? '#16a34a' : party?.status === 'inactive' ? '#dc2626' : t.text3
-                        return (
-                          <div key={i} style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 8, padding: '8px 10px', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ fontSize: 14 }}>
-                              {v.isRevisit ? '🔄' : v.outcome === 'interested' ? '✅' : v.outcome === 'follow_up' ? '⏳' : '❌'}
-                            </span>
+                    ))}
+
+                    {/* Visit log cards */}
+                    {filteredLogsWithVisits.map((log: any) => {
+                      const fv: any[] = log._fv
+                      const fvInt = fv.filter((v: any) => v.outcome === 'interested').length
+                      const fvNot = fv.filter((v: any) => v.outcome === 'not_interested').length
+                      const logLeave = leaveRecords.find(l => l.uid === log.salesPersonId && l.date === log.date && (l.status === 'active' || l.status === 'pending_approval'))
+                      const isHalfDay = logLeave?.leaveType === 'half_day'
+                      return (
+                        <div key={log.id} style={{ background: isHalfDay ? 'rgba(59,130,246,0.04)' : t.card, borderRadius: 14, padding: 14, border: isHalfDay ? '1.5px solid rgba(59,130,246,0.18)' : `1px solid ${t.border}` }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                            <div style={{ width: 40, height: 40, background: 'linear-gradient(135deg,#0891b2,#0e7490)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 16, flexShrink: 0 }}>
+                              {log.salesPersonName?.[0] || '?'}
+                            </div>
                             <div style={{ flex: 1 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                                <span style={{ fontSize: 13 }}>{typeEmoji}</span>
-                                <span style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{v.partyName}</span>
-                                {party?.status && party.status !== 'prospect' && (
-                                  <span style={{ fontSize: 12, color: statusColor, fontWeight: 700, textTransform: 'uppercase' }}>• {party.status}</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <div style={{ fontWeight: 800, fontSize: 14, color: t.text }}>{log.salesPersonName}</div>
+                                {isHalfDay && (
+                                  <span style={{ fontSize: 10, fontWeight: 800, background: 'rgba(59,130,246,0.15)', color: '#3b82f6', padding: '2px 8px', borderRadius: 99 }}>
+                                    🌤️ Half Day Leave{logLeave!.status === 'unmark_requested' ? ' ⏳' : ''}
+                                  </span>
                                 )}
                               </div>
-                              {party?.underDistributorName && party.type === 'retailer' && (
-                                <div style={{ fontSize: 12, color: t.text3 }}>under {party.underDistributorName}</div>
-                              )}
-                              {v.isRevisit && <div style={{ fontSize: 12, color: '#0891b2' }}>Active revisit</div>}
-                              {!v.isRevisit && v.outcome === 'interested' && v.productName && <div style={{ fontSize: 12, color: '#16a34a' }}>📦 {v.productName}</div>}
-                              {!v.isRevisit && v.outcome === 'not_interested' && <div style={{ fontSize: 12, color: '#dc2626' }}>{v.notInterestedReason}</div>}
+                              <div style={{ fontSize: 12, color: t.text3 }}>{log.date}</div>
+                            </div>
+                            {!logLeave && (() => {
+                              const targetUser = salesUsers.find(u => u.uid === log.salesPersonId)
+                              if (!targetUser) return null
+                              return (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                  <button onClick={() => handleAdminMarkLeave(log.salesPersonId, log.salesPersonName, targetUser.role, log.date, 'full_day')}
+                                    style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', color: '#f59e0b', borderRadius: 8, padding: '4px 8px', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                    Full
+                                  </button>
+                                  <button onClick={() => handleAdminMarkLeave(log.salesPersonId, log.salesPersonName, targetUser.role, log.date, 'half_day')}
+                                    style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.25)', color: '#3b82f6', borderRadius: 8, padding: '4px 8px', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                    Half
+                                  </button>
+                                </div>
+                              )
+                            })()}
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <div style={{ textAlign: 'center', background: 'rgba(8,145,178,0.1)', borderRadius: 8, padding: '6px 10px' }}>
+                                <div style={{ fontWeight: 900, fontSize: 16, color: '#0891b2' }}>{fv.length}</div>
+                                <div style={{ fontSize: 12, color: t.text3 }}>visited</div>
+                              </div>
+                              <div style={{ textAlign: 'center', background: 'rgba(22,163,74,0.1)', borderRadius: 8, padding: '6px 10px' }}>
+                                <div style={{ fontWeight: 900, fontSize: 16, color: '#16a34a' }}>{fvInt}</div>
+                                <div style={{ fontSize: 12, color: t.text3 }}>interested</div>
+                              </div>
+                              <div style={{ textAlign: 'center', background: 'rgba(220,38,38,0.1)', borderRadius: 8, padding: '6px 10px' }}>
+                                <div style={{ fontWeight: 900, fontSize: 16, color: '#dc2626' }}>{fvNot}</div>
+                                <div style={{ fontSize: 12, color: t.text3 }}>declined</div>
+                              </div>
                             </div>
                           </div>
-                        )
-                      })}
-                      {log.endOfDayNote && (
-                        <div style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 8, padding: '8px 10px', marginTop: 6 }}>
-                          <div style={{ fontSize: 12, color: t.text3, marginBottom: 2 }}>📝 Note</div>
-                          <div style={{ fontSize: 13, color: t.text2 }}>{log.endOfDayNote}</div>
+                          {fv.map((v: any, i: number) => {
+                            const party = partyMap.get(v.partyId) as any
+                            const typeEmoji = party?.type === 'distributor' ? '🚚' : '🏪'
+                            const statusColor = party?.status === 'active' ? '#16a34a' : party?.status === 'inactive' ? '#dc2626' : t.text3
+                            return (
+                              <div key={i} style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 8, padding: '8px 10px', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{ fontSize: 14 }}>
+                                  {v.isRevisit ? '🔄' : v.outcome === 'interested' ? '✅' : v.outcome === 'follow_up' ? '⏳' : '❌'}
+                                </span>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                                    <span style={{ fontSize: 13 }}>{typeEmoji}</span>
+                                    <span style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{v.partyName}</span>
+                                    {party?.status && party.status !== 'prospect' && (
+                                      <span style={{ fontSize: 12, color: statusColor, fontWeight: 700, textTransform: 'uppercase' }}>• {party.status}</span>
+                                    )}
+                                  </div>
+                                  {party?.underDistributorName && party.type === 'retailer' && (
+                                    <div style={{ fontSize: 12, color: t.text3 }}>under {party.underDistributorName}</div>
+                                  )}
+                                  {v.isRevisit && <div style={{ fontSize: 12, color: '#0891b2' }}>Active revisit</div>}
+                                  {!v.isRevisit && v.outcome === 'interested' && v.productName && <div style={{ fontSize: 12, color: '#16a34a' }}>📦 {v.productName}</div>}
+                                  {!v.isRevisit && v.outcome === 'not_interested' && <div style={{ fontSize: 12, color: '#dc2626' }}>{v.notInterestedReason}</div>}
+                                </div>
+                              </div>
+                            )
+                          })}
+                          {log.endOfDayNote && (
+                            <div style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 8, padding: '8px 10px', marginTop: 6 }}>
+                              <div style={{ fontSize: 12, color: t.text3, marginBottom: 2 }}>📝 Note</div>
+                              <div style={{ fontSize: 13, color: t.text2 }}>{log.endOfDayNote}</div>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  )
-                })}
+                      )
+                    })}
+                  </>
+                )}
               </>
             )}
           </div>
@@ -685,6 +790,7 @@ export default function AdminDashboard() {
         )}
       </div>
       <div style={{ height: 40 }} />
+      {adminLeaveModal}
     </div>
   )
 }

@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react'
 import { collection, onSnapshot, query, where } from 'firebase/firestore'
 import { db } from '../../firebase'
-import { DailyVisitLog } from '../../types'
+import { DailyVisitLog, LeaveRecord } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
+import { localDateStr, localMonthStr } from '../../utils/date'
 
 interface Props { onBack: () => void }
 
 type FilterMode = 'day' | 'month' | 'period'
 
-const today = new Date().toISOString().split('T')[0]
-const thisMonth = new Date().toISOString().slice(0, 7)
+const today = localDateStr()
+const thisMonth = localMonthStr()
 
 export default function VisitHistoryScreen({ onBack }: Props) {
   const { appUser } = useAuth()
@@ -25,6 +26,15 @@ export default function VisitHistoryScreen({ onBack }: Props) {
   const [logs, setLogs] = useState<DailyVisitLog[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedDay, setExpandedDay] = useState<string | null>(null)
+  const [leaveRecords, setLeaveRecords] = useState<LeaveRecord[]>([])
+
+  useEffect(() => {
+    if (!appUser) return
+    const q = query(collection(db, 'leave_records'), where('uid', '==', appUser.uid))
+    return onSnapshot(q, snap => {
+      setLeaveRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as LeaveRecord)))
+    })
+  }, [appUser])
 
   useEffect(() => {
     if (!appUser) return
@@ -140,12 +150,29 @@ export default function VisitHistoryScreen({ onBack }: Props) {
                   onClick={() => setExpandedDay(expandedDay === log.id ? null : log.id!)}
                   style={{ width: '100%', background: 'none', border: 'none', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', textAlign: 'left' }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 800, fontSize: 15, color: t.text }}>{log.date}</div>
-                    <div style={{ fontSize: 13, color: t.text3, marginTop: 2 }}>
-                      {log.totalVisited} visited ·{' '}
-                      <span style={{ color: '#16a34a' }}>{log.totalInterested} interested</span> ·{' '}
-                      {log.totalNotInterested} declined
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ fontWeight: 800, fontSize: 15, color: (log as any).isNoEntry ? t.text3 : t.text }}>
+                        {log.date}
+                      </div>
+                      {(() => {
+                        const lr = leaveRecords.find(l => l.date === log.date && l.status !== 'removed')
+                        if (!lr) return null
+                        return (
+                          <span style={{ fontSize: 10, fontWeight: 800, background: lr.leaveType === 'half_day' ? 'rgba(59,130,246,0.15)' : 'rgba(245,158,11,0.15)', color: lr.leaveType === 'half_day' ? '#3b82f6' : '#f59e0b', padding: '2px 7px', borderRadius: 99 }}>
+                            {lr.leaveType === 'half_day' ? 'Half Day Leave' : 'Full Day Leave'}
+                          </span>
+                        )
+                      })()}
                     </div>
+                    {(log as any).isNoEntry ? (
+                      <div style={{ fontSize: 13, color: t.text3, marginTop: 2, fontStyle: 'italic' }}>No entry for this day</div>
+                    ) : (
+                      <div style={{ fontSize: 13, color: t.text3, marginTop: 2 }}>
+                        {log.totalVisited} visited ·{' '}
+                        <span style={{ color: '#16a34a' }}>{log.totalInterested} interested</span> ·{' '}
+                        {log.totalNotInterested} declined
+                      </div>
+                    )}
                   </div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     {log.totalInterested > 0 && (

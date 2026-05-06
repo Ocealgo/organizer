@@ -5,6 +5,7 @@ import { Expense, ExpenseCategory } from '../../types'
 import DateInput from '../../components/DateInput'
 import { useAuth } from '../../context/AuthContext'
 import { useConfirm } from '../../hooks/useConfirm'
+import { localDateStr, localMonthStr } from '../../utils/date'
 
 interface Props { onBack: () => void }
 
@@ -22,7 +23,7 @@ export default function ExpenseLogger({ onBack }: Props) {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [tab, setTab] = useState<'list' | 'add'>('list')
   const [dateMode, setDateMode] = useState<'day' | 'month'>('month')
-  const [dateFilter, setDateFilter] = useState(new Date().toISOString().slice(0, 7))
+  const [dateFilter, setDateFilter] = useState(localMonthStr())
   const [form, setForm] = useState({ amount: '', category: 'travel' as ExpenseCategory, note: '' })
   const [saving, setSaving] = useState(false)
 
@@ -49,7 +50,7 @@ export default function ExpenseLogger({ onBack }: Props) {
         note: form.note,
         addedBy: appUser!.uid,
         addedByName: appUser!.name,
-        date: new Date().toISOString().split('T')[0],
+        date: localDateStr(),
         createdAt: Date.now(),
       })
       setForm({ amount: '', category: 'travel', note: '' })
@@ -90,7 +91,7 @@ export default function ExpenseLogger({ onBack }: Props) {
                 {(['day', 'month'] as const).map(m => (
                   <button key={m} onClick={() => {
                     setDateMode(m)
-                    setDateFilter(m === 'month' ? new Date().toISOString().slice(0, 7) : new Date().toISOString().split('T')[0])
+                    setDateFilter(m === 'month' ? localMonthStr() : localDateStr())
                   }}
                     style={{ flex: 1, background: dateMode === m ? 'rgba(220,38,38,0.2)' : 'rgba(255,255,255,0.04)', color: dateMode === m ? '#fca5a5' : '#64748b', border: `1px solid ${dateMode === m ? 'rgba(220,38,38,0.3)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 10, padding: '8px', fontSize: 12, fontWeight: 700 }}>
                     {m === 'day' ? '📅 By Day' : '🗓️ By Month'}

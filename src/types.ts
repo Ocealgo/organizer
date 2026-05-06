@@ -300,6 +300,38 @@ export interface DailyVisitLog {
   totalNotInterested: number
   createdAt: number
   updatedAt: number
+  isNoEntry?: boolean
+}
+
+// ── LEAVE RECORD ─────────────────────────────────────────────────────────────
+export type LeaveType = 'full_day' | 'half_day'
+export type LeaveStatus = 'pending_approval' | 'active' | 'unmark_requested' | 'removed' | 'rejected'
+
+export const LEAVE_REASONS = ['Sick', 'Personal', 'Family', 'Other'] as const
+export type LeaveReason = typeof LEAVE_REASONS[number]
+
+export interface LeaveAuditEntry {
+  action: 'leave_requested' | 'leave_approved' | 'leave_rejected' | 'admin_marked' | 'marked' | 'unmark_requested' | 'unmark_approved' | 'unmark_rejected'
+  by: string
+  byName: string
+  at: number
+}
+
+export interface LeaveRecord {
+  id?: string
+  uid: string
+  name: string
+  role: UserRole
+  date: string
+  leaveType: LeaveType
+  reason?: LeaveReason
+  note?: string
+  markedAt: number
+  markedBy: string
+  markedByName: string
+  status: LeaveStatus
+  unmarkRequestedAt?: number
+  auditLog?: LeaveAuditEntry[]
 }
 
 // ── THEME ─────────────────────────────────────────────────────────────────────

@@ -4,12 +4,13 @@ import { db } from '../../firebase'
 import { Party, Product, RevisitAction, StockUpdateAction, NewOrderAction, PaymentCollectionAction, StockMovement } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
+import { localDateStr, localDateOffset } from '../../utils/date'
 
 interface Props { party: Party; onBack: () => void; onDone: () => void }
 
 type ActionKey = 'stock_update' | 'new_order' | 'payment_collection' | 'relationship_visit' | 'no_longer_active' | 'distribute_to_retailers'
 
-const today2 = () => new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0]
+const today2 = () => localDateOffset(2)
 
 const BASE_ACTIONS: { key: ActionKey; emoji: string; label: string; sub: string }[] = [
   { key: 'stock_update',        emoji: '📊', label: 'Stock Update',        sub: 'Log current stock level — enter qty sold' },
@@ -119,7 +120,7 @@ export default function RevisitLogger({ party, onBack, onDone }: Props) {
 
       if (selectedActions.has('new_order') && orderProduct && orderQty) {
         const qty = parseInt(orderQty)
-        const todayDate = new Date().toISOString().split('T')[0]
+        const todayDate = localDateStr()
         let allocRef: any
         if (isUnderDistributor) {
           allocRef = await addDoc(collection(db, 'allocations_v2'), {
@@ -185,7 +186,7 @@ export default function RevisitLogger({ party, onBack, onDone }: Props) {
       }
 
       if (selectedActions.has('distribute_to_retailers')) {
-        const todayDate = new Date().toISOString().split('T')[0]
+        const todayDate = localDateStr()
         for (const [retailerId, data] of Object.entries(distributions)) {
           const qty = parseInt(data.qty) || 0
           if (qty <= 0) continue
@@ -209,7 +210,7 @@ export default function RevisitLogger({ party, onBack, onDone }: Props) {
       await addDoc(collection(db, 'revisit_logs'), {
         partyId: party.id!, partyName: party.name, partyType: party.type,
         salesPersonId: appUser!.uid, salesPersonName: appUser!.name,
-        date: new Date().toISOString().split('T')[0],
+        date: localDateStr(),
         actions, notes: visitNote, createdAt: Date.now(),
       })
 

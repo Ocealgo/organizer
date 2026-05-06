@@ -6,6 +6,7 @@ import DateInput from '../../components/DateInput'
 import { useAuth } from '../../context/AuthContext'
 import { useStockConfig, toDisplay } from '../../hooks/useFirebase'
 import CustomSelect from '../../components/CustomSelect'
+import { localMonthStr } from '../../utils/date'
 
 interface Props { onBack: () => void; parties: Party[] }
 
@@ -31,7 +32,7 @@ export default function MonthlyRequestManager({ onBack, parties }: Props) {
   const { config } = useStockConfig()
   const [requests, setRequests] = useState<MonthlyRequest[]>([])
   const [tab, setTab] = useState<'list' | 'add'>('list')
-  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
+  const [selectedMonth, setSelectedMonth] = useState(localMonthStr())
   const [unit, setUnit] = useState<'packets' | 'cartons'>('packets')
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ partyId: '', quantity: '', notes: '' })

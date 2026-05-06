@@ -6,10 +6,11 @@ import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
 import RevisitLogger from './RevisitLogger'
+import { localDateStr, localDateOffset } from '../../utils/date'
 
 interface Props { onBack: () => void }
 
-const todayStr = () => new Date().toISOString().split('T')[0]
+const todayStr = () => localDateStr()
 type Step = 'home' | 'selectShop' | 'addNewShop' | 'markOutcome' | 'revisit'
 
 export default function VisitLogger({ onBack }: Props) {
@@ -29,7 +30,7 @@ export default function VisitLogger({ onBack }: Props) {
   const [allocQty, setAllocQty] = useState('')
   const [allocPrice, setAllocPrice] = useState('')
   const [allocPayment, setAllocPayment] = useState<'cash' | 'credit'>('cash')
-  const [allocDate, setAllocDate] = useState(new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0])
+  const [allocDate, setAllocDate] = useState(localDateOffset(2))
   const [endNote, setEndNote] = useState('')
   const [newShop, setNewShop] = useState({ name: '', phone: '', address: '', place: '', type: 'retailer' as 'distributor' | 'retailer', underDistributorId: '' })
   const [showFinishModal, setShowFinishModal] = useState(false)
@@ -69,7 +70,7 @@ export default function VisitLogger({ onBack }: Props) {
     setNotInterestedReason(''); setOtherReason('')
     setSelectedProduct(null); setAllocQty(''); setAllocPrice('')
     setAllocPayment('cash')
-    setAllocDate(new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0])
+    setAllocDate(localDateOffset(2))
   }
 
   // ── REVISIT screen ────────────────────────────────────────────────────────
