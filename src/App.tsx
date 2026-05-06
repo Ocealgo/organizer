@@ -12,8 +12,6 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 import UserManagement from "./pages/admin/UserManagement";
 import NotificationBell from "./components/NotificationBell";
 
-//testing
-
 // Seed default product only if Baby Wet Wipes doesn't exist yet
 async function seedDefaultProducts() {
   const { getDocs, collection, addDoc, query, where } =
