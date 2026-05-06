@@ -35,11 +35,22 @@ export interface Party {
   lowStockThreshold: number
   underDistributorId?: string; underDistributorName?: string
   addedBy: string; addedByName: string; createdAt: number
+  stock?: Record<string, number>   // productId → packets currently held
 }
 
 // ── STOCK CONFIG ──────────────────────────────────────────────────────────────
+export interface ProductStock {
+  total: number    // packets company currently holds
+  locked: number   // reserved for pending allocations
+}
+
 export interface StockConfig {
-  total: number; locked: number; packetsPerCarton: number; updatedAt: number
+  packetsPerCarton: number
+  updatedAt: number
+  productStock?: Record<string, ProductStock>  // productId → stock
+  // Legacy single-pool fields (kept for backward compat)
+  total: number
+  locked: number
 }
 
 // ── MONTHLY STOCK REQUEST ─────────────────────────────────────────────────────
@@ -177,13 +188,18 @@ export interface PinnedNote {
 }
 
 // ── UNIFIED ALLOCATION ────────────────────────────────────────────────────────
-export type AllocationStatus = 'pending' | 'sent' | 'paid' | 'overdue'
+export type AllocationStatus = 'pending' | 'sent' | 'paid' | 'overdue' | 'cancelled'
 
 export interface UnifiedAllocation {
   id?: string
+  fromType: 'company' | 'distributor'  // who is sending stock
+  fromId: string                        // 'company' or distributor partyId
+  fromName: string                      // 'Ocealgo' or distributor name
   partyId: string
   partyName: string
   partyType: PartyType
+  productId: string
+  productName: string
   packets: number
   cartons: number
   pricePerPacket: number
@@ -200,6 +216,7 @@ export interface UnifiedAllocation {
   createdByName: string
   createdAt: number
   month: string                // YYYY-MM for grouping
+  lockedAtCreation?: boolean   // true if company stock was locked at creation
 }
 
 // ── PRODUCTS ──────────────────────────────────────────────────────────────────
@@ -246,6 +263,28 @@ export interface VisitEntry {
   productId?: string
   productName?: string
   allocationId?: string
+  indentId?: string
+  notes?: string
+}
+
+// ── RETAILER INDENT (Retailer → Distributor stock requisition) ────────────────
+export type IndentStatus = 'requested' | 'fulfilled' | 'partial' | 'cancelled'
+
+export interface RetailerIndent {
+  id?: string
+  distributorId: string
+  distributorName: string
+  retailerId: string
+  retailerName: string
+  productId: string
+  productName: string
+  requestedPackets: number
+  fulfilledPackets: number
+  status: IndentStatus
+  requestedBy: string
+  requestedByName: string
+  requestedAt: number
+  fulfilledAt?: number
   notes?: string
 }
 

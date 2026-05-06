@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react'
 import { collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, deleteField } from 'firebase/firestore'
 import { db } from '../../firebase'
-import { Party, PartyType, PartyCategory, Dispatch } from '../../types'
+import { Party, PartyType, PartyCategory, Dispatch, UnifiedAllocation, Product } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { useStockConfig, toDisplay } from '../../hooks/useFirebase'
 import CustomSelect from '../../components/CustomSelect'
 import AllocationManager from './AllocationManager'
 import CSVImporter from './CSVImporter'
+import { useConfirm } from '../../hooks/useConfirm'
 
 interface Props { onBack: () => void }
 
@@ -39,18 +40,22 @@ function inputStyle(hasError?: boolean): React.CSSProperties {
 
 const emptyForm = {
   name: '', type: 'distributor' as PartyType, category: 'FMCG' as PartyCategory,
-  phone: '', address: '', place: '', pricePerPacket: '', quantity: '',
+  phone: '', address: '', place: '', quantity: '',
   lowStockThreshold: '', underDistributorId: '',
 }
 
 export default function PartyManager({ onBack }: Props) {
   const { appUser } = useAuth()
   const { config } = useStockConfig()
+  const { modal, showDanger } = useConfirm()
   const [parties, setParties] = useState<Party[]>([])
+  const [allocations, setAllocations] = useState<UnifiedAllocation[]>([])
+  const [products, setProducts] = useState<Product[]>([])
   const [tab, setTab] = useState<'list' | 'add' | 'allocations' | 'import'>('list')
   const [dispatches, setDispatches] = useState<Dispatch[]>([])
   const [expandedDispatch, setExpandedDispatch] = useState<string | null>(null)
   const [typeFilter, setTypeFilter] = useState<'all' | 'distributor' | 'retailer'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'prospect' | 'inactive'>('all')
   const [categoryFilter, setCategoryFilter] = useState<'all' | PartyCategory>('all')
   const [distributorFilter, setDistributorFilter] = useState<'all' | 'independent' | string>('all')
   const [placeSearch, setPlaceSearch] = useState('')
@@ -72,21 +77,30 @@ export default function PartyManager({ onBack }: Props) {
     const u2 = onSnapshot(collection(db, 'dispatches'), snap => {
       setDispatches(snap.docs.map(d => ({ id: d.id, ...d.data() } as Dispatch)).sort((a, b) => b.createdAt - a.createdAt))
     })
-    return () => { u1(); u2() }
+    const u3 = onSnapshot(collection(db, 'allocations_v2'), snap => {
+      setAllocations(snap.docs.map(d => ({ id: d.id, ...d.data() } as UnifiedAllocation)))
+    })
+    const u4 = onSnapshot(collection(db, 'products'), snap => {
+      setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() } as Product)))
+    })
+    return () => { u1(); u2(); u3(); u4() }
   }, [])
 
   const filtered = parties.filter(p => {
     if (typeFilter !== 'all' && p.type !== typeFilter) return false
+    if (statusFilter !== 'all' && (p as any).status !== statusFilter) return false
     if (categoryFilter !== 'all' && p.category !== categoryFilter) return false
     if (p.type === 'retailer' && distributorFilter !== 'all') {
       if (distributorFilter === 'independent' && (p as any).underDistributorId) return false
       if (distributorFilter !== 'independent' && (p as any).underDistributorId !== distributorFilter) return false
     }
     if (placeSearch.trim()) {
-      const search = placeSearch.toLowerCase()
-      const addr = (p.address || '').toLowerCase()
-      const place = (p.place || '').toLowerCase()
-      if (!addr.includes(search) && !place.includes(search)) return false
+      const s = placeSearch.toLowerCase()
+      if (
+        !p.name.toLowerCase().includes(s) &&
+        !(p.address || '').toLowerCase().includes(s) &&
+        !(p.place || '').toLowerCase().includes(s)
+      ) return false
     }
     return true
   })
@@ -111,7 +125,6 @@ export default function PartyManager({ onBack }: Props) {
     setForm({
       name: p.name, type: p.type, category: p.category || 'FMCG',
       phone: p.phone, address: p.address, place: p.place || '',
-      pricePerPacket: String(p.pricePerPacket),
       quantity: String(packets),
       lowStockThreshold: String(p.lowStockThreshold || 0),
       underDistributorId: p.underDistributorId || '',
@@ -137,7 +150,6 @@ export default function PartyManager({ onBack }: Props) {
       const data: any = {
         name: form.name.trim(), type: form.type, category: form.category,
         phone: form.phone.trim(), address: form.address.trim(), place: form.place.trim(),
-        pricePerPacket: parseFloat(form.pricePerPacket) || 0,
         packetsAllocated: packets, cartonsAllocated: cartons,
         lowStockThreshold: parseInt(form.lowStockThreshold) || 0,
       }
@@ -145,7 +157,8 @@ export default function PartyManager({ onBack }: Props) {
         if (form.underDistributorId) {
           data.underDistributorId = form.underDistributorId
           data.underDistributorName = underDist?.name || ''
-        } else {
+        } else if (editingId) {
+          // deleteField() only valid in updateDoc, not addDoc
           data.underDistributorId = deleteField()
           data.underDistributorName = deleteField()
         }
@@ -158,6 +171,7 @@ export default function PartyManager({ onBack }: Props) {
         data.addedBy = appUser!.uid
         data.addedByName = appUser!.name
         data.createdAt = Date.now()
+        data.status = 'prospect'
         await addDoc(collection(db, 'parties'), data)
         if (appUser?.role === 'offline_sales' || appUser?.role === 'online_sales') {
           await addDoc(collection(db, 'alerts'), {
@@ -177,7 +191,7 @@ export default function PartyManager({ onBack }: Props) {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this entry?')) return
+    if (!await showDanger('Delete Entry?', 'This cannot be undone.')) return
     setDeleting(id)
     await deleteDoc(doc(db, 'parties', id))
     setDeleting(null)
@@ -219,39 +233,58 @@ export default function PartyManager({ onBack }: Props) {
         {/* LIST */}
         {tab === 'list' && (
           <>
-            <div style={{ background: '#161b22', borderRadius: 14, padding: 14, marginBottom: 14, border: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ background: '#161b22', borderRadius: 14, padding: 14, marginBottom: 14, border: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', gap: 10 }}>
               <input value={placeSearch} onChange={e => setPlaceSearch(e.target.value)}
-                placeholder="🔍 Search by place / area..."
-                style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#fff', outline: 'none', boxSizing: 'border-box', marginBottom: 10 }} />
-              <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+                placeholder="Search by name, place, area..."
+                style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '11px 14px', fontSize: 15, color: '#fff', outline: 'none', boxSizing: 'border-box' }} />
+
+              {/* Type filter */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {(['all', 'distributor', 'retailer'] as const).map(f => (
                   <button key={f} onClick={() => { setTypeFilter(f); if (f === 'distributor') setDistributorFilter('all') }}
-                    style={{ background: typeFilter === f ? '#0891b2' : 'rgba(255,255,255,0.04)', color: typeFilter === f ? '#fff' : '#64748b', border: `1px solid ${typeFilter === f ? '#0891b2' : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700 }}>
-                    {f === 'all' ? 'All' : f === 'distributor' ? '🚚 Dist' : '🏪 Retailer'}
+                    style={{ background: typeFilter === f ? '#0891b2' : 'rgba(255,255,255,0.04)', color: typeFilter === f ? '#fff' : '#64748b', border: `1px solid ${typeFilter === f ? '#0891b2' : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 14px', fontSize: 12, fontWeight: 700 }}>
+                    {f === 'all' ? 'All' : f === 'distributor' ? '🚚 Dist.' : '🏪 Retailer'}
+                  </button>
+                ))}
+              </div>
+
+              {/* Status filter */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {([
+                  ['all',      'All'],
+                  ['active',   '🟢 Active'],
+                  ['prospect', '🟡 Prospect'],
+                  ['inactive', '⛔ Inactive'],
+                ] as [string, string][]).map(([val, label]) => (
+                  <button key={val} onClick={() => setStatusFilter(val as any)}
+                    style={{ background: statusFilter === val ? 'rgba(22,163,74,0.15)' : 'rgba(255,255,255,0.04)', color: statusFilter === val ? '#16a34a' : '#64748b', border: `1px solid ${statusFilter === val ? 'rgba(22,163,74,0.3)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 14px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                    {label}
                   </button>
                 ))}
               </div>
 
               {/* Distributor sub-filter — shown when retailers are visible */}
               {typeFilter !== 'distributor' && distributors.length > 0 && (
-                <div style={{ marginBottom: 8 }}>
-                  <div style={{ fontSize: 10, color: '#475569', marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>Under Distributor</div>
+                <div>
+                  <div style={{ fontSize: 11, color: '#475569', marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>Under Distributor</div>
                   <CustomSelect
                     value={distributorFilter}
                     onChange={setDistributorFilter}
                     placeholder="All retailers"
                     options={[
-                      { value: 'all', label: '📋 All retailers' },
-                      { value: 'independent', label: '🟢 Independent retailers' },
+                      { value: 'all', label: 'All retailers' },
+                      { value: 'independent', label: 'Independent retailers' },
                       ...distributors.map(d => ({ value: d.id!, label: `🚚 ${d.name}`, sub: d.place || d.address })),
                     ]}
                   />
                 </div>
               )}
+
+              {/* Category filter */}
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {(['all', ...CATEGORIES] as ('all' | PartyCategory)[]).map(c => (
                   <button key={c} onClick={() => setCategoryFilter(c)}
-                    style={{ background: categoryFilter === c ? '#7c3aed' : 'rgba(255,255,255,0.04)', color: categoryFilter === c ? '#fff' : '#64748b', border: `1px solid ${categoryFilter === c ? '#7c3aed' : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                    style={{ background: categoryFilter === c ? '#7c3aed' : 'rgba(255,255,255,0.04)', color: categoryFilter === c ? '#fff' : '#64748b', border: `1px solid ${categoryFilter === c ? '#7c3aed' : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 12px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
                     {c}
                   </button>
                 ))}
@@ -288,12 +321,32 @@ export default function PartyManager({ onBack }: Props) {
                           🔀 Change Parent
                         </button>
                       )}
-                      <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                        {isAdmin && <span style={{ fontSize: 11, background: 'rgba(22,163,74,0.15)', color: '#16a34a', padding: '3px 10px', borderRadius: 99, fontWeight: 700 }}>₹{p.pricePerPacket}/pkt</span>}
-                        <span style={{ fontSize: 11, background: 'rgba(8,145,178,0.15)', color: '#0891b2', padding: '3px 10px', borderRadius: 99, fontWeight: 700 }}>
-                          📦 {toDisplay(p.packetsAllocated || 0, config.packetsPerCarton)} allocated
-                        </span>
-                      </div>
+                      {(() => {
+                        const pAllocs = allocations.filter(a => a.partyId === p.id && a.status !== 'cancelled')
+                        const allocatedPkts = pAllocs.reduce((s, a) => s + a.packets, 0)
+                        const stockEntries = Object.entries(p.stock || {}).filter(([, qty]) => (qty as number) > 0)
+                        return (
+                          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <span style={{ fontSize: 11, background: 'rgba(8,145,178,0.15)', color: '#0891b2', padding: '3px 10px', borderRadius: 99, fontWeight: 700, alignSelf: 'flex-start' }}>
+                              📦 {toDisplay(allocatedPkts, config.packetsPerCarton)} allocated
+                            </span>
+                            {stockEntries.length > 0 && (
+                              <div style={{ background: 'rgba(22,163,74,0.06)', border: '1px solid rgba(22,163,74,0.15)', borderRadius: 8, padding: '6px 10px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                <div style={{ fontSize: 9, color: '#6ee7b7', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 2 }}>In Stock</div>
+                                {stockEntries.map(([pid, qty]) => {
+                                  const prod = products.find(pr => pr.id === pid)
+                                  return (
+                                    <div key={pid} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                                      <span style={{ color: '#94a3b8' }}>{prod?.name || pid}</span>
+                                      <span style={{ fontWeight: 700, color: '#6ee7b7' }}>{toDisplay(qty as number, config.packetsPerCarton)}</span>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
                       <div style={{ fontSize: 10, color: '#475569', marginTop: 4 }}>Added by {p.addedByName}</div>
 
                       {/* Dispatch log toggle */}
@@ -366,6 +419,28 @@ export default function PartyManager({ onBack }: Props) {
               </div>
             )}
 
+            {/* Status legend — new parties always start as Prospect */}
+            {!editingId && (
+              <div style={{ background: 'rgba(217,119,6,0.07)', border: '1px solid rgba(217,119,6,0.2)', borderRadius: 12, padding: '12px 14px' }}>
+                <div style={{ fontSize: 11, color: '#d97706', fontWeight: 700, marginBottom: 8, letterSpacing: 1, textTransform: 'uppercase' }}>
+                  🟡 Starting as Prospect
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {[
+                    { icon: '🟡', label: 'Prospect', desc: 'New contact, not yet buying from us' },
+                    { icon: '🟢', label: 'Active', desc: 'Currently placing orders' },
+                    { icon: '⛔', label: 'Inactive', desc: 'Was active, no longer buying' },
+                  ].map(s => (
+                    <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 13 }}>{s.icon}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', minWidth: 60 }}>{s.label}</span>
+                      <span style={{ fontSize: 11, color: '#64748b' }}>— {s.desc}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Category */}
             <div>
               <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8, letterSpacing: 1, textTransform: 'uppercase' }}>Category</div>
@@ -427,36 +502,29 @@ export default function PartyManager({ onBack }: Props) {
                 placeholder="e.g. Koramangala" style={inputStyle(!!errors.place)} />
             </Field>
 
-            <Field
-              label="Selling Price Per Single Packet (₹)"
-              hint="Price you charge them per single packet — not your cost price"
-              error={errors.pricePerPacket}>
-              <input type="number" value={form.pricePerPacket} onChange={e => setForm({ ...form, pricePerPacket: e.target.value })}
-                placeholder="e.g. 45" style={inputStyle(!!errors.pricePerPacket)} />
-            </Field>
-
-            {/* Quantity */}
-            <Field label="Quantity to Allocate" error={errors.quantity}>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                {(['packets', 'cartons'] as const).map(u => (
-                  <button key={u} onClick={() => setUnit(u)}
-                    style={{ flex: 1, background: unit === u ? 'rgba(22,163,74,0.15)' : 'rgba(255,255,255,0.04)', color: unit === u ? '#16a34a' : '#64748b', border: `1.5px solid ${unit === u ? '#16a34a' : 'rgba(255,255,255,0.06)'}`, borderRadius: 10, padding: '9px', fontSize: 12, fontWeight: 700 }}>
-                    {u === 'packets' ? '📦 Packets' : `📫 Cartons (1=${config.packetsPerCarton} pkts)`}
-                  </button>
-                ))}
-              </div>
-              <input type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })}
-                placeholder={unit === 'cartons' ? 'No. of cartons' : 'No. of packets'}
-                style={inputStyle(!!errors.quantity)} />
-              {form.quantity && parseInt(form.quantity) > 0 && (
-                <div style={{ marginTop: 8, fontSize: 13, color: '#6ee7b7', fontWeight: 700 }}>
-                  = {toDisplay(toPackets(form.quantity), config.packetsPerCarton)}
-                  {form.pricePerPacket && ` • ₹${(toPackets(form.quantity) * parseFloat(form.pricePerPacket)).toLocaleString()}`}
+            {/* Quantity — hidden for retailers under a distributor (stock managed by distributor) */}
+            {!(form.type === 'retailer' && form.underDistributorId) && (
+              <Field label="Quantity to Allocate" error={errors.quantity}>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  {(['packets', 'cartons'] as const).map(u => (
+                    <button key={u} onClick={() => setUnit(u)}
+                      style={{ flex: 1, background: unit === u ? 'rgba(22,163,74,0.15)' : 'rgba(255,255,255,0.04)', color: unit === u ? '#16a34a' : '#64748b', border: `1.5px solid ${unit === u ? '#16a34a' : 'rgba(255,255,255,0.06)'}`, borderRadius: 10, padding: '9px', fontSize: 12, fontWeight: 700 }}>
+                      {u === 'packets' ? '📦 Packets' : `📫 Cartons (1=${config.packetsPerCarton} pkts)`}
+                    </button>
+                  ))}
                 </div>
-              )}
-            </Field>
+                <input type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })}
+                  placeholder={unit === 'cartons' ? 'No. of cartons' : 'No. of packets'}
+                  style={inputStyle(!!errors.quantity)} />
+                {form.quantity && parseInt(form.quantity) > 0 && (
+                  <div style={{ marginTop: 8, fontSize: 13, color: '#6ee7b7', fontWeight: 700 }}>
+                    = {toDisplay(toPackets(form.quantity), config.packetsPerCarton)}
+                  </div>
+                )}
+              </Field>
+            )}
 
-            {isAdmin && (
+            {isAdmin && !(form.type === 'retailer' && form.underDistributorId) && (
               <Field label="Low Stock Alert Threshold (packets)" hint="Admin alerted when remaining falls below this">
                 <input type="number" value={form.lowStockThreshold} onChange={e => setForm({ ...form, lowStockThreshold: e.target.value })}
                   placeholder="e.g. 50" style={inputStyle()} />
@@ -476,6 +544,7 @@ export default function PartyManager({ onBack }: Props) {
           </div>
         )}
       </div>
+      {modal}
     </div>
   )
 }

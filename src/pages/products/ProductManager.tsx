@@ -4,6 +4,7 @@ import { db } from '../../firebase'
 import { Product } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
+import { useConfirm } from '../../hooks/useConfirm'
 
 interface Props { onBack: () => void }
 
@@ -26,6 +27,7 @@ const emptyForm = { name: '', unitLabel: 'packets', defaultPricePerUnit: '', uni
 export default function ProductManager({ onBack }: Props) {
   const { appUser } = useAuth()
   const { t } = useTheme()
+  const { modal, showDanger } = useConfirm()
   const [products, setProducts] = useState<Product[]>([])
   const [tab, setTab] = useState<'list' | 'add'>('list')
   const [saving, setSaving] = useState(false)
@@ -97,7 +99,7 @@ export default function ProductManager({ onBack }: Props) {
   }
 
   const handleDelete = async (p: Product) => {
-    if (!confirm(`Delete "${p.name}"? This cannot be undone.`)) return
+    if (!await showDanger(`Delete "${p.name}"?`, 'This cannot be undone.')) return
     await deleteDoc(doc(db, 'products', p.id!))
   }
 
@@ -220,6 +222,7 @@ export default function ProductManager({ onBack }: Props) {
             </div>
           </div>
         )}
+      {modal}
       </div>
     </div>
   )

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { collection, addDoc, onSnapshot, updateDoc, doc, query, where, arrayUnion, increment } from 'firebase/firestore'
 import { db } from '../../firebase'
-import { Party, Product, VisitEntry, VisitOutcome, NOT_INTERESTED_REASONS, NotInterestedReason, DailyVisitLog } from '../../types'
+import { Party, Product, VisitEntry, VisitOutcome, NOT_INTERESTED_REASONS, NotInterestedReason, DailyVisitLog, RetailerIndent } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
@@ -33,6 +33,7 @@ export default function VisitLogger({ onBack }: Props) {
   const [endNote, setEndNote] = useState('')
   const [newShop, setNewShop] = useState({ name: '', phone: '', address: '', place: '', type: 'retailer' as 'distributor' | 'retailer', underDistributorId: '' })
   const [showFinishModal, setShowFinishModal] = useState(false)
+  const [visitPartyStatus, setVisitPartyStatus] = useState<'all' | 'active' | 'prospect' | 'inactive'>('all')
 
   // ── ALL hooks first ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -119,21 +120,40 @@ export default function VisitLogger({ onBack }: Props) {
 
       if (outcome === 'interested' && selectedProduct && allocQty) {
         const units = parseInt(allocQty)
-        const price = parseFloat(allocPrice) || selectedProduct.defaultPricePerUnit
-        const ref = await addDoc(collection(db, 'allocations_v2'), {
-          partyId: selectedParty.id!, partyName: selectedParty.name, partyType: selectedParty.type,
-          productId: selectedProduct.id!, productName: selectedProduct.name,
-          packets: units, cartons: Math.floor(units / selectedProduct.unitsPerCarton),
-          pricePerPacket: price, totalAmount: units * price,
-          paymentType: allocPayment, plannedDate: allocDate,
-          status: 'pending', notes: '',
-          createdBy: appUser!.uid, createdByName: appUser!.name,
-          createdAt: Date.now(), month: allocDate.slice(0, 7),
-        })
-        entry.productId = selectedProduct.id!
-        entry.productName = selectedProduct.name
-        entry.allocationId = ref.id
-        await updateDoc(doc(db, 'parties', selectedParty.id!), { status: 'active' })
+        if (selectedParty.underDistributorId) {
+          // Retailer under distributor — create indent, not allocation
+          const indent: Omit<RetailerIndent, 'id'> = {
+            distributorId: selectedParty.underDistributorId,
+            distributorName: selectedParty.underDistributorName || '',
+            retailerId: selectedParty.id!, retailerName: selectedParty.name,
+            productId: selectedProduct.id!, productName: selectedProduct.name,
+            requestedPackets: units, fulfilledPackets: 0,
+            status: 'requested',
+            requestedBy: appUser!.uid, requestedByName: appUser!.name,
+            requestedAt: Date.now(),
+          }
+          const ref = await addDoc(collection(db, 'retailer_indents'), indent)
+          entry.productId = selectedProduct.id!
+          entry.productName = selectedProduct.name
+          entry.indentId = ref.id
+          await updateDoc(doc(db, 'parties', selectedParty.id!), { status: 'active' })
+        } else {
+          const price = parseFloat(allocPrice) || selectedProduct.defaultPricePerUnit
+          const ref = await addDoc(collection(db, 'allocations_v2'), {
+            partyId: selectedParty.id!, partyName: selectedParty.name, partyType: selectedParty.type,
+            productId: selectedProduct.id!, productName: selectedProduct.name,
+            packets: units, cartons: Math.floor(units / selectedProduct.unitsPerCarton),
+            pricePerPacket: price, totalAmount: units * price,
+            paymentType: allocPayment, plannedDate: allocDate,
+            status: 'pending', notes: '',
+            createdBy: appUser!.uid, createdByName: appUser!.name,
+            createdAt: Date.now(), month: allocDate.slice(0, 7),
+          })
+          entry.productId = selectedProduct.id!
+          entry.productName = selectedProduct.name
+          entry.allocationId = ref.id
+          await updateDoc(doc(db, 'parties', selectedParty.id!), { status: 'active' })
+        }
       }
 
       if (outcome === 'not_interested') {
@@ -203,12 +223,16 @@ export default function VisitLogger({ onBack }: Props) {
     onBack()
   }
 
-  const partyOptions = parties.map(p => ({
-    value: p.id!,
-    label: `${p.type === 'distributor' ? '🚚' : '🏪'} ${p.name}`,
-    sub: `${(p as any).status === 'active' ? '🟢 Active' : '🟡 Prospect'} • ${p.place || p.address || ''}`,
-    group: p.type === 'distributor' ? 'Distributors' : 'Retailers',
-  }))
+  const statusLabel = (s: string) => s === 'active' ? '🟢 Active' : s === 'inactive' ? '⛔ Inactive' : '🟡 Prospect'
+
+  const partyOptions = parties
+    .filter(p => visitPartyStatus === 'all' || (p as any).status === visitPartyStatus)
+    .map(p => ({
+      value: p.id!,
+      label: `${p.type === 'distributor' ? '🚚' : '🏪'} ${p.name}`,
+      sub: `${statusLabel((p as any).status)} · ${p.place || p.address || ''}`,
+      group: p.type === 'distributor' ? 'Distributors' : 'Retailers',
+    }))
 
   const inputStyle: React.CSSProperties = {
     width: '100%', background: t.bg3, border: `1.5px solid ${t.border2}`,
@@ -356,6 +380,30 @@ export default function VisitLogger({ onBack }: Props) {
       </div>
 
       <div style={{ padding: '16px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {/* Status filter */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {([
+            { val: 'all',      label: 'All' },
+            { val: 'active',   label: '🟢 Active' },
+            { val: 'prospect', label: '🟡 Prospect' },
+            { val: 'inactive', label: '⛔ Inactive' },
+          ] as const).map(s => (
+            <button key={s.val} onClick={() => setVisitPartyStatus(s.val)}
+              style={{
+                background: visitPartyStatus === s.val
+                  ? s.val === 'active' ? 'rgba(22,163,74,0.15)' : s.val === 'prospect' ? 'rgba(217,119,6,0.15)' : s.val === 'inactive' ? 'rgba(220,38,38,0.12)' : 'rgba(22,163,74,0.15)'
+                  : t.bg3,
+                color: visitPartyStatus === s.val
+                  ? s.val === 'active' ? '#16a34a' : s.val === 'prospect' ? '#d97706' : s.val === 'inactive' ? '#dc2626' : '#16a34a'
+                  : t.text2,
+                border: `1px solid ${visitPartyStatus === s.val ? (s.val === 'active' ? '#16a34a' : s.val === 'prospect' ? '#d97706' : s.val === 'inactive' ? '#dc2626' : '#16a34a') : t.border}`,
+                borderRadius: 20, padding: '6px 14px', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap',
+              }}>
+              {s.label}
+            </button>
+          ))}
+        </div>
+
         <CustomSelect
           value={selectedParty?.id || ''}
           onChange={v => {
@@ -495,15 +543,31 @@ export default function VisitLogger({ onBack }: Props) {
         )}
 
         {outcome === 'interested' && selectedParty.underDistributorId && (
-          <div style={{ background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.3)', borderRadius: 14, padding: 16 }}>
-            <div style={{ fontSize: 15, fontWeight: 800, color: '#d97706', marginBottom: 6 }}>⚠️ Allocation via Distributor</div>
-            <div style={{ fontSize: 13, color: '#fbbf24', lineHeight: 1.5 }}>
-              This retailer is under <strong>{selectedParty.underDistributorName || 'a distributor'}</strong>.
-              Direct allocation is blocked — stock must flow through the distributor.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.2)', borderRadius: 12, padding: '12px 14px' }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#d97706', marginBottom: 4 }}>Indent via {selectedParty.underDistributorName}</div>
+              <div style={{ fontSize: 12, color: '#fbbf24', lineHeight: 1.5 }}>Stock flows through the distributor. An indent will be raised — distributor fulfills it.</div>
             </div>
-            <div style={{ fontSize: 12, color: '#d97706', marginTop: 8 }}>
-              Log this as interested and inform the distributor.
-            </div>
+            <div style={{ fontSize: 14, color: t.text2, fontWeight: 700 }}>Which Product?</div>
+            {products.length === 0 ? (
+              <div style={{ background: 'rgba(220,38,38,0.08)', borderRadius: 10, padding: 14, fontSize: 14, color: '#dc2626' }}>
+                No active products. Ask admin to add products first.
+              </div>
+            ) : products.map(p => (
+              <button key={p.id} onClick={() => setSelectedProduct(p)}
+                style={{ background: selectedProduct?.id === p.id ? 'rgba(22,163,74,0.12)' : t.bg3, border: `1.5px solid ${selectedProduct?.id === p.id ? '#16a34a' : t.border}`, borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}>
+                <span style={{ fontSize: 20 }}>📦</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: selectedProduct?.id === p.id ? '#16a34a' : t.text }}>{p.name}</div>
+                  <div style={{ fontSize: 13, color: t.text2 }}>₹{p.defaultPricePerUnit}/{p.unitLabel}</div>
+                </div>
+                {selectedProduct?.id === p.id && <span style={{ color: '#16a34a', fontSize: 18 }}>✓</span>}
+              </button>
+            ))}
+            {selectedProduct && (
+              <input type="number" value={allocQty} onChange={e => setAllocQty(e.target.value)}
+                placeholder={`Qty (${selectedProduct.unitLabel})`} style={inputStyle} />
+            )}
           </div>
         )}
 
@@ -563,12 +627,12 @@ export default function VisitLogger({ onBack }: Props) {
         {outcome && (
           <button onClick={handleAddVisit} disabled={saving ||
             (outcome === 'not_interested' && !notInterestedReason) ||
-            (outcome === 'interested' && !selectedParty.underDistributorId && (!selectedProduct || !allocQty))}
+            (outcome === 'interested' && (!selectedProduct || !allocQty))}
             style={{
               background: saving ? '#475569' : 'linear-gradient(135deg,#0d3d2e,#1a5c42)',
               color: '#fff', border: 'none', borderRadius: 14, padding: 18,
               fontSize: 16, fontWeight: 800, marginTop: 4,
-              opacity: (outcome === 'not_interested' && !notInterestedReason) || (outcome === 'interested' && !selectedParty.underDistributorId && (!selectedProduct || !allocQty)) ? 0.4 : 1
+              opacity: (outcome === 'not_interested' && !notInterestedReason) || (outcome === 'interested' && (!selectedProduct || !allocQty)) ? 0.4 : 1
             }}>
             {saving ? 'Saving...' : 'Save Visit ✅'}
           </button>

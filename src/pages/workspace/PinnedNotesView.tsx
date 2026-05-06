@@ -3,6 +3,7 @@ import { collection, addDoc, onSnapshot, updateDoc, doc, query, orderBy } from '
 import { db } from '../../firebase'
 import { PinnedNote } from '../../types'
 import { useAuth } from '../../context/AuthContext'
+import { useConfirm } from '../../hooks/useConfirm'
 
 const MAX_PINS = 10
 
@@ -13,6 +14,7 @@ export default function PinnedNotesView() {
   const [content, setContent] = useState('')
   const [saving, setSaving] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
+  const { modal, showAlert } = useConfirm()
 
   useEffect(() => {
     const q = query(collection(db, 'pinned_notes'), orderBy('createdAt', 'desc'))
@@ -52,7 +54,7 @@ export default function PinnedNotesView() {
   const unarchiveNote = async (id: string) => {
     // Check if there's room
     if (active.length >= MAX_PINS) {
-      alert(`Max ${MAX_PINS} pinned notes. Archive one first.`)
+      await showAlert('Pins Full', `Max ${MAX_PINS} pinned notes. Archive one first.`)
       return
     }
     await updateDoc(doc(db, 'pinned_notes', id), { archived: false })
@@ -157,6 +159,7 @@ export default function PinnedNotesView() {
           )}
         </div>
       )}
+      {modal}
     </div>
   )
 }

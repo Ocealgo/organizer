@@ -156,7 +156,7 @@ export default function AdminDashboard() {
 
   const quickLinks = [
     { emoji: '📦', label: 'Stock',        sub: 'Manage inventory',        screen: 'stock'       as SubScreen, color: '#16a34a' },
-    { emoji: '🤝', label: 'Distributors', sub: 'View & manage network',   screen: 'parties'     as SubScreen, color: '#0891b2' },
+    { emoji: '🤝', label: 'Distributors/Retailers', sub: 'View & manage network',   screen: 'parties'     as SubScreen, color: '#0891b2' },
     { emoji: '🚀', label: 'Allocations',  sub: 'Stock sending events',    screen: 'allocations' as SubScreen, color: '#d97706' },
     { emoji: '🛍️', label: 'Products',    sub: 'Add & manage products',   screen: 'products'    as SubScreen, color: '#7c3aed' },
     { emoji: '💜', label: 'Credit Book',  sub: 'Outstanding payments',    screen: 'credits'     as SubScreen, color: '#8b5cf6' },

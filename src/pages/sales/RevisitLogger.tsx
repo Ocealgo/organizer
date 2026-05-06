@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { collection, addDoc, onSnapshot, updateDoc, doc, query, where } from 'firebase/firestore'
+import { collection, addDoc, onSnapshot, updateDoc, doc, query, where, increment } from 'firebase/firestore'
 import { db } from '../../firebase'
 import { Party, Product, RevisitAction, StockUpdateAction, NewOrderAction, PaymentCollectionAction, StockMovement } from '../../types'
 import { useAuth } from '../../context/AuthContext'
@@ -27,7 +27,8 @@ export default function RevisitLogger({ party, onBack, onDone }: Props) {
   const [saving, setSaving] = useState(false)
 
   // Stock update state
-  const [stockData, setStockData] = useState({ openingQty: '', purchasedQty: '', soldQty: '', balanceQty: '', balanceValue: '' })
+  const [stockProductId, setStockProductId] = useState('')
+  const [soldQtyInput, setSoldQtyInput] = useState('')
 
   // New order state
   const [orderProduct, setOrderProduct] = useState<Product | null>(null)
@@ -52,7 +53,7 @@ export default function RevisitLogger({ party, onBack, onDone }: Props) {
   const isUnderDistributor = party.type === 'retailer' && !!(party as any).underDistributorId
 
   const actionOptions = [
-    ...BASE_ACTIONS,
+    ...BASE_ACTIONS.filter(a => !(isUnderDistributor && a.key === 'payment_collection')),
     ...(party.type === 'distributor'
       ? [{ key: 'distribute_to_retailers' as ActionKey, emoji: '📋', label: 'Distribute to Retailers', sub: 'Log stock pushed out to your retailer network' }]
       : []),
@@ -89,15 +90,10 @@ export default function RevisitLogger({ party, onBack, onDone }: Props) {
     })
   }
 
-  // Auto-calc balance when stock fields change
-  const updateStock = (field: string, value: string) => {
-    const next = { ...stockData, [field]: value }
-    const opening = parseInt(next.openingQty) || 0
-    const purchased = parseInt(next.purchasedQty) || 0
-    const sold = parseInt(next.soldQty) || 0
-    next.balanceQty = String(opening + purchased - sold)
-    setStockData(next)
-  }
+  // Stock update computed values
+  const stockOpening = stockProductId ? ((party.stock?.[stockProductId]) || 0) : 0
+  const stockSold = parseInt(soldQtyInput) || 0
+  const stockBalance = Math.max(0, stockOpening - stockSold)
 
   // ── Save ─────────────────────────────────────────────────────────────────────
   const handleSave = async () => {
@@ -106,38 +102,62 @@ export default function RevisitLogger({ party, onBack, onDone }: Props) {
     try {
       const actions: RevisitAction[] = []
 
-      if (selectedActions.has('stock_update') && (stockData.balanceQty || stockData.soldQty)) {
+      if (selectedActions.has('stock_update') && stockProductId && stockSold > 0) {
         actions.push({
           type: 'stock_update',
-          openingQty: parseInt(stockData.openingQty) || 0,
-          purchasedQty: parseInt(stockData.purchasedQty) || 0,
-          soldQty: parseInt(stockData.soldQty) || 0,
-          balanceQty: parseInt(stockData.balanceQty) || 0,
-          balanceValue: parseFloat(stockData.balanceValue) || 0,
+          openingQty: stockOpening,
+          purchasedQty: 0,
+          soldQty: stockSold,
+          balanceQty: stockBalance,
+          balanceValue: 0,
           aiRead: false,
         } as StockUpdateAction)
+        await updateDoc(doc(db, 'parties', party.id!), {
+          [`stock.${stockProductId}`]: increment(-stockSold),
+        })
       }
 
       if (selectedActions.has('new_order') && orderProduct && orderQty) {
         const qty = parseInt(orderQty)
-        const price = parseFloat(orderPrice) || orderProduct.defaultPricePerUnit
-        const ref = await addDoc(collection(db, 'allocations_v2'), {
-          partyId: party.id!, partyName: party.name, partyType: party.type,
-          productId: orderProduct.id!, productName: orderProduct.name,
-          packets: qty, cartons: Math.floor(qty / orderProduct.unitsPerCarton),
-          pricePerPacket: price, totalAmount: qty * price,
-          paymentType: orderPayment, plannedDate: orderDate,
-          status: 'pending', notes: '',
-          createdBy: appUser!.uid, createdByName: appUser!.name,
-          createdAt: Date.now(), month: orderDate.slice(0, 7),
-        })
+        const todayDate = new Date().toISOString().split('T')[0]
+        let allocRef: any
+        if (isUnderDistributor) {
+          allocRef = await addDoc(collection(db, 'allocations_v2'), {
+            fromType: 'distributor',
+            fromId: (party as any).underDistributorId,
+            fromName: (party as any).underDistributorName || '',
+            partyId: party.id!, partyName: party.name, partyType: party.type,
+            productId: orderProduct.id!, productName: orderProduct.name,
+            packets: qty, cartons: Math.floor(qty / orderProduct.unitsPerCarton),
+            pricePerPacket: 0, totalAmount: 0,
+            paymentType: 'cash', plannedDate: todayDate,
+            status: 'pending', notes: '',
+            createdBy: appUser!.uid, createdByName: appUser!.name,
+            createdAt: Date.now(), month: todayDate.slice(0, 7),
+            lockedAtCreation: false,
+          })
+        } else {
+          const price = parseFloat(orderPrice) || orderProduct.defaultPricePerUnit
+          allocRef = await addDoc(collection(db, 'allocations_v2'), {
+            fromType: 'company', fromId: 'company', fromName: 'Ocealgo',
+            partyId: party.id!, partyName: party.name, partyType: party.type,
+            productId: orderProduct.id!, productName: orderProduct.name,
+            packets: qty, cartons: Math.floor(qty / orderProduct.unitsPerCarton),
+            pricePerPacket: price, totalAmount: qty * price,
+            paymentType: orderPayment, plannedDate: orderDate,
+            status: 'pending', notes: '',
+            createdBy: appUser!.uid, createdByName: appUser!.name,
+            createdAt: Date.now(), month: orderDate.slice(0, 7),
+            lockedAtCreation: true,
+          })
+        }
         await updateDoc(doc(db, 'parties', party.id!), { status: 'active' })
         actions.push({
           type: 'new_order',
           productId: orderProduct.id!, productName: orderProduct.name,
-          quantity: qty, pricePerUnit: price, totalAmount: qty * price,
-          paymentType: orderPayment, plannedDate: orderDate,
-          allocationId: ref.id,
+          quantity: qty, pricePerUnit: 0, totalAmount: 0,
+          paymentType: 'cash', plannedDate: todayDate,
+          allocationId: allocRef.id,
         } as NewOrderAction)
       }
 
@@ -205,7 +225,8 @@ export default function RevisitLogger({ party, onBack, onDone }: Props) {
 
   const hasAnyDistribution = Object.values(distributions).some(d => (parseInt(d.qty) || 0) > 0)
   const canSave = selectedActions.size > 0 &&
-    (!selectedActions.has('new_order') || isUnderDistributor || (!!orderProduct && !!orderQty)) &&
+    (!selectedActions.has('stock_update') || (!!stockProductId && stockSold > 0)) &&
+    (!selectedActions.has('new_order') || (!!orderProduct && !!orderQty)) &&
     (!selectedActions.has('payment_collection') || !!paymentAmount) &&
     (!selectedActions.has('distribute_to_retailers') || hasAnyDistribution)
 
@@ -261,50 +282,59 @@ export default function RevisitLogger({ party, onBack, onDone }: Props) {
                   {/* STOCK UPDATE */}
                   {opt.key === 'stock_update' && (
                     <>
-                      <div style={{ background: 'rgba(8,145,178,0.08)', borderRadius: 10, padding: '10px 12px', fontSize: 12, color: '#0891b2' }}>
-                        💡 Enter qty sold — balance calculates automatically
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                        {[
-                          { label: 'Opening Qty', key: 'openingQty' },
-                          { label: 'Purchased Qty', key: 'purchasedQty' },
-                          { label: 'Qty Sold', key: 'soldQty' },
-                        ].map(f => (
-                          <div key={f.key}>
-                            <div style={{ fontSize: 10, color: t.text3, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>{f.label}</div>
-                            <input type="number" value={(stockData as any)[f.key]}
-                              onChange={e => updateStock(f.key, e.target.value)}
-                              placeholder="0" style={{ ...inputStyle, fontSize: 16, fontWeight: 700 }} />
-                          </div>
+                      <div style={{ fontSize: 11, color: t.text3, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2 }}>Product</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {products.map(p => (
+                          <button key={p.id} onClick={() => setStockProductId(p.id!)}
+                            style={{ background: stockProductId === p.id ? 'rgba(22,163,74,0.12)' : t.bg3, border: `1.5px solid ${stockProductId === p.id ? '#16a34a' : t.border}`, borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left' }}>
+                            <span style={{ fontSize: 18 }}>📦</span>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: 700, fontSize: 14, color: stockProductId === p.id ? '#16a34a' : t.text }}>{p.name}</div>
+                              <div style={{ fontSize: 11, color: t.text3 }}>
+                                Current stock: {(party.stock?.[p.id!]) ?? 0} {p.unitLabel}
+                              </div>
+                            </div>
+                            {stockProductId === p.id && <span style={{ color: '#16a34a' }}>✓</span>}
+                          </button>
                         ))}
-                        <div>
-                          <div style={{ fontSize: 10, color: '#6ee7b7', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Balance Qty ✓</div>
-                          <div style={{ ...inputStyle, fontSize: 16, fontWeight: 900, color: '#6ee7b7', background: 'rgba(22,163,74,0.08)', display: 'flex', alignItems: 'center' }}>
-                            {stockData.balanceQty || '0'}
+                      </div>
+                      {stockProductId && (
+                        <>
+                          <div style={{ background: 'rgba(8,145,178,0.08)', borderRadius: 10, padding: '10px 12px', fontSize: 12, color: '#0891b2' }}>
+                            💡 Enter qty sold — balance calculates automatically
                           </div>
-                        </div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 10, color: t.text3, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Balance Value (₹)</div>
-                        <input type="number" value={stockData.balanceValue}
-                          onChange={e => setStockData({ ...stockData, balanceValue: e.target.value })}
-                          placeholder="0.00" style={{ ...inputStyle, fontSize: 16, fontWeight: 700 }} />
-                      </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                            <div>
+                              <div style={{ fontSize: 10, color: t.text3, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Opening Qty</div>
+                              <div style={{ ...inputStyle, fontSize: 16, fontWeight: 900, color: '#94a3b8', display: 'flex', alignItems: 'center' }}>
+                                {stockOpening}
+                              </div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 10, color: t.text3, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Qty Sold</div>
+                              <input type="number" value={soldQtyInput} onChange={e => setSoldQtyInput(e.target.value)}
+                                placeholder="0" style={{ ...inputStyle, fontSize: 16, fontWeight: 700 }} />
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 10, color: '#6ee7b7', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Balance Qty</div>
+                            <div style={{ ...inputStyle, fontSize: 18, fontWeight: 900, color: stockBalance > 0 ? '#6ee7b7' : '#f87171', background: 'rgba(22,163,74,0.08)', display: 'flex', alignItems: 'center' }}>
+                              {stockBalance}
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </>
                   )}
 
                   {/* NEW ORDER */}
-                  {opt.key === 'new_order' && isUnderDistributor && (
-                    <div style={{ background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.25)', borderRadius: 12, padding: 14 }}>
-                      <div style={{ fontSize: 14, fontWeight: 800, color: '#d97706', marginBottom: 6 }}>⚠️ Order via Distributor</div>
-                      <div style={{ fontSize: 13, color: '#fbbf24', lineHeight: 1.5 }}>
-                        This retailer receives stock through <strong>{(party as any).underDistributorName}</strong>. New orders must go via the parent distributor — do not create a direct allocation.
-                      </div>
-                    </div>
-                  )}
-
-                  {opt.key === 'new_order' && !isUnderDistributor && (
+                  {opt.key === 'new_order' && (
                     <>
+                      {isUnderDistributor && (
+                        <div style={{ background: 'rgba(8,145,178,0.08)', border: '1px solid rgba(8,145,178,0.2)', borderRadius: 10, padding: '10px 12px', fontSize: 12, color: '#0891b2' }}>
+                          🚚 Stock via <strong>{(party as any).underDistributorName}</strong> — allocation will be created under that distributor
+                        </div>
+                      )}
                       <div style={{ fontSize: 12, color: t.text3, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Product</div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {products.map(p => (
@@ -325,29 +355,44 @@ export default function RevisitLogger({ party, onBack, onDone }: Props) {
                             <div style={{ fontSize: 12, color: t.text3, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Quantity ({orderProduct.unitLabel})</div>
                             <input type="number" value={orderQty} onChange={e => setOrderQty(e.target.value)}
                               placeholder={`No. of ${orderProduct.unitLabel}`} style={inputStyle} />
-                            {orderQty && orderPrice && (
-                              <div style={{ fontSize: 13, color: '#6ee7b7', marginTop: 5, fontWeight: 600 }}>
-                                Total: ₹{(parseInt(orderQty) * parseFloat(orderPrice)).toLocaleString()}
+                          </div>
+                          {isUnderDistributor && orderQty && parseInt(orderQty) > 0 && (
+                            <>
+                              <div style={{ background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#6ee7b7', fontWeight: 600 }}>
+                                📦 {parseInt(orderQty)} {orderProduct.unitLabel} of {orderProduct.name} → {(party as any).underDistributorName}
                               </div>
-                            )}
-                          </div>
-                          <div>
-                            <div style={{ fontSize: 12, color: t.text3, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Price per {orderProduct.unitLabel} (₹)</div>
-                            <input type="number" value={orderPrice} onChange={e => setOrderPrice(e.target.value)}
-                              placeholder={`₹${orderProduct.defaultPricePerUnit}`} style={inputStyle} />
-                          </div>
-                          <div style={{ display: 'flex', gap: 8 }}>
-                            {([['cash', '💵 Cash'], ['credit', '📋 Credit']] as const).map(([val, label]) => (
-                              <button key={val} onClick={() => setOrderPayment(val)}
-                                style={{ flex: 1, background: orderPayment === val ? (val === 'cash' ? 'rgba(22,163,74,0.15)' : 'rgba(217,119,6,0.15)') : t.bg3, color: orderPayment === val ? (val === 'cash' ? '#16a34a' : '#d97706') : t.text2, border: `1.5px solid ${orderPayment === val ? (val === 'cash' ? '#16a34a' : '#d97706') : t.border}`, borderRadius: 10, padding: '10px', fontSize: 13, fontWeight: 800 }}>
-                                {label}
+                              <button onClick={handleSave} disabled={saving}
+                                style={{ background: saving ? '#475569' : 'linear-gradient(135deg,#0d3d2e,#1a5c42)', color: '#fff', border: 'none', borderRadius: 12, padding: '14px', fontSize: 15, fontWeight: 800 }}>
+                                {saving ? 'Placing...' : '📦 Place Order'}
                               </button>
-                            ))}
-                          </div>
-                          <div>
-                            <div style={{ fontSize: 12, color: t.text3, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Planned Delivery Date</div>
-                            <input type="date" value={orderDate} onChange={e => setOrderDate(e.target.value)} style={inputStyle} />
-                          </div>
+                            </>
+                          )}
+                          {!isUnderDistributor && (
+                            <>
+                              <div>
+                                <div style={{ fontSize: 12, color: t.text3, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Price per {orderProduct.unitLabel} (₹)</div>
+                                <input type="number" value={orderPrice} onChange={e => setOrderPrice(e.target.value)}
+                                  placeholder={`₹${orderProduct.defaultPricePerUnit}`} style={inputStyle} />
+                                {orderQty && orderPrice && (
+                                  <div style={{ fontSize: 13, color: '#6ee7b7', marginTop: 5, fontWeight: 600 }}>
+                                    Total: ₹{(parseInt(orderQty) * parseFloat(orderPrice)).toLocaleString()}
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', gap: 8 }}>
+                                {([['cash', '💵 Cash'], ['credit', '📋 Credit']] as const).map(([val, label]) => (
+                                  <button key={val} onClick={() => setOrderPayment(val)}
+                                    style={{ flex: 1, background: orderPayment === val ? (val === 'cash' ? 'rgba(22,163,74,0.15)' : 'rgba(217,119,6,0.15)') : t.bg3, color: orderPayment === val ? (val === 'cash' ? '#16a34a' : '#d97706') : t.text2, border: `1.5px solid ${orderPayment === val ? (val === 'cash' ? '#16a34a' : '#d97706') : t.border}`, borderRadius: 10, padding: '10px', fontSize: 13, fontWeight: 800 }}>
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 12, color: t.text3, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Planned Delivery Date</div>
+                                <input type="date" value={orderDate} onChange={e => setOrderDate(e.target.value)} style={inputStyle} />
+                              </div>
+                            </>
+                          )}
                         </>
                       )}
                     </>

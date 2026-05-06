@@ -4,6 +4,7 @@ import { db } from '../../firebase'
 import { Expense, ExpenseCategory } from '../../types'
 import DateInput from '../../components/DateInput'
 import { useAuth } from '../../context/AuthContext'
+import { useConfirm } from '../../hooks/useConfirm'
 
 interface Props { onBack: () => void }
 
@@ -17,6 +18,7 @@ const CATEGORIES: { value: ExpenseCategory; label: string; emoji: string }[] = [
 
 export default function ExpenseLogger({ onBack }: Props) {
   const { appUser } = useAuth()
+  const { modal, showAlert } = useConfirm()
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [tab, setTab] = useState<'list' | 'add'>('list')
   const [dateMode, setDateMode] = useState<'day' | 'month'>('month')
@@ -38,7 +40,7 @@ export default function ExpenseLogger({ onBack }: Props) {
   })
 
   const handleAdd = async () => {
-    if (!form.amount || !form.note) return alert('Please fill amount and note')
+    if (!form.amount || !form.note) { await showAlert('Missing Fields', 'Please fill in both amount and note.'); return }
     setSaving(true)
     try {
       await addDoc(collection(db, 'expenses'), {
@@ -157,6 +159,7 @@ export default function ExpenseLogger({ onBack }: Props) {
           </div>
         )}
       </div>
+      {modal}
     </div>
   )
 }

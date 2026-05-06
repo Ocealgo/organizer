@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { collection, doc, setDoc, getDocs, query, where, onSnapshot, getDoc } from 'firebase/firestore'
+import { collection, doc, setDoc, getDocs, query, where, onSnapshot, getDoc, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { CheckIn, PostStatus, StockConfig } from '../types'
 
@@ -87,6 +87,25 @@ export async function getDefaultPrice(): Promise<number> {
   const { getDoc, doc } = await import('firebase/firestore')
   const snap = await getDoc(doc(db, 'config', 'stock'))
   return snap.exists() ? (snap.data().defaultPricePerPacket || 0) : 0
+}
+
+export async function setProductStock(productId: string, total: number) {
+  const ref = doc(db, 'config', 'stock')
+  const snap = await getDoc(ref)
+  if (snap.exists()) {
+    const current = snap.data() as StockConfig
+    await updateDoc(ref, {
+      [`productStock.${productId}.total`]: total,
+      [`productStock.${productId}.locked`]: current.productStock?.[productId]?.locked ?? 0,
+      updatedAt: Date.now(),
+    })
+  } else {
+    await setDoc(ref, {
+      total: 0, locked: 0, packetsPerCarton: 12,
+      productStock: { [productId]: { total, locked: 0 } },
+      updatedAt: Date.now(),
+    })
+  }
 }
 
 export async function setDefaultPrice(price: number) {

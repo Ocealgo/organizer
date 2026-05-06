@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore'
 import { db } from '../../firebase'
 import { AppUser, UserRole } from '../../types'
 import { useAuth } from '../../context/AuthContext'
+import { useConfirm } from '../../hooks/useConfirm'
 
 const SUPER_ADMIN_EMAIL = 'amalau14113@gmail.com'
 const ROLES: UserRole[] = ['admin', 'offline_sales', 'online_sales', 'offline_marketing', 'online_marketing']
@@ -19,6 +20,7 @@ interface Props { onBack: () => void }
 
 export default function UserManagement({ onBack }: Props) {
   const { appUser } = useAuth()
+  const { modal, showDanger } = useConfirm()
   const [users, setUsers] = useState<AppUser[]>([])
   const [tab, setTab] = useState<'pending' | 'active' | 'deactivated'>('pending')
   const [updating, setUpdating] = useState<string | null>(null)
@@ -51,7 +53,7 @@ export default function UserManagement({ onBack }: Props) {
 
   // ✅ Deactivate instead of delete — keeps Firebase Auth account intact
   const deactivateUser = async (uid: string, name: string) => {
-    if (!confirm(`Deactivate ${name}? They won't be able to log in. You can reactivate them anytime.`)) return
+    if (!await showDanger('Deactivate User?', `${name} won't be able to log in. You can reactivate them anytime.`, 'Deactivate')) return
     setUpdating(uid)
     await updateDoc(doc(db, 'users', uid), { status: 'deactivated' })
     setUpdating(null)
@@ -132,6 +134,7 @@ export default function UserManagement({ onBack }: Props) {
           ))
         )}
       </div>
+      {modal}
     </div>
   )
 }
