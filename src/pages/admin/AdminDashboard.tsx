@@ -99,24 +99,13 @@ export default function AdminDashboard() {
     const u5 = onSnapshot(collection(db, "revisit_logs"), (snap) => {
       const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as any);
       setRevisitLogs(all);
-      const pending: any[] = [];
-      all.forEach((log) => {
-        log.actions?.forEach((action: any) => {
-          if (
-            action.type === "payment_collection" &&
-            action.status === "pending_approval"
-          ) {
-            pending.push({
-              ...action,
-              logId: log.id,
-              partyName: log.partyName,
-              salesPersonName: log.salesPersonName,
-              date: log.date,
-            });
-          }
-        });
-      });
-      setPendingPayments(pending);
+    });
+    const u5b = onSnapshot(collection(db, "payment_transactions"), (snap) => {
+      setPendingPayments(
+        snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .filter((p: any) => p.status === "pending_approval"),
+      );
     });
     const u6 = onSnapshot(collection(db, "leave_records"), (snap) => {
       setLeaveRecords(
@@ -128,6 +117,7 @@ export default function AdminDashboard() {
       u3();
       u4();
       u5();
+      u5b();
       u6();
     };
   }, []);
@@ -368,7 +358,7 @@ export default function AdminDashboard() {
     {
       emoji: "💜",
       label: "Credit Book",
-      sub: "Outstanding payments",
+      sub: "Outstanding payments & ledger",
       screen: "credits" as SubScreen,
       color: "#8b5cf6",
     },

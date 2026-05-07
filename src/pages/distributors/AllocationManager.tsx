@@ -80,6 +80,7 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
     partyId: '', productId: '', packets: '', pricePerPacket: '',
     paymentType: 'cash' as PaymentType,
     plannedDate: localDateOffset(1),
+    creditDueDate: localDateOffset(30),
     notes: '',
   }
   const [form, setForm] = useState(emptyForm)
@@ -92,10 +93,15 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
       const raw = snap.docs.map(d => ({ id: d.id, ...d.data() } as UnifiedAllocation))
       // Compute overdue status client-side
       const now = today
-      const processed = raw.map(a => ({
-        ...a,
-        status: a.status === 'pending' && a.fromType !== 'distributor' && a.plannedDate && a.plannedDate < now ? 'overdue' : a.status,
-      } as UnifiedAllocation))
+      const processed = raw.map(a => {
+        // Planned-date overdue: pending company allocation past its send date
+        if (a.status === 'pending' && a.fromType !== 'distributor' && a.plannedDate && a.plannedDate < now)
+          return { ...a, status: 'overdue' as AllocationStatus }
+        // Credit-due overdue: sent credit allocation past its payment due date
+        if (a.status === 'sent' && a.paymentType === 'credit' && (a as any).creditDueDate && (a as any).creditDueDate < now)
+          return { ...a, status: 'overdue' as AllocationStatus }
+        return a
+      })
       setAllocations(processed.sort((a, b) => a.plannedDate.localeCompare(b.plannedDate)))
     })
   }, [today])
@@ -177,6 +183,7 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
         productId: form.productId, productName: product?.name || '',
         packets, cartons, pricePerPacket: price, totalAmount: packets * price,
         paymentType: form.paymentType, plannedDate,
+        ...(form.paymentType === 'credit' && isCompanyOrigin ? { creditDueDate: form.creditDueDate } : {}),
         status: 'pending' as AllocationStatus, notes: form.notes,
         createdBy: appUser!.uid, createdByName: appUser!.name,
         createdAt: Date.now(), month: plannedDate.slice(0, 7),
@@ -765,6 +772,11 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                       </div>
                     </div>
                   </div>
+                  {a.paymentType === 'credit' && (a as any).creditDueDate && a.status !== 'paid' && (
+                    <div style={{ fontSize: 11, marginBottom: 8, color: a.status === 'overdue' ? '#dc2626' : '#d97706', fontWeight: 700 }}>
+                      {a.status === 'overdue' ? '🔴 Due date passed: ' : '📅 Credit due: '}{(a as any).creditDueDate}
+                    </div>
+                  )}
                   {a.notes && <div style={{ fontSize: 11, color: '#475569', marginBottom: 10 }}>📝 {a.notes}</div>}
                   {isAdmin && (
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -1086,6 +1098,12 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                 <Field label="Planned Send Date" hint="The date you plan to physically send this stock" error={errors.plannedDate}>
                   <DateInput type="date" value={form.plannedDate} onChange={v => setForm({ ...form, plannedDate: v })} />
                 </Field>
+
+                {form.paymentType === 'credit' && (
+                  <Field label="Credit Due Date" hint="Payment must be received by this date — auto-escalates to overdue if missed">
+                    <DateInput type="date" value={form.creditDueDate} onChange={v => setForm({ ...form, creditDueDate: v })} />
+                  </Field>
+                )}
               </>
             )}
 

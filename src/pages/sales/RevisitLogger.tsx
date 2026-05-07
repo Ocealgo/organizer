@@ -73,6 +73,9 @@ export default function RevisitLogger({
   // Payment
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentNote, setPaymentNote] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<
+    "cash" | "cheque" | "bank_transfer" | "upi"
+  >("cash");
 
   // Relationship / inactive
   const [visitNote, setVisitNote] = useState("");
@@ -89,6 +92,20 @@ export default function RevisitLogger({
 
   const isUnderDistributor =
     party.type === "retailer" && !!(party as any).underDistributorId;
+
+  // Outstanding = sum of (totalAmount - paidAmount) across active credit allocs from company
+  const outstandingAmount = allocations
+    .filter(
+      (a: any) =>
+        a.paymentType === "credit" &&
+        (a.status === "sent" || a.status === "overdue") &&
+        a.fromType !== "distributor",
+    )
+    .reduce(
+      (s: number, a: any) =>
+        s + Math.max(0, (a.totalAmount || 0) - (a.paidAmount || 0)),
+      0,
+    );
 
   const actionOptions: {
     key: ActionKey;
@@ -113,8 +130,11 @@ export default function RevisitLogger({
           {
             key: "payment_collection" as ActionKey,
             emoji: "💰",
-            label: "Payment Collected",
-            sub: "Collected cash against outstanding credit",
+            label: "Cash Collected",
+            sub:
+              outstandingAmount > 0
+                ? `Outstanding: ₹${outstandingAmount.toLocaleString()}`
+                : "No outstanding credit",
           },
         ]
       : []),
@@ -178,16 +198,6 @@ export default function RevisitLogger({
   useEffect(() => {
     if (orderProduct) setOrderPrice(String(orderProduct.defaultPricePerUnit));
   }, [orderProduct]);
-
-  const outstandingAllocs = allocations.filter(
-    (a) =>
-      a.paymentType === "credit" &&
-      (a.status === "sent" || a.status === "overdue"),
-  );
-  const outstandingAmount = outstandingAllocs.reduce(
-    (s: number, a: any) => s + (a.totalAmount || 0),
-    0,
-  );
 
   const stockOpening = stockProductId ? party.stock?.[stockProductId] || 0 : 0;
   const stockSold = parseInt(soldQtyInput) || 0;
@@ -325,17 +335,74 @@ export default function RevisitLogger({
   const handleConfirmPayment = async () => {
     if (!paymentAmount) return;
     const amount = parseFloat(paymentAmount);
+    if (amount <= 0) return;
+    if (outstandingAmount > 0 && amount > outstandingAmount) return;
+    const methodLabel: Record<string, string> = {
+      cash: "Cash",
+      cheque: "Cheque",
+      bank_transfer: "Bank Transfer",
+      upi: "UPI",
+    };
     const confirmed = await showConfirm(
       "Confirm Payment",
-      `Log ₹${amount.toLocaleString()} collected from ${party.name}? This needs admin approval.`,
+      `Log ₹${amount.toLocaleString()} (${methodLabel[paymentMethod]}) collected from ${party.name}?`,
     );
     if (!confirmed) return;
+
+    // Apply payment FIFO to active credit allocs — directly update paidAmount on each alloc
+    const activeAllocs = allocations
+      .filter(
+        (a: any) =>
+          a.paymentType === "credit" &&
+          (a.status === "sent" || a.status === "overdue") &&
+          a.fromType !== "distributor",
+      )
+      .sort((a: any, b: any) => (a.createdAt || 0) - (b.createdAt || 0));
+
+    const appliedTo: { allocId: string; amount: number }[] = [];
+    let remaining = amount;
+    for (const alloc of activeAllocs) {
+      if (remaining <= 0) break;
+      const currentPaid = alloc.paidAmount || 0;
+      const owed = (alloc.totalAmount || 0) - currentPaid;
+      if (owed <= 0) continue;
+      const toApply = Math.min(remaining, owed);
+      const newPaid = currentPaid + toApply;
+      const updates: any = { paidAmount: newPaid };
+      if (newPaid >= (alloc.totalAmount || 0)) {
+        updates.status = "paid";
+        updates.paidAt = Date.now();
+      }
+      await updateDoc(doc(db, "allocations_v2", alloc.id!), updates);
+      appliedTo.push({ allocId: alloc.id!, amount: toApply });
+      remaining -= toApply;
+    }
+
+    await addDoc(collection(db, "payment_transactions"), {
+      partyId: party.id!,
+      partyName: party.name,
+      partyType: party.type,
+      amount,
+      paymentMethod,
+      collectionType: "collected_by_salesperson",
+      collectedBy: appUser!.uid,
+      collectedByName: appUser!.name,
+      notes: paymentNote,
+      status: "approved",
+      approvedBy: appUser!.uid,
+      approvedByName: appUser!.name,
+      approvedAt: Date.now(),
+      date: logDate || localDateStr(),
+      createdAt: Date.now(),
+      appliedTo,
+    });
     await addDoc(collection(db, "alerts"), {
-      type: "payment_collected",
-      message: `💰 ${appUser!.name} collected ₹${amount.toLocaleString()} from ${party.name} — pending approval`,
+      type: "credit_settlement",
+      message: `₹${amount.toLocaleString()} cash collected from ${party.name} by ${appUser!.name} (${methodLabel[paymentMethod]})`,
       relatedId: party.id!,
       read: false,
       createdAt: Date.now(),
+      toRole: "admin_group",
     });
     markDone("payment_collection", {
       type: "payment_collection",
@@ -593,8 +660,7 @@ export default function RevisitLogger({
             </div>
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: 11, color: "#fca5a5" }}>
-                {outstandingAllocs.length} unpaid dispatch
-                {outstandingAllocs.length > 1 ? "es" : ""}
+                Unpaid credit
               </div>
               <div
                 style={{
@@ -643,10 +709,22 @@ export default function RevisitLogger({
           return (
             <div key={opt.key}>
               <button
-                onClick={() =>
-                  !isDone && setExpandedAction(isExpanded ? null : opt.key)
+                onClick={() => {
+                  if (isDone) return;
+                  if (
+                    !isExpanded &&
+                    opt.key === "payment_collection" &&
+                    !paymentAmount &&
+                    outstandingAmount > 0
+                  ) {
+                    setPaymentAmount(String(outstandingAmount));
+                  }
+                  setExpandedAction(isExpanded ? null : opt.key);
+                }}
+                disabled={
+                  isDone ||
+                  (opt.key === "no_longer_active" && outstandingAmount > 0)
                 }
-                disabled={isDone}
                 style={{
                   width: "100%",
                   background: isDone
@@ -661,7 +739,11 @@ export default function RevisitLogger({
                   alignItems: "center",
                   gap: 14,
                   textAlign: "left",
-                  cursor: isDone ? "default" : "pointer",
+                  cursor: isDone
+                    ? "default"
+                    : opt.key === "no_longer_active" && outstandingAmount > 0
+                      ? "not-allowed"
+                      : "pointer",
                 }}
               >
                 <span style={{ fontSize: 26 }}>{opt.emoji}</span>
@@ -680,20 +762,40 @@ export default function RevisitLogger({
                     {opt.label}
                   </div>
                   <div style={{ fontSize: 13, color: t.text2, marginTop: 2 }}>
-                    {opt.sub}
+                    {!(
+                      opt.key === "no_longer_active" && outstandingAmount > 0
+                    ) && opt.sub}
+                    {opt.key === "no_longer_active" &&
+                      outstandingAmount > 0 && (
+                        <div
+                          style={{
+                            color: "#fca5a5",
+                            fontWeight: 600,
+                            marginTop: 4,
+                          }}
+                        >
+                          Disabled due to the remaining outstanding amount: ₹
+                          {outstandingAmount.toLocaleString()}
+                        </div>
+                      )}
                   </div>
                 </div>
-                {isDone ? (
-                  <span
-                    style={{ color: "#16a34a", fontSize: 20, fontWeight: 900 }}
-                  >
-                    ✓
-                  </span>
-                ) : (
-                  <span style={{ color: t.text3, fontSize: 16 }}>
-                    {isExpanded ? "▲" : "▼"}
-                  </span>
-                )}
+                {!(opt.key === "no_longer_active" && outstandingAmount > 0) &&
+                  (isDone ? (
+                    <span
+                      style={{
+                        color: "#16a34a",
+                        fontSize: 20,
+                        fontWeight: 900,
+                      }}
+                    >
+                      ✓
+                    </span>
+                  ) : (
+                    <span style={{ color: t.text3, fontSize: 16 }}>
+                      {isExpanded ? "▲" : "▼"}
+                    </span>
+                  ))}
               </button>
 
               {isExpanded && !isDone && (
@@ -1161,18 +1263,21 @@ export default function RevisitLogger({
                   {/* ── PAYMENT COLLECTION ── */}
                   {opt.key === "payment_collection" && (
                     <>
-                      <div
-                        style={{
-                          background: "rgba(217,119,6,0.1)",
-                          border: "1px solid rgba(217,119,6,0.2)",
-                          borderRadius: 10,
-                          padding: "10px 12px",
-                          fontSize: 12,
-                          color: "#d97706",
-                        }}
-                      >
-                        ⏳ Payment logged as pending — admin needs to approve
-                      </div>
+                      {outstandingAmount > 0 && (
+                        <div
+                          style={{
+                            background: "rgba(22,163,74,0.08)",
+                            border: "1px solid rgba(22,163,74,0.2)",
+                            borderRadius: 10,
+                            padding: "10px 12px",
+                            fontSize: 12,
+                            color: "#16a34a",
+                            fontWeight: 700,
+                          }}
+                        >
+                          Outstanding: ₹{outstandingAmount.toLocaleString()}
+                        </div>
+                      )}
                       <div>
                         <div
                           style={{
@@ -1202,6 +1307,55 @@ export default function RevisitLogger({
                           style={{
                             fontSize: 12,
                             color: t.text3,
+                            marginBottom: 6,
+                            textTransform: "uppercase",
+                            letterSpacing: 1,
+                          }}
+                        >
+                          Payment Method
+                        </div>
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr",
+                            gap: 6,
+                          }}
+                        >
+                          {(
+                            [
+                              ["cash", "💵 Cash"],
+                              ["upi", "📱 UPI"],
+                              ["cheque", "📄 Cheque"],
+                              ["bank_transfer", "🏦 Bank Transfer"],
+                            ] as const
+                          ).map(([val, label]) => (
+                            <button
+                              key={val}
+                              onClick={() => setPaymentMethod(val)}
+                              style={{
+                                background:
+                                  paymentMethod === val
+                                    ? "rgba(22,163,74,0.15)"
+                                    : t.bg3,
+                                color:
+                                  paymentMethod === val ? "#16a34a" : t.text2,
+                                border: `1.5px solid ${paymentMethod === val ? "#16a34a" : t.border}`,
+                                borderRadius: 10,
+                                padding: "9px 8px",
+                                fontSize: 12,
+                                fontWeight: 700,
+                              }}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: t.text3,
                             marginBottom: 4,
                             textTransform: "uppercase",
                             letterSpacing: 1,
@@ -1217,11 +1371,44 @@ export default function RevisitLogger({
                           style={{ ...inputStyle, resize: "none" }}
                         />
                       </div>
-                      {confirmBtn(
-                        "Log Payment ✓",
-                        handleConfirmPayment,
-                        !paymentAmount,
-                      )}
+                      {(() => {
+                        const amt = parseFloat(paymentAmount) || 0;
+                        const overLimit =
+                          outstandingAmount > 0 && amt > outstandingAmount;
+                        const invalid = !paymentAmount || amt <= 0 || overLimit;
+                        return (
+                          <>
+                            {overLimit && (
+                              <div
+                                style={{
+                                  fontSize: 12,
+                                  color: "#dc2626",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                ⚠️ Amount exceeds outstanding balance of ₹
+                                {outstandingAmount.toLocaleString()}
+                              </div>
+                            )}
+                            {amt <= 0 && paymentAmount && (
+                              <div
+                                style={{
+                                  fontSize: 12,
+                                  color: "#dc2626",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                ⚠️ Amount must be greater than zero
+                              </div>
+                            )}
+                            {confirmBtn(
+                              "Log Payment ✓",
+                              handleConfirmPayment,
+                              invalid,
+                            )}
+                          </>
+                        );
+                      })()}
                     </>
                   )}
 

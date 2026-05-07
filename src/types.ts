@@ -80,6 +80,35 @@ export interface MonthlyRequest {
 export type PaymentType = 'cash' | 'credit'
 export type QuantityUnit = 'packets' | 'cartons'
 
+// ── PAYMENT TRANSACTIONS ──────────────────────────────────────────────────────
+// Applies only to direct customers: distributors + independent retailers
+export type PaymentMethod = 'cash' | 'cheque' | 'bank_transfer' | 'upi'
+export type CollectionType = 'direct_to_company' | 'collected_by_salesperson'
+export type PaymentTxnStatus = 'pending_approval' | 'approved' | 'rejected'
+
+export interface PaymentTransaction {
+  id?: string
+  partyId: string
+  partyName: string
+  partyType: PartyType
+  amount: number
+  paymentMethod: PaymentMethod
+  collectionType: CollectionType
+  collectedBy?: string
+  collectedByName?: string
+  notes?: string
+  status: PaymentTxnStatus
+  approvedBy?: string
+  approvedByName?: string
+  approvedAt?: number
+  date: string
+  createdAt: number
+  appliedTo?: { allocId: string; amount: number }[]  // which allocs this payment was applied to (for reversal on cancel)
+  confirmedAt?: number       // admin confirmation that cash reached company
+  confirmedBy?: string
+  confirmedByName?: string
+}
+
 export interface Dispatch {
   id?: string
   partyId: string
@@ -115,6 +144,8 @@ export interface StockMovement {
 }
 
 // ── CREDIT ────────────────────────────────────────────────────────────────────
+// CreditEntry is legacy (pre-payment-transaction system). Kept for backward compat.
+// New credit tracking uses PaymentTransaction + UnifiedAllocation.creditDueDate.
 export interface CreditEntry {
   id?: string; partyId: string; partyName: string; partyType: PartyType
   deliveryId: string; packets: number; amount: number
@@ -223,6 +254,8 @@ export interface UnifiedAllocation {
   createdAt: number
   month: string                // YYYY-MM for grouping
   lockedAtCreation?: boolean   // true if company stock was locked at creation
+  creditDueDate?: string       // YYYY-MM-DD — for credit allocs; auto-escalates to overdue when passed
+  paidAmount?: number          // running total of payments applied to this alloc
 }
 
 // ── PRODUCTS ──────────────────────────────────────────────────────────────────
