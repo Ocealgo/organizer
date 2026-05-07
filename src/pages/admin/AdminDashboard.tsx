@@ -974,7 +974,10 @@ export default function AdminDashboard() {
                       </button>
                       {salesUsers.map((u) => {
                         const onLeave = leaveRecords.some(
-                          (l) => l.uid === u.uid && l.date === todayStr,
+                          (l) =>
+                            l.uid === u.uid &&
+                            l.date === todayStr &&
+                            (l.status === "active" || l.status === "unmark_requested"),
                         );
                         return (
                           <button
