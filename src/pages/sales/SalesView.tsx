@@ -127,7 +127,7 @@ export default function SalesView({ name }: Props) {
       })
       await addDoc(collection(db, 'alerts'), {
         type: 'leave_requested',
-        message: `🏖️ ${appUser.name} requested ${type === 'full_day' ? 'Full Day' : 'Half Day'} leave · ${leaveDate} · ${reason}`,
+        message: `${appUser.name} requested ${type === 'full_day' ? 'Full Day' : 'Half Day'} leave · ${leaveDate} · ${reason}`,
         relatedId: leaveRef.id, read: false, createdAt: Date.now(),
         toRole: 'admin_group',
       })
@@ -166,7 +166,6 @@ export default function SalesView({ name }: Props) {
   // Online Sales — disabled
   if (isOnline) return (
     <div style={{ minHeight: '100vh', background: t.bg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
-      <div style={{ fontSize: 64, marginBottom: 24 }}>🌐</div>
       <div style={{ background: 'rgba(217,119,6,0.2)', color: '#d97706', fontSize: 12, fontWeight: 800, padding: '4px 12px', borderRadius: 99, marginBottom: 16 }}>COMING SOON</div>
       <div style={{ fontSize: 24, fontWeight: 900, color: t.text, marginBottom: 12, textAlign: 'center' }}>Online Sales Dashboard</div>
       <div style={{ color: t.text2, fontSize: 14, lineHeight: 1.8, textAlign: 'center', maxWidth: 280 }}>
@@ -182,44 +181,43 @@ export default function SalesView({ name }: Props) {
 
   const menuItems = [
     {
-      emoji: '🗺️',
       label: "Today's Visits",
       sub: isOnFullLeave ? 'Disabled — you are on full day leave' : 'Log shop visits & outcomes',
       action: isOnFullLeave ? undefined : () => setScreen('visits'),
       primary: true,
       disabled: isOnFullLeave,
     },
-    { emoji: '🤝', label: 'Network', sub: 'Distributors & retailers', action: () => setScreen('parties'), primary: false, disabled: false },
-    { emoji: '📦', label: 'Allocations', sub: 'View & create stock requests', action: () => setScreen('allocations'), primary: false, disabled: false },
-    { emoji: '📅', label: 'Visit History', sub: 'Past logs by day & month', action: () => setScreen('history'), primary: false, disabled: false },
-    { emoji: '🏖️', label: 'My Leaves', sub: allLeaveRecords.filter(l => l.status === 'pending_approval').length > 0 ? `${allLeaveRecords.filter(l => l.status === 'pending_approval').length} pending approval` : 'View & manage leave requests', action: () => setScreen('leaves'), primary: false, disabled: false },
-    { emoji: '📊', label: 'Stock', sub: 'Available inventory', action: () => setScreen('stock'), primary: false, disabled: false },
-    { emoji: '💜', label: 'Credit Book', sub: 'Outstanding & settlements', action: () => setScreen('credits'), primary: false, disabled: false },
-    { emoji: '💸', label: 'Expenses', sub: 'Travel, food, misc', action: () => setScreen('expenses'), primary: false, disabled: false },
+    { label: 'Network', sub: 'Distributors & retailers', action: () => setScreen('parties'), primary: false, disabled: false },
+    { label: 'Allocations', sub: 'View & create stock requests', action: () => setScreen('allocations'), primary: false, disabled: false },
+    { label: 'Visit History', sub: 'Past logs by day & month', action: () => setScreen('history'), primary: false, disabled: false },
+    { label: 'My Leaves', sub: allLeaveRecords.filter(l => l.status === 'pending_approval').length > 0 ? `${allLeaveRecords.filter(l => l.status === 'pending_approval').length} pending approval` : 'View & manage leave requests', action: () => setScreen('leaves'), primary: false, disabled: false },
+    { label: 'Stock', sub: 'Available inventory', action: () => setScreen('stock'), primary: false, disabled: false },
+    { label: 'Credit Book', sub: 'Outstanding & settlements', action: () => setScreen('credits'), primary: false, disabled: false },
+    { label: 'Expenses', sub: 'Travel, food, misc', action: () => setScreen('expenses'), primary: false, disabled: false },
   ]
 
   return (
-    <div style={{ minHeight: '100vh', background: theme === 'dark' ? 'linear-gradient(145deg,#0d3d2e 0%,#1a5c42 55%,#2d7a56 100%)' : 'linear-gradient(145deg,#ecfdf5 0%,#d1fae5 100%)' }}>
+    <div style={{ minHeight: '100vh', background: t.bg }}>
       {/* Header */}
-      <div style={{ padding: '28px 24px 20px' }}>
+      <div style={{ background: '#000000', padding: '28px 24px 20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ width: 54, height: 54, background: 'rgba(255,255,255,0.2)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 22, color: '#fff', border: '2px solid rgba(255,255,255,0.3)' }}>{initials}</div>
+          <div style={{ width: 54, height: 54, background: 'rgba(255,255,255,0.1)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 22, color: '#fff', border: '2px solid rgba(255,255,255,0.15)' }}>{initials}</div>
           <div>
-            <div style={{ color: theme === 'dark' ? '#6ee7b7' : '#1a5c42', fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', fontWeight: 700 }}>🏪 Offline Sales</div>
-            <div style={{ fontSize: 26, fontWeight: 900, color: theme === 'dark' ? '#fff' : '#0d3d2e' }}>{name}</div>
+            <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', fontWeight: 700 }}>Offline Sales</div>
+            <div style={{ fontSize: 26, fontWeight: 900, color: '#ffffff' }}>{name}</div>
           </div>
         </div>
 
         {/* Today summary */}
         <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
           {[
-            { label: 'Visits Today', val: isOnFullLeave ? '🏖️' : (todayVisitLog ? todayVisitLog.totalVisited : '—'), color: theme === 'dark' ? '#fff' : '#0d3d2e' },
-            { label: 'Interested', val: isOnFullLeave ? '—' : (todayVisitLog ? todayVisitLog.totalInterested : '—'), color: theme === 'dark' ? '#86efac' : '#16a34a' },
-            { label: 'This Month', val: `${checkIns.length} logs`, color: theme === 'dark' ? '#bae6fd' : '#0891b2' },
+            { label: 'Visits Today', val: isOnFullLeave ? 'Leave' : (todayVisitLog ? todayVisitLog.totalVisited : '—'), color: '#ffffff' },
+            { label: 'Interested', val: isOnFullLeave ? '—' : (todayVisitLog ? todayVisitLog.totalInterested : '—'), color: '#22c55e' },
+            { label: 'This Month', val: `${checkIns.length} logs`, color: 'rgba(255,255,255,0.7)' },
           ].map(s => (
-            <div key={s.label} style={{ flex: 1, background: theme === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.5)', borderRadius: 12, padding: '12px 8px', textAlign: 'center' }}>
+            <div key={s.label} style={{ flex: 1, background: 'rgba(255,255,255,0.07)', borderRadius: 12, padding: '12px 8px', textAlign: 'center' }}>
               <div style={{ fontSize: 18, fontWeight: 900, color: s.color }}>{s.val}</div>
-              <div style={{ fontSize: 11, color: theme === 'dark' ? 'rgba(255,255,255,0.6)' : '#475569', marginTop: 2 }}>{s.label}</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>{s.label}</div>
             </div>
           ))}
         </div>
@@ -227,40 +225,38 @@ export default function SalesView({ name }: Props) {
 
       {/* Leave status banner — top, only when a leave record exists */}
       {todayLeave && (
-        <div style={{ padding: '0 20px 12px' }}>
+        <div style={{ padding: '12px 20px 0' }}>
           {todayLeave.status === 'pending_approval' && (
-            <div style={{ background: 'rgba(100,116,139,0.1)', border: '1.5px solid rgba(100,116,139,0.25)', borderRadius: 16, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 22 }}>⏳</span>
+            <div style={{ background: 'rgba(107,114,128,0.1)', border: '1.5px solid rgba(107,114,128,0.2)', borderRadius: 16, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 800, fontSize: 16, color: theme === 'dark' ? '#fff' : t.text }}>Leave Request Pending</div>
-                <div style={{ fontSize: 13, color: theme === 'dark' ? 'rgba(255,255,255,0.75)' : '#4b5563', marginTop: 3 }}>
+                <div style={{ fontWeight: 800, fontSize: 16, color: t.text }}>Leave Request Pending</div>
+                <div style={{ fontSize: 13, color: t.text2, marginTop: 3 }}>
                   {todayLeave.leaveType === 'half_day' ? 'Half Day' : 'Full Day'} · {todayLeave.reason} · Awaiting admin approval
                 </div>
               </div>
             </div>
           )}
           {(todayLeave.status === 'active' || todayLeave.status === 'unmark_requested') && (
-            <div style={{ background: todayLeave.leaveType === 'half_day' ? 'rgba(59,130,246,0.12)' : 'rgba(245,158,11,0.15)', border: `1.5px solid ${todayLeave.leaveType === 'half_day' ? 'rgba(59,130,246,0.35)' : 'rgba(245,158,11,0.35)'}`, borderRadius: 16, padding: '14px 18px' }}>
+            <div style={{ background: 'rgba(245,158,11,0.08)', border: '1.5px solid rgba(245,158,11,0.2)', borderRadius: 16, padding: '14px 18px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: todayLeave.status === 'unmark_requested' ? 8 : 0 }}>
-                <span style={{ fontSize: 26 }}>🏖️</span>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 800, fontSize: 16, color: theme === 'dark' ? '#fff' : '#92400e' }}>
+                  <div style={{ fontWeight: 800, fontSize: 16, color: t.text }}>
                     {todayLeave.leaveType === 'half_day' ? 'Half Day Leave' : 'Full Day Leave'}
                     {todayLeave.reason && <span style={{ fontWeight: 600, fontSize: 13, marginLeft: 6, opacity: 0.85 }}>· {todayLeave.reason}</span>}
                   </div>
-                  <div style={{ fontSize: 13, color: theme === 'dark' ? 'rgba(255,255,255,0.75)' : '#b45309', marginTop: 3 }}>
+                  <div style={{ fontSize: 13, color: t.text2, marginTop: 3 }}>
                     Approved · {new Date(todayLeave.markedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
                 {todayLeave.status === 'active' && (
                   <button onClick={handleUnmarkLeave}
-                    style={{ background: 'rgba(220,38,38,0.12)', border: '1px solid rgba(220,38,38,0.25)', color: '#dc2626', borderRadius: 10, padding: '7px 12px', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                    style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444', borderRadius: 10, padding: '7px 12px', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
                     Request Unmark
                   </button>
                 )}
               </div>
               {todayLeave.status === 'unmark_requested' && (
-                <div style={{ background: 'rgba(217,119,6,0.1)', border: '1px solid rgba(217,119,6,0.2)', borderRadius: 8, padding: '6px 10px', fontSize: 13, color: theme === 'dark' ? '#fff' : '#d97706', fontWeight: 700 }}>
+                <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 8, padding: '6px 10px', fontSize: 13, color: '#f59e0b', fontWeight: 700 }}>
                   Unmark request sent — waiting for admin approval
                 </div>
               )}
@@ -270,17 +266,34 @@ export default function SalesView({ name }: Props) {
       )}
 
       {/* Menu */}
-      <div style={{ padding: '0 20px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ padding: '16px 20px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {menuItems.map((item, i) => (
           <button key={i} onClick={item.disabled ? undefined : item.action}
             disabled={item.disabled}
-            style={{ background: item.primary ? (item.disabled ? (theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)') : '#fff') : theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.7)', color: item.primary ? (item.disabled ? (theme === 'dark' ? 'rgba(255,255,255,0.3)' : '#9ca3af') : '#0d3d2e') : theme === 'dark' ? '#fff' : '#0d3d2e', border: item.primary ? (item.disabled ? `1.5px dashed ${theme === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)'}` : 'none') : `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)'}`, borderRadius: 18, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left', boxShadow: item.primary && !item.disabled ? '0 8px 32px rgba(0,0,0,0.2)' : 'none', cursor: item.disabled ? 'not-allowed' : 'pointer', opacity: item.disabled ? 0.6 : 1 }}>
-            <span style={{ fontSize: 28 }}>{item.emoji}</span>
+            style={{
+              background: item.primary
+                ? (item.disabled ? t.bg3 : t.primary)
+                : t.card,
+              color: item.primary
+                ? (item.disabled ? t.text3 : t.primaryText)
+                : t.text,
+              border: item.primary
+                ? (item.disabled ? `1.5px dashed ${t.border2}` : 'none')
+                : `1px solid ${t.border}`,
+              borderRadius: 16,
+              padding: '18px 20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 14,
+              textAlign: 'left',
+              cursor: item.disabled ? 'not-allowed' : 'pointer',
+              opacity: item.disabled ? 0.5 : 1,
+            }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 16 }}>{item.label}</div>
-              <div style={{ fontSize: 13, color: item.primary ? (item.disabled ? (theme === 'dark' ? 'rgba(255,255,255,0.3)' : '#ef4444') : '#6b7280') : theme === 'dark' ? '#a7f3d0' : '#475569', marginTop: 3 }}>{item.sub}</div>
+              <div style={{ fontSize: 13, color: item.primary ? (item.disabled ? t.text3 : 'rgba(0,0,0,0.5)') : t.text2, marginTop: 3 }}>{item.sub}</div>
             </div>
-            {!item.disabled && <span style={{ fontSize: 22, opacity: 0.4 }}>›</span>}
+            {!item.disabled && <span style={{ fontSize: 22, opacity: 0.35 }}>›</span>}
           </button>
         ))}
       </div>
@@ -288,52 +301,52 @@ export default function SalesView({ name }: Props) {
       {/* Leave request — bottom, low prominence */}
       {!todayLeave && (
         <div style={{ padding: '20px 20px 40px' }}>
-          <div style={{ borderTop: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'}`, paddingTop: 16 }}>
-            <div style={{ fontSize: 13, color: theme === 'dark' ? 'rgba(255,255,255,0.7)' : '#6b7280', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8, textAlign: 'center' }}>Not working today?</div>
+          <div style={{ borderTop: `1px solid ${t.border}`, paddingTop: 16 }}>
+            <div style={{ fontSize: 13, color: t.text3, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8, textAlign: 'center' }}>Not working today?</div>
 
             {!pendingLeaveType ? (
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={() => setPendingLeaveType('full_day')} disabled={markingLeave}
-                  style={{ flex: 1, background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)'}`, color: theme === 'dark' ? '#fff' : '#374151', borderRadius: 12, padding: '11px', fontSize: 14, fontWeight: 700 }}>
+                  style={{ flex: 1, background: t.bg3, border: `1px solid ${t.border2}`, color: t.text2, borderRadius: 12, padding: '11px', fontSize: 14, fontWeight: 700 }}>
                   Full Day Leave
                 </button>
                 <button onClick={() => setPendingLeaveType('half_day')} disabled={markingLeave}
-                  style={{ flex: 1, background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)'}`, color: theme === 'dark' ? '#fff' : '#374151', borderRadius: 12, padding: '11px', fontSize: 14, fontWeight: 700 }}>
+                  style={{ flex: 1, background: t.bg3, border: `1px solid ${t.border2}`, color: t.text2, borderRadius: 12, padding: '11px', fontSize: 14, fontWeight: 700 }}>
                   Half Day Leave
                 </button>
               </div>
             ) : (
-              <div style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 14, padding: 14, border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}` }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: theme === 'dark' ? '#fff' : t.text, marginBottom: 10 }}>
-                  {pendingLeaveType === 'full_day' ? 'Full Day' : 'Half Day'} Leave Request · <span style={{ color: theme === 'dark' ? 'rgba(255,255,255,0.55)' : t.text3, fontWeight: 400 }}>Select a reason</span>
+              <div style={{ background: t.card, borderRadius: 14, padding: 14, border: `1px solid ${t.border2}` }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: t.text, marginBottom: 10 }}>
+                  {pendingLeaveType === 'full_day' ? 'Full Day' : 'Half Day'} Leave Request · <span style={{ color: t.text3, fontWeight: 400 }}>Select a reason</span>
                 </div>
                 <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 12, color: theme === 'dark' ? 'rgba(255,255,255,0.55)' : t.text3, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>Leave Date</div>
+                  <div style={{ fontSize: 12, color: t.text3, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>Leave Date</div>
                   <input type="date" value={leaveDate} onChange={e => setLeaveDate(e.target.value)}
-                    style={{ width: '100%', background: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)', border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.12)'}`, borderRadius: 10, padding: '9px 12px', color: theme === 'dark' ? '#fff' : '#374151', fontSize: 14, outline: 'none', boxSizing: 'border-box', colorScheme: theme === 'dark' ? 'dark' : 'light' }} />
+                    style={{ width: '100%', background: t.bg3, border: `1px solid ${t.border2}`, borderRadius: 10, padding: '9px 12px', color: t.text, fontSize: 14, outline: 'none', boxSizing: 'border-box', colorScheme: theme === 'dark' ? 'dark' : 'light' }} />
                   {allLeaveRecords.some(l => l.date === leaveDate && l.status !== 'removed' && l.status !== 'rejected') && (
-                    <div style={{ fontSize: 12, color: '#dc2626', marginTop: 5, fontWeight: 600 }}>
-                      ⚠️ Leave already submitted for this date
+                    <div style={{ fontSize: 12, color: '#ef4444', marginTop: 5, fontWeight: 600 }}>
+                      Leave already submitted for this date
                     </div>
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
                   {LEAVE_REASONS.map(r => (
                     <button key={r} onClick={() => setLeaveReason(r)}
-                      style={{ background: leaveReason === r ? (theme === 'dark' ? 'rgba(99,102,241,0.3)' : 'rgba(99,102,241,0.12)') : (theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'transparent'), border: `1px solid ${leaveReason === r ? '#818cf8' : (theme === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.12)')}`, color: leaveReason === r ? (theme === 'dark' ? '#fff' : '#4f46e5') : (theme === 'dark' ? '#fff' : '#374151'), borderRadius: 20, padding: '7px 15px', fontSize: 13, fontWeight: 700 }}>
+                      style={{ background: leaveReason === r ? t.bg3 : 'transparent', border: `1px solid ${leaveReason === r ? t.primary : t.border2}`, color: leaveReason === r ? t.text : t.text2, borderRadius: 20, padding: '7px 15px', fontSize: 13, fontWeight: leaveReason === r ? 700 : 400, outline: leaveReason === r ? `2px solid ${t.primary}` : 'none', outlineOffset: -1 }}>
                       {r}
                     </button>
                   ))}
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={() => { setPendingLeaveType(null); setLeaveReason('') }}
-                    style={{ flex: 1, background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.1)'}`, color: theme === 'dark' ? '#fff' : '#374151', borderRadius: 10, padding: '11px', fontSize: 14, fontWeight: 700 }}>
+                    style={{ flex: 1, background: t.bg3, border: `1px solid ${t.border2}`, color: t.text2, borderRadius: 10, padding: '11px', fontSize: 14, fontWeight: 700 }}>
                     Cancel
                   </button>
                   <button onClick={() => leaveReason && handleMarkLeave(pendingLeaveType, leaveReason as LeaveReason)}
                     disabled={!leaveReason || markingLeave || allLeaveRecords.some(l => l.date === leaveDate && l.status !== 'removed' && l.status !== 'rejected')}
-                    style={{ flex: 2, background: leaveReason ? 'rgba(99,102,241,0.2)' : (theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'transparent'), border: `1px solid ${leaveReason ? '#818cf8' : (theme === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)')}`, color: leaveReason ? (theme === 'dark' ? '#fff' : '#4f46e5') : (theme === 'dark' ? 'rgba(255,255,255,0.35)' : t.text3), borderRadius: 10, padding: '11px', fontSize: 14, fontWeight: 700, opacity: (!leaveReason || markingLeave || allLeaveRecords.some(l => l.date === leaveDate && l.status !== 'removed' && l.status !== 'rejected')) ? 0.5 : 1 }}>
-                    {markingLeave ? 'Sending…' : 'Send Request'}
+                    style={{ flex: 2, background: leaveReason ? t.primary : t.bg3, border: `1px solid ${leaveReason ? t.primary : t.border2}`, color: leaveReason ? t.primaryText : t.text3, borderRadius: 10, padding: '11px', fontSize: 14, fontWeight: 700, opacity: (!leaveReason || markingLeave || allLeaveRecords.some(l => l.date === leaveDate && l.status !== 'removed' && l.status !== 'rejected')) ? 0.5 : 1 }}>
+                    {markingLeave ? 'Sending...' : 'Send Request'}
                   </button>
                 </div>
               </div>

@@ -3,11 +3,13 @@ import { collection, onSnapshot, updateDoc, doc } from 'firebase/firestore'
 import { db } from '../../firebase'
 import { CreditEntry } from '../../types'
 import { useAuth } from '../../context/AuthContext'
+import { useTheme } from '../../context/ThemeContext'
 
 interface Props { onBack: () => void }
 
 export default function CreditBook({ onBack }: Props) {
   const { appUser } = useAuth()
+  const { t } = useTheme()
   const [credits, setCredits] = useState<CreditEntry[]>([])
   const [updating, setUpdating] = useState<string | null>(null)
   const [filter, setFilter] = useState<'outstanding' | 'pending_approval' | 'settled'>('outstanding')
@@ -49,22 +51,22 @@ export default function CreditBook({ onBack }: Props) {
   const pendingApproval = credits.filter(c => c.status === 'pending_approval').length
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0d1117', paddingBottom: 40 }}>
-      <div style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', padding: '24px 20px 16px' }}>
-        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#ddd6fe', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 16 }}>← Back</button>
-        <div style={{ color: '#ddd6fe', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Finance 💜</div>
-        <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Credit Book</div>
-        <div style={{ fontSize: 26, fontWeight: 900, color: '#fde68a', marginBottom: 4 }}>₹{totalOutstanding.toLocaleString()}</div>
-        <div style={{ color: '#ddd6fe', fontSize: 12, marginBottom: 16 }}>outstanding credit</div>
+    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
+      <div style={{ background: '#000000', padding: '24px 20px 16px' }}>
+        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'rgba(255,255,255,0.7)', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 16 }}>← Back</button>
+        <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Finance</div>
+        <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', marginBottom: 4 }}>Credit Book</div>
+        <div style={{ fontSize: 26, fontWeight: 900, color: '#fff', marginBottom: 4 }}>₹{totalOutstanding.toLocaleString()}</div>
+        <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginBottom: 16 }}>outstanding credit</div>
 
         {pendingApproval > 0 && isAdmin && (
-          <div style={{ background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 10, padding: '8px 14px', marginBottom: 12, fontSize: 12, color: '#fde68a' }}>
-            ⚠️ {pendingApproval} settlement{pendingApproval > 1 ? 's' : ''} awaiting your approval
+          <div style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 10, padding: '8px 14px', marginBottom: 12, fontSize: 12, color: '#f59e0b' }}>
+            {pendingApproval} settlement{pendingApproval > 1 ? 's' : ''} awaiting your approval
           </div>
         )}
 
         <div style={{ display: 'flex', gap: 8 }}>
-          {([['outstanding', '⏳ Outstanding'], ['pending_approval', '🔔 Pending'], ['settled', '✅ Settled']] as const).map(([val, label]) => (
+          {([['outstanding', 'Outstanding'], ['pending_approval', 'Pending'], ['settled', 'Settled']] as const).map(([val, label]) => (
             <button key={val} onClick={() => setFilter(val)}
               style={{ flex: 1, background: filter === val ? 'rgba(255,255,255,0.2)' : 'transparent', color: filter === val ? '#fff' : 'rgba(255,255,255,0.45)', border: 'none', borderRadius: '10px 10px 0 0', padding: '9px 4px', fontSize: 10, fontWeight: 800 }}>
               {label}
@@ -75,46 +77,45 @@ export default function CreditBook({ onBack }: Props) {
 
       <div style={{ padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {filtered.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 40, color: '#475569' }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>
-              {filter === 'outstanding' ? '💜' : filter === 'pending_approval' ? '🔔' : '✅'}
-            </div>
+          <div style={{ textAlign: 'center', padding: 40, color: t.text3 }}>
             <div style={{ fontWeight: 700 }}>
               {filter === 'outstanding' ? 'No outstanding credits' : filter === 'pending_approval' ? 'No pending approvals' : 'No settled credits yet'}
             </div>
           </div>
         ) : filtered.map(c => (
-          <div key={c.id} style={{ background: '#161b22', borderRadius: 14, padding: 16, border: `1px solid ${c.status === 'outstanding' ? 'rgba(124,58,237,0.3)' : c.status === 'pending_approval' ? 'rgba(245,158,11,0.3)' : 'rgba(22,163,74,0.2)'}` }}>
+          <div key={c.id} style={{ background: t.card, borderRadius: 14, padding: 16, border: `1px solid ${c.status === 'outstanding' ? t.border2 : c.status === 'pending_approval' ? 'rgba(245,158,11,0.3)' : 'rgba(34,197,94,0.2)'}` }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-              <div style={{ fontSize: 22 }}>{c.partyType === 'distributor' ? '🚚' : '🏪'}</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 800, fontSize: 14 }}>{c.partyName}</div>
-                <div style={{ fontSize: 11, color: '#64748b' }}>{c.packets} packets • {new Date(c.createdAt).toLocaleDateString('en-IN')}</div>
+              <div style={{ width: 36, height: 36, background: t.bg3, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: t.text2, flexShrink: 0 }}>
+                {c.partyType === 'distributor' ? 'D' : 'R'}
               </div>
-              <div style={{ fontWeight: 900, fontSize: 18, color: c.status === 'settled' ? '#16a34a' : '#fde68a' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 800, fontSize: 14, color: t.text }}>{c.partyName}</div>
+                <div style={{ fontSize: 11, color: t.text3 }}>{c.packets} packets • {new Date(c.createdAt).toLocaleDateString('en-IN')}</div>
+              </div>
+              <div style={{ fontWeight: 900, fontSize: 18, color: c.status === 'settled' ? '#22c55e' : t.text }}>
                 ₹{c.amount.toLocaleString()}
               </div>
             </div>
 
             {c.status === 'outstanding' && (
               <button onClick={() => requestSettle(c.id!)} disabled={updating === c.id}
-                style={{ width: '100%', background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(22,163,74,0.2)', color: '#16a34a', borderRadius: 10, padding: '10px', fontSize: 13, fontWeight: 800, opacity: updating === c.id ? 0.5 : 1 }}>
-                {isAdmin ? '✅ Mark as Settled' : '📤 Request Settlement'}
+                style={{ width: '100%', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.2)', color: '#22c55e', borderRadius: 10, padding: '10px', fontSize: 13, fontWeight: 800, opacity: updating === c.id ? 0.5 : 1 }}>
+                {isAdmin ? 'Mark as Settled' : 'Request Settlement'}
               </button>
             )}
 
             {c.status === 'pending_approval' && (
               <div>
-                <div style={{ fontSize: 12, color: '#d97706', marginBottom: 8 }}>🔔 Settlement requested by {c.settledByName}</div>
+                <div style={{ fontSize: 12, color: '#f59e0b', marginBottom: 8 }}>Settlement requested by {c.settledByName}</div>
                 {isAdmin && (
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button onClick={() => approveSettle(c.id!)} disabled={updating === c.id}
-                      style={{ flex: 1, background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(22,163,74,0.2)', color: '#16a34a', borderRadius: 10, padding: '10px', fontSize: 13, fontWeight: 800 }}>
-                      ✅ Approve
+                      style={{ flex: 1, background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.2)', color: '#22c55e', borderRadius: 10, padding: '10px', fontSize: 13, fontWeight: 800 }}>
+                      Approve
                     </button>
                     <button onClick={() => rejectSettle(c.id!)} disabled={updating === c.id}
-                      style={{ flex: 1, background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.2)', color: '#dc2626', borderRadius: 10, padding: '10px', fontSize: 13, fontWeight: 800 }}>
-                      ❌ Reject
+                      style={{ flex: 1, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444', borderRadius: 10, padding: '10px', fontSize: 13, fontWeight: 800 }}>
+                      Reject
                     </button>
                   </div>
                 )}
@@ -122,7 +123,7 @@ export default function CreditBook({ onBack }: Props) {
             )}
 
             {c.status === 'settled' && (
-              <div style={{ fontSize: 12, color: '#16a34a' }}>✅ Settled on {c.settledAt ? new Date(c.settledAt).toLocaleDateString('en-IN') : '-'}</div>
+              <div style={{ fontSize: 12, color: '#22c55e' }}>Settled on {c.settledAt ? new Date(c.settledAt).toLocaleDateString('en-IN') : '-'}</div>
             )}
           </div>
         ))}

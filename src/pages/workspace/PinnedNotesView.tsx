@@ -81,7 +81,7 @@ export default function PinnedNotesView() {
         </div>
         <button onClick={() => setShowAdd(!showAdd)}
           style={{ background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', color: '#93c5fd', borderRadius: 10, padding: '7px 14px', fontSize: 12, fontWeight: 700 }}>
-          📌 Pin Note
+          Pin Note
         </button>
       </div>
 
@@ -99,8 +99,8 @@ export default function PinnedNotesView() {
             style={{ background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '11px 14px', fontSize: 14, color: '#fff', outline: 'none', width: '100%', boxSizing: 'border-box', resize: 'none' }} />
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => { setShowAdd(false); setContent('') }} style={{ flex: 1, background: 'rgba(255,255,255,0.04)', border: 'none', color: '#64748b', borderRadius: 10, padding: 10, fontSize: 13, fontWeight: 700 }}>Cancel</button>
-            <button onClick={handleAdd} disabled={saving || !content.trim()} style={{ flex: 2, background: saving ? '#475569' : 'linear-gradient(135deg,#1e3a5f,#1e40af)', color: '#fff', border: 'none', borderRadius: 10, padding: 10, fontSize: 13, fontWeight: 800 }}>
-              {saving ? 'Pinning...' : 'Pin Note 📌'}
+            <button onClick={handleAdd} disabled={saving || !content.trim()} style={{ flex: 2, background: saving ? '#475569' : '#ffffff', color: saving ? '#aaa' : '#000', border: 'none', borderRadius: 10, padding: 10, fontSize: 13, fontWeight: 800 }}>
+              {saving ? 'Pinning...' : 'Pin Note'}
             </button>
           </div>
         </div>
@@ -109,7 +109,6 @@ export default function PinnedNotesView() {
       {/* Active notes */}
       {active.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 32, color: '#475569' }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>📌</div>
           <div style={{ fontWeight: 700 }}>No pinned notes yet</div>
           <div style={{ fontSize: 13, marginTop: 6 }}>Pin quick notes for the founding team</div>
         </div>
@@ -118,7 +117,7 @@ export default function PinnedNotesView() {
           style={{ background: '#161b22', borderRadius: 14, padding: 16, border: '1px solid rgba(59,130,246,0.15)', position: 'relative' }}>
           {/* Pin number */}
           <div style={{ position: 'absolute', top: -8, left: 12, background: '#1e40af', color: '#fff', fontSize: 9, fontWeight: 900, padding: '2px 8px', borderRadius: 99 }}>
-            📌 {i + 1}
+            {i + 1}
           </div>
           <div style={{ fontSize: 14, color: '#e2e8f0', lineHeight: 1.6, marginBottom: 10, marginTop: 4 }}>{note.content}</div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

@@ -49,11 +49,23 @@ export default function LoginPage({ onSwitch }: Props) {
     }
   };
 
+  const inputStyle = {
+    width: "100%",
+    background: "rgba(255,255,255,0.06)",
+    border: "1.5px solid rgba(255,255,255,0.13)",
+    borderRadius: 12,
+    padding: "13px 16px",
+    fontSize: 14,
+    color: "#fff",
+    outline: "none",
+    boxSizing: "border-box" as const,
+  };
+
   return (
     <div
       style={{
         minHeight: "100vh",
-        background: "linear-gradient(145deg,#0d3d2e 0%,#060a0f 60%)",
+        background: "#000000",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
@@ -66,7 +78,7 @@ export default function LoginPage({ onSwitch }: Props) {
           marginBottom: 6,
           fontSize: 11,
           letterSpacing: 3,
-          color: "#6ee7b7",
+          color: "rgba(255,255,255,0.45)",
           textTransform: "uppercase",
         }}
       >
@@ -77,12 +89,12 @@ export default function LoginPage({ onSwitch }: Props) {
           fontSize: 34,
           fontWeight: 900,
           marginBottom: 4,
-          color: "#6ee7b7",
+          color: "#ffffff",
         }}
       >
         Ocealgo
       </div>
-      <div style={{ color: "#6ee7b7", fontSize: 13, marginBottom: 36 }}>
+      <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 13, marginBottom: 36 }}>
         Team Dashboard
       </div>
       <div
@@ -98,7 +110,7 @@ export default function LoginPage({ onSwitch }: Props) {
           <div
             style={{
               fontSize: 11,
-              color: "#6ee7b7",
+              color: "rgba(255,255,255,0.45)",
               letterSpacing: 1,
               marginBottom: 6,
               textTransform: "uppercase",
@@ -111,24 +123,14 @@ export default function LoginPage({ onSwitch }: Props) {
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
             placeholder="your@email.com"
-            style={{
-              width: "100%",
-              background: "rgba(255,255,255,0.06)",
-              border: "1.5px solid rgba(255,255,255,0.1)",
-              borderRadius: 12,
-              padding: "13px 16px",
-              fontSize: 14,
-              color: "#fff",
-              outline: "none",
-              boxSizing: "border-box",
-            }}
+            style={inputStyle}
           />
         </div>
         <div>
           <div
             style={{
               fontSize: 11,
-              color: "#6ee7b7",
+              color: "rgba(255,255,255,0.45)",
               letterSpacing: 1,
               marginBottom: 6,
               textTransform: "uppercase",
@@ -143,17 +145,7 @@ export default function LoginPage({ onSwitch }: Props) {
               onChange={(e) => setForm({ ...form, password: e.target.value })}
               onKeyDown={(e) => e.key === "Enter" && handleLogin()}
               placeholder="Your password"
-              style={{
-                width: "100%",
-                background: "rgba(255,255,255,0.06)",
-                border: "1.5px solid rgba(255,255,255,0.1)",
-                borderRadius: 12,
-                padding: "13px 48px 13px 16px",
-                fontSize: 14,
-                color: "#fff",
-                outline: "none",
-                boxSizing: "border-box",
-              }}
+              style={{ ...inputStyle, paddingRight: 48 }}
             />
             <button
               onClick={() => setShowPass(!showPass)}
@@ -164,54 +156,52 @@ export default function LoginPage({ onSwitch }: Props) {
                 transform: "translateY(-50%)",
                 background: "none",
                 border: "none",
-                color: "#64748b",
-                fontSize: 18,
+                color: "rgba(255,255,255,0.4)",
+                fontSize: 12,
                 cursor: "pointer",
                 padding: 0,
+                fontWeight: 700,
               }}
             >
-              {showPass ? "🙈" : "👁️"}
+              {showPass ? "Hide" : "Show"}
             </button>
           </div>
         </div>
         {error && (
           <div
             style={{
-              background: "rgba(220,38,38,0.1)",
-              border: "1px solid rgba(220,38,38,0.3)",
+              background: "rgba(239,68,68,0.1)",
+              border: "1px solid rgba(239,68,68,0.2)",
               borderRadius: 10,
               padding: "10px 14px",
-              color: "#fca5a5",
+              color: "#ef4444",
               fontSize: 13,
             }}
           >
-            ⚠️ {error}
+            {error}
           </div>
         )}
         <button
           onClick={handleLogin}
           disabled={loading}
           style={{
-            background: loading
-              ? "#475569"
-              : "linear-gradient(135deg,#0d3d2e,#1a5c42)",
-            color: "#fff",
+            background: loading ? "rgba(255,255,255,0.08)" : "#ffffff",
+            color: "#000000",
             border: "none",
             borderRadius: 14,
             padding: "16px",
             fontSize: 15,
             fontWeight: 800,
             marginTop: 4,
-            boxShadow: "0 8px 24px rgba(13,61,46,0.4)",
           }}
         >
-          {loading ? "Logging in..." : "Log In 🌿"}
+          {loading ? "Logging in..." : "Log In"}
         </button>
-        <div style={{ textAlign: "center", color: "#64748b", fontSize: 13 }}>
+        <div style={{ textAlign: "center", color: "rgba(255,255,255,0.35)", fontSize: 13 }}>
           Don't have an account?{" "}
           <span
             onClick={onSwitch}
-            style={{ color: "#6ee7b7", cursor: "pointer", fontWeight: 700 }}
+            style={{ color: "#ffffff", cursor: "pointer", fontWeight: 700 }}
           >
             Request access
           </span>

@@ -56,8 +56,7 @@ function AppContent() {
           gap: 16,
         }}
       >
-        <div style={{ fontSize: 40 }}>🌿</div>
-        <div style={{ color: "#6ee7b7", fontSize: 14, letterSpacing: 2 }}>
+        <div style={{ color: t.text2, fontSize: 14, letterSpacing: 2 }}>
           Loading Ocealgo...
         </div>
       </div>
@@ -75,7 +74,7 @@ function AppContent() {
       <div
         style={{
           minHeight: "100vh",
-          background: "linear-gradient(145deg,#0d3d2e,#060a0f)",
+          background: "#000000",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
@@ -84,9 +83,6 @@ function AppContent() {
           textAlign: "center",
         }}
       >
-        <div style={{ fontSize: 56, marginBottom: 20 }}>
-          {status === "pending" ? "⏳" : status === "deactivated" ? "🚫" : "❌"}
-        </div>
         <div
           style={{
             fontSize: 22,
@@ -103,7 +99,7 @@ function AppContent() {
         </div>
         <div
           style={{
-            color: "#a7f3d0",
+            color: "rgba(255,255,255,0.55)",
             fontSize: 14,
             lineHeight: 1.8,
             marginBottom: 32,
@@ -137,12 +133,12 @@ function AppContent() {
     appUser.role === "offline_sales" || appUser.role === "online_sales";
 
   const ROLE_LABEL: Record<string, string> = {
-    offline_sales: "🏪 Offline Sales",
-    online_sales: "🌐 Online Sales",
-    offline_marketing: "📣 Offline Marketing",
-    online_marketing: "💻 Online Marketing",
-    admin: "🛡️ Admin",
-    super_admin: "👑 Super Admin",
+    offline_sales: "Offline Sales",
+    online_sales: "Online Sales",
+    offline_marketing: "Offline Marketing",
+    online_marketing: "Online Marketing",
+    admin: "Admin",
+    super_admin: "Super Admin",
   };
 
   if (showUserMgmt)
@@ -196,8 +192,8 @@ function TopBar({
   return (
     <div
       style={{
-        background: theme === "dark" ? "#0d1117" : "#fff",
-        borderBottom: `1px solid ${theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.08)"}`,
+        background: "#000000",
+        borderBottom: "1px solid rgba(255,255,255,0.08)",
         padding: "10px 12px",
         display: "flex",
         alignItems: "center",
@@ -212,20 +208,19 @@ function TopBar({
       >
         <span
           style={{
-            color: "#6ee7b7",
+            color: "#ffffff",
             fontSize: 13,
             fontWeight: 800,
             whiteSpace: "nowrap",
           }}
         >
-          🌿 Ocealgo
+          Ocealgo
         </span>
         <span
           style={{
             fontSize: 10,
-            color: theme === "dark" ? "#475569" : "#94a3b8",
-            background:
-              theme === "dark" ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)",
+            color: "rgba(255,255,255,0.45)",
+            background: "rgba(255,255,255,0.07)",
             padding: "2px 6px",
             borderRadius: 99,
             overflow: "hidden",
@@ -243,42 +238,43 @@ function TopBar({
         <button
           onClick={onThemeToggle}
           style={{
-            background:
-              theme === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
-            border: "none",
+            background: "rgba(255,255,255,0.08)",
+            border: "1px solid rgba(255,255,255,0.12)",
             borderRadius: 10,
-            padding: "7px 9px",
-            fontSize: 15,
+            padding: "7px 10px",
+            fontSize: 11,
+            fontWeight: 700,
             cursor: "pointer",
             lineHeight: 1,
+            color: "#ffffff",
           }}
         >
-          {theme === "dark" ? "☀️" : "🌙"}
+          {theme === "dark" ? "Light" : "Dark"}
         </button>
         <NotificationBell />
         {isAdmin && (
           <button
             onClick={onUsers}
             style={{
-              background: "rgba(217,119,6,0.15)",
-              border: "1px solid rgba(217,119,6,0.3)",
-              color: "#d97706",
+              background: "rgba(255,255,255,0.08)",
+              border: "1px solid rgba(255,255,255,0.12)",
+              color: "#ffffff",
               borderRadius: 10,
-              padding: "7px 9px",
-              fontSize: 13,
+              padding: "7px 10px",
+              fontSize: 11,
               fontWeight: 700,
               lineHeight: 1,
             }}
           >
-            👥
+            Users
           </button>
         )}
         <button
           onClick={onSignOut}
           style={{
-            background: "rgba(220,38,38,0.1)",
-            border: "1px solid rgba(220,38,38,0.2)",
-            color: "#dc2626",
+            background: "rgba(239,68,68,0.08)",
+            border: "1px solid rgba(239,68,68,0.2)",
+            color: "#ef4444",
             borderRadius: 10,
             padding: "7px 10px",
             fontSize: 11,

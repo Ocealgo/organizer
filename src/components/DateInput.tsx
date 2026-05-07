@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { useTheme } from '../context/ThemeContext'
 
 interface Props {
   type: 'date' | 'month'
@@ -10,7 +11,9 @@ interface Props {
 
 // Makes entire field clickable — not just the icon
 export default function DateInput({ type, value, onChange, style, placeholder }: Props) {
+  const { t, theme } = useRef<HTMLInputElement>(null) as any
   const ref = useRef<HTMLInputElement>(null)
+  const { t: theme_t, theme: themeMode } = useTheme()
 
   const handleClick = () => {
     try { ref.current?.showPicker() } catch { ref.current?.focus() }
@@ -18,16 +21,16 @@ export default function DateInput({ type, value, onChange, style, placeholder }:
 
   const base: React.CSSProperties = {
     width: '100%',
-    background: 'rgba(255,255,255,0.06)',
-    border: '1px solid rgba(255,255,255,0.1)',
+    background: theme_t.bg3,
+    border: `1px solid ${theme_t.border2}`,
     borderRadius: 10,
     padding: '10px 14px',
     fontSize: 14,
-    color: value ? '#fff' : '#64748b',
+    color: value ? theme_t.text : theme_t.text3,
     outline: 'none',
     boxSizing: 'border-box',
     cursor: 'pointer',
-    colorScheme: 'dark',
+    colorScheme: themeMode === 'dark' ? 'dark' : 'light',
     ...style,
   }
 

@@ -11,7 +11,7 @@ import { db } from "../../firebase";
 import { usePostStatuses } from "../../hooks/useFirebase";
 import {
   MAY_POSTS,
-  FORMAT_EMOJI,
+
   PILLAR_COLORS,
   STATUS_CONFIG,
 } from "../../data";
@@ -338,53 +338,46 @@ export default function AdminDashboard() {
 
   const quickLinks = [
     {
-      emoji: "📦",
       label: "Stock",
       sub: "Manage inventory",
       screen: "stock" as SubScreen,
       color: "#16a34a",
     },
     {
-      emoji: "🤝",
       label: "Distributors/Retailers",
       sub: "View & manage network",
       screen: "parties" as SubScreen,
       color: "#0891b2",
     },
     {
-      emoji: "🚀",
       label: "Allocations",
       sub: "Stock sending events",
       screen: "allocations" as SubScreen,
       color: "#d97706",
     },
     {
-      emoji: "🛍️",
       label: "Products",
       sub: "Add & manage products",
       screen: "products" as SubScreen,
       color: "#7c3aed",
     },
     {
-      emoji: "💜",
       label: "Credit Book",
       sub: "Outstanding payments",
       screen: "credits" as SubScreen,
       color: "#8b5cf6",
     },
     {
-      emoji: "💸",
       label: "Expenses",
       sub: "Team expenses log",
       screen: "expenses" as SubScreen,
       color: "#dc2626",
     },
     {
-      emoji: "🏖️",
       label: "Leave Tracker",
       sub:
         pendingLeaveCount > 0
-          ? `⏳ ${pendingLeaveCount} pending approval`
+          ? `${pendingLeaveCount} pending approval`
           : onLeaveTodayCount > 0
             ? `${onLeaveTodayCount} on leave today`
             : "Sales team attendance",
@@ -404,22 +397,22 @@ export default function AdminDashboard() {
       {/* Header */}
       <div
         style={{
-          background: "linear-gradient(135deg,#78350f,#d97706)",
+          background: "#000000",
           padding: "16px 20px 0",
         }}
       >
         <div
           style={{
-            color: "#fde68a",
+            color: "rgba(255,255,255,0.45)",
             fontSize: 13,
             letterSpacing: 3,
             textTransform: "uppercase",
             marginBottom: 2,
           }}
         >
-          Founders 👑
+          Founders
         </div>
-        <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 14 }}>
+        <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 14, color: "#ffffff" }}>
           Admin Dashboard
         </div>
         <div style={{ display: "flex", gap: 0, overflowX: "auto" }}>
@@ -437,7 +430,7 @@ export default function AdminDashboard() {
               style={{
                 flex: "1 0 auto",
                 background:
-                  mainTab === tab.id ? "rgba(255,255,255,0.2)" : "transparent",
+                  mainTab === tab.id ? "rgba(255,255,255,0.12)" : "transparent",
                 color: mainTab === tab.id ? "#fff" : "rgba(255,255,255,0.45)",
                 border: "none",
                 borderRadius: "12px 12px 0 0",
@@ -513,7 +506,6 @@ export default function AdminDashboard() {
                       {(q as any).badge}
                     </div>
                   )}
-                  <div style={{ fontSize: 22, marginBottom: 6 }}>{q.emoji}</div>
                   <div
                     style={{ fontWeight: 800, fontSize: 13, color: q.color }}
                   >
@@ -550,19 +542,16 @@ export default function AdminDashboard() {
                       label: "Distributors",
                       val: distCount,
                       color: "#0891b2",
-                      emoji: "🚚",
                     },
                     {
                       label: "Retailers",
                       val: retailerCount,
                       color: "#16a34a",
-                      emoji: "🏪",
                     },
                     {
                       label: "Active",
                       val: activeCount,
                       color: "#d97706",
-                      emoji: "🟢",
                     },
                   ].map((s) => (
                     <button
@@ -576,7 +565,6 @@ export default function AdminDashboard() {
                         border: `1px solid ${s.color}22`,
                       }}
                     >
-                      <div style={{ fontSize: 13 }}>{s.emoji}</div>
                       <div
                         style={{
                           fontSize: 20,
@@ -623,16 +611,14 @@ export default function AdminDashboard() {
                     {
                       label: "Overdue",
                       val: overdue,
-                      color: "#dc2626",
-                      bg: "rgba(220,38,38,0.1)",
-                      emoji: "🔴",
+                      color: "#ef4444",
+                      bg: "rgba(239,68,68,0.08)",
                     },
                     {
                       label: "Pending",
                       val: pending,
-                      color: "#d97706",
-                      bg: "rgba(217,119,6,0.1)",
-                      emoji: "🟡",
+                      color: "#f59e0b",
+                      bg: "rgba(245,158,11,0.08)",
                     },
                     {
                       label: "Credit Due",
@@ -641,8 +627,7 @@ export default function AdminDashboard() {
                           ? `₹${(creditDue / 1000).toFixed(0)}k`
                           : "0",
                       color: "#7c3aed",
-                      bg: "rgba(124,58,237,0.1)",
-                      emoji: "💜",
+                      bg: "rgba(124,58,237,0.08)",
                     },
                   ].map((s) => (
                     <button
@@ -656,7 +641,6 @@ export default function AdminDashboard() {
                         border: `1px solid ${s.color}33`,
                       }}
                     >
-                      <div style={{ fontSize: 13 }}>{s.emoji}</div>
                       <div
                         style={{
                           fontSize: 18,
@@ -739,9 +723,8 @@ export default function AdminDashboard() {
                           <div style={{ fontWeight: 700, fontSize: 14 }}>
                             {log.salesPersonName}
                           </div>
-                          <div style={{ fontSize: 12, color: "#16a34a" }}>
-                            🏪 {log.totalVisited || 0} visited • ✅{" "}
-                            {log.totalInterested || 0} interested
+                          <div style={{ fontSize: 12, color: "#22c55e" }}>
+                            {log.totalVisited || 0} visited · {log.totalInterested || 0} interested
                           </div>
                         </div>
                       </div>
@@ -805,7 +788,7 @@ export default function AdminDashboard() {
                     justifyContent: "center",
                     fontSize: 12,
                     fontWeight: 900,
-                    color: "#6ee7b7",
+                    color: "#22c55e",
                   }}
                 >
                   {pct}%
@@ -813,18 +796,18 @@ export default function AdminDashboard() {
               </div>
               <div>
                 <div
-                  style={{ color: "#6ee7b7", fontSize: 12, letterSpacing: 1 }}
+                  style={{ color: t.text3, fontSize: 12, letterSpacing: 1 }}
                 >
                   ONLINE MARKETING — MAY
                 </div>
-                <div style={{ fontSize: 22, fontWeight: 900, lineHeight: 1 }}>
+                <div style={{ fontSize: 22, fontWeight: 900, lineHeight: 1, color: t.text }}>
                   {done}
-                  <span style={{ fontSize: 13, color: "#6ee7b7" }}>
+                  <span style={{ fontSize: 13, color: t.text3 }}>
                     /{MAY_POSTS.length}
                   </span>
                 </div>
                 <div style={{ color: t.text3, fontSize: 12 }}>
-                  posts {missed > 0 ? `• ❌ ${missed} missed` : "✅ on track"}
+                  posts {missed > 0 ? `· ${missed} missed` : "· on track"}
                 </div>
               </div>
             </div>
@@ -889,7 +872,7 @@ export default function AdminDashboard() {
                   border: "1px dashed rgba(217,119,6,0.3)",
                 }}
               >
-                <div style={{ fontSize: 36, marginBottom: 12 }}>🌐</div>
+                <div style={{ marginBottom: 12 }}></div>
                 <div
                   style={{
                     background: "rgba(217,119,6,0.2)",
@@ -1001,10 +984,10 @@ export default function AdminDashboard() {
                             {u.name}
                             {onLeave && (
                               <span
-                                style={{ fontSize: 12 }}
+                                style={{ fontSize: 10, background: 'rgba(245,158,11,0.15)', color: '#f59e0b', padding: '1px 6px', borderRadius: 99, fontWeight: 700 }}
                                 title="On leave today"
                               >
-                                🏖️
+                                Leave
                               </span>
                             )}
                           </button>
@@ -1121,8 +1104,8 @@ export default function AdminDashboard() {
                       {(
                         [
                           ["all", "All"],
-                          ["distributor", "🚚 Dist."],
-                          ["retailer", "🏪 Retailers"],
+                          ["distributor", "Dist."],
+                          ["retailer", "Retailers"],
                         ] as [string, string][]
                       ).map(([val, label]) => (
                         <button
@@ -1157,14 +1140,14 @@ export default function AdminDashboard() {
                         onChange={setVisitDistSub}
                         placeholder="All retailers"
                         options={[
-                          { value: "all", label: "📋 All retailers" },
+                          { value: "all", label: "All retailers" },
                           {
                             value: "independent",
-                            label: "🟢 Independent retailers",
+                            label: "Independent retailers",
                           },
                           ...distributorList.map((d) => ({
                             value: d.id!,
-                            label: `🚚 ${d.name}`,
+                            label: d.name,
                             sub: d.place || d.address,
                           })),
                         ]}
@@ -1183,9 +1166,9 @@ export default function AdminDashboard() {
                       {(
                         [
                           ["all", "All"],
-                          ["active", "✅ Active"],
-                          ["prospect", "🔵 Prospect"],
-                          ["inactive", "⛔ Inactive"],
+                          ["active", "Active"],
+                          ["prospect", "Prospect"],
+                          ["inactive", "Inactive"],
                         ] as [string, string][]
                       ).map(([val, label]) => (
                         <button
@@ -1229,7 +1212,7 @@ export default function AdminDashboard() {
                         {
                           label: "Days",
                           val: filteredLogsWithVisits.length,
-                          color: "#6ee7b7",
+                          color: t.text,
                         },
                         {
                           label: "Visits",
@@ -1306,7 +1289,7 @@ export default function AdminDashboard() {
                               marginTop: 2,
                             }}
                           >
-                            🚚 Unique Distributors
+                            Unique Distributors
                           </div>
                         </div>
                         <div
@@ -1334,7 +1317,7 @@ export default function AdminDashboard() {
                               marginTop: 2,
                             }}
                           >
-                            🏪 Unique Retailers
+                            Unique Retailers
                           </div>
                         </div>
                       </div>
@@ -1504,10 +1487,10 @@ export default function AdminDashboard() {
                                           : a.status === "cancelled"
                                             ? "#dc2626"
                                             : "#d97706";
-                                    const partyEmoji =
+                                    const partyTypeLabel =
                                       a.partyType === "distributor"
-                                        ? "🚚"
-                                        : "🏪";
+                                        ? "Dist."
+                                        : "Retail.";
                                     return (
                                       <div
                                         key={a.id || i}
@@ -1528,8 +1511,8 @@ export default function AdminDashboard() {
                                             marginBottom: 6,
                                           }}
                                         >
-                                          <span style={{ fontSize: 14 }}>
-                                            {partyEmoji}
+                                          <span style={{ fontSize: 11, color: t.text3, fontWeight: 600 }}>
+                                            {partyTypeLabel}
                                           </span>
                                           <div style={{ flex: 1 }}>
                                             <div
@@ -1577,12 +1560,12 @@ export default function AdminDashboard() {
                                               color: t.text2,
                                             }}
                                           >
-                                            📦 {a.packets} pkts
+                                            {a.packets} pkts
                                           </span>
                                           <span
                                             style={{
                                               fontSize: 12,
-                                              color: "#d97706",
+                                              color: "#f59e0b",
                                               fontWeight: 700,
                                             }}
                                           >
@@ -1598,11 +1581,11 @@ export default function AdminDashboard() {
                                             }}
                                           >
                                             {a.paymentType === "cash"
-                                              ? "💵 Cash"
+                                              ? "Cash"
                                               : a.paymentType === "credit"
-                                                ? "📝 Credit"
+                                                ? "Credit"
                                                 : a.paymentType === "upi"
-                                                  ? "📱 UPI"
+                                                  ? "UPI"
                                                   : a.paymentType || ""}
                                           </span>
                                           {a.plannedDate && (
@@ -1612,7 +1595,7 @@ export default function AdminDashboard() {
                                                 color: t.text3,
                                               }}
                                             >
-                                              📅 {a.plannedDate}
+                                              {a.plannedDate}
                                             </span>
                                           )}
                                         </div>
@@ -1651,7 +1634,6 @@ export default function AdminDashboard() {
                   <div
                     style={{ textAlign: "center", padding: 32, color: t.text3 }}
                   >
-                    <div style={{ fontSize: 32, marginBottom: 10 }}>📋</div>
                     <div style={{ fontWeight: 700 }}>
                       No visit logs for this filter
                     </div>
@@ -1722,7 +1704,7 @@ export default function AdminDashboard() {
                               >
                                 Full Day Leave
                                 {leave.status === "unmark_requested"
-                                  ? " ⏳"
+                                  ? " (unmark pending)"
                                   : ""}
                               </span>
                             </div>
@@ -1742,11 +1724,10 @@ export default function AdminDashboard() {
                               padding: "8px 12px",
                             }}
                           >
-                            <div style={{ fontSize: 22 }}>🏖️</div>
                             <div
                               style={{
                                 fontSize: 11,
-                                color: "#d97706",
+                                color: "#f59e0b",
                                 fontWeight: 700,
                               }}
                             >
@@ -1844,7 +1825,7 @@ export default function AdminDashboard() {
                                       borderRadius: 99,
                                     }}
                                   >
-                                    🌤️ Half Day Leave
+                                    Half Day Leave
                                   </span>
                                 )}
                               </div>
@@ -1926,12 +1907,12 @@ export default function AdminDashboard() {
                             })
                             return Array.from(partyGroups.entries()).map(([partyId, entries]) => {
                               const party = partyMap.get(partyId) as any
-                              const typeEmoji = party?.type === 'distributor' ? '🚚' : '🏪'
+                              const typeLabel = party?.type === 'distributor' ? 'Dist' : 'Ret'
                               return (
                                 <div key={partyId} style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 10, padding: '10px 12px', marginBottom: 6 }}>
                                   {/* Party header — shown once */}
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                                    <span style={{ fontSize: 13 }}>{typeEmoji}</span>
+                                    <span style={{ fontSize: 10, background: party?.type === 'distributor' ? 'rgba(99,102,241,0.15)' : 'rgba(34,197,94,0.12)', color: party?.type === 'distributor' ? '#818cf8' : '#22c55e', padding: '1px 6px', borderRadius: 99, fontWeight: 700 }}>{typeLabel}</span>
                                     <span style={{ fontSize: 14, fontWeight: 800, color: t.text }}>{entries[0].partyName}</span>
                                     {entries[0].isNew && <span style={{ fontSize: 10, background: 'rgba(99,102,241,0.18)', color: '#818cf8', padding: '1px 7px', borderRadius: 99, fontWeight: 800 }}>NEW</span>}
                                     {party?.underDistributorName && party.type === 'retailer' && (
@@ -1948,21 +1929,22 @@ export default function AdminDashboard() {
                                           ? revisitLogs.find((rl: any) => rl.id === v.revisitLogId)
                                           : revisitLogs.find((rl: any) => rl.partyId === v.partyId && rl.salesPersonId === log.salesPersonId && rl.date === log.date))
                                       : null
-                                    const outcomeEmoji = v.outcome === 'interested' ? '✅' : v.outcome === 'not_interested' ? '❌' : '🔄'
+                                    const outcomeColor = v.outcome === 'interested' ? '#22c55e' : v.outcome === 'not_interested' ? '#ef4444' : '#f59e0b'
+                                    const outcomeLabel = v.outcome === 'interested' ? 'Interested' : v.outcome === 'not_interested' ? 'Not Interested' : 'Follow Up'
                                     const timeStr = v.loggedAt
                                       ? new Date(v.loggedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
                                       : ''
                                     return (
                                       <div key={vi} style={{ paddingLeft: 10, borderLeft: `2px solid ${theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`, marginBottom: vi < entries.length - 1 ? 10 : 0, paddingBottom: vi < entries.length - 1 ? 8 : 0 }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                                          <span style={{ fontSize: 14 }}>{outcomeEmoji}</span>
+                                          <span style={{ fontSize: 11, background: `${outcomeColor}18`, color: outcomeColor, padding: '1px 7px', borderRadius: 99, fontWeight: 700 }}>{outcomeLabel}</span>
                                           {timeStr && <span style={{ fontSize: 11, color: t.text3, fontWeight: 600 }}>{timeStr}</span>}
                                         </div>
                                         {/* Revisit action details */}
                                         {revisitLog?.actions?.map((action: any, ai: number) => {
                                           if (action.type === 'stock_update') return (
                                             <div key={ai} style={{ fontSize: 12, color: t.text2, marginBottom: 3 }}>
-                                              📊 <span style={{ fontWeight: 700 }}>Stock Updated</span>
+                                              <span style={{ fontWeight: 700 }}>Stock Updated</span>
                                               {' · '}Opening: {action.openingQty} · Sold: {action.soldQty}
                                               {' · '}<span style={{ fontWeight: 700, color: '#0891b2' }}>Balance: {action.balanceQty} pkts</span>
                                               {action.balanceValue > 0 && <span style={{ color: t.text3 }}> (₹{action.balanceValue.toLocaleString()})</span>}
@@ -1970,7 +1952,7 @@ export default function AdminDashboard() {
                                           )
                                           if (action.type === 'new_order') return (
                                             <div key={ai} style={{ fontSize: 12, color: t.text2, marginBottom: 3 }}>
-                                              📦 <span style={{ fontWeight: 700 }}>New Order</span>
+                                              <span style={{ fontWeight: 700 }}>New Order</span>
                                               {' · '}{action.quantity} {action.productName}
                                               {action.totalAmount > 0 && <span> · <span style={{ fontWeight: 700, color: '#16a34a' }}>₹{action.totalAmount?.toLocaleString()}</span></span>}
                                               {' · '}<span style={{ color: action.paymentType === 'credit' ? '#f59e0b' : t.text3 }}>{action.paymentType}</span>
@@ -1979,30 +1961,30 @@ export default function AdminDashboard() {
                                           )
                                           if (action.type === 'payment_collection') return (
                                             <div key={ai} style={{ fontSize: 12, color: t.text2, marginBottom: 3 }}>
-                                              💰 <span style={{ fontWeight: 700 }}>Payment Collected</span>
+                                              <span style={{ fontWeight: 700 }}>Payment Collected</span>
                                               {' · '}<span style={{ fontWeight: 700, color: '#16a34a' }}>₹{action.amount?.toLocaleString()}</span>
                                               {' · '}<span style={{ color: action.status === 'pending_approval' ? '#f59e0b' : t.text3 }}>
-                                                {action.status === 'pending_approval' ? '⏳ Pending approval' : '✅ Approved'}
+                                                {action.status === 'pending_approval' ? 'Pending approval' : 'Approved'}
                                               </span>
                                               {action.notes && <span style={{ color: t.text3 }}> · {action.notes}</span>}
                                             </div>
                                           )
                                           if (action.type === 'relationship_visit') return (
                                             <div key={ai} style={{ fontSize: 12, color: t.text2, marginBottom: 3 }}>
-                                              🤝 <span style={{ fontWeight: 700 }}>Relationship Visit</span>
+                                              <span style={{ fontWeight: 700 }}>Relationship Visit</span>
                                               {action.notes && <span style={{ color: t.text3 }}> · {action.notes}</span>}
                                             </div>
                                           )
                                           if (action.type === 'no_longer_active') return (
-                                            <div key={ai} style={{ fontSize: 12, color: '#dc2626', marginBottom: 3 }}>
-                                              ⛔ <span style={{ fontWeight: 700 }}>No Longer Active</span>
+                                            <div key={ai} style={{ fontSize: 12, color: '#ef4444', marginBottom: 3 }}>
+                                              <span style={{ fontWeight: 700 }}>No Longer Active</span>
                                               {action.reason && <span> · {action.reason}</span>}
                                             </div>
                                           )
                                           return null
                                         })}
                                         {revisitLog?.notes && (
-                                          <div style={{ fontSize: 12, color: t.text3, marginTop: 2 }}>📝 {revisitLog.notes}</div>
+                                          <div style={{ fontSize: 12, color: t.text3, marginTop: 2 }}>{revisitLog.notes}</div>
                                         )}
                                         {/* Non-revisit outcomes */}
                                         {!v.isRevisit && v.outcome === 'interested' && (
@@ -2018,7 +2000,7 @@ export default function AdminDashboard() {
                                         {!v.isRevisit && v.outcome === 'follow_up' && (
                                           <div style={{ fontSize: 12, color: '#f59e0b', fontWeight: 600 }}>Follow up needed</div>
                                         )}
-                                        {v.notes && <div style={{ fontSize: 12, color: t.text3, marginTop: 2 }}>📝 {v.notes}</div>}
+                                        {v.notes && <div style={{ fontSize: 12, color: t.text3, marginTop: 2 }}>{v.notes}</div>}
                                       </div>
                                     )
                                   })}
@@ -2045,7 +2027,7 @@ export default function AdminDashboard() {
                                   marginBottom: 2,
                                 }}
                               >
-                                📝 End of day note
+                                End of day note
                               </div>
                               <div style={{ fontSize: 13, color: t.text2 }}>
                                 {log.endOfDayNote}
@@ -2120,7 +2102,7 @@ export default function AdminDashboard() {
                   border: "1px dashed rgba(217,119,6,0.3)",
                 }}
               >
-                <div style={{ fontSize: 36, marginBottom: 12 }}>📣</div>
+                <div style={{ marginBottom: 12 }}></div>
                 <div
                   style={{
                     background: "rgba(217,119,6,0.2)",
@@ -2243,18 +2225,18 @@ export default function AdminDashboard() {
                             <span
                               style={{
                                 fontSize: 12,
-                                color: "#dc2626",
-                                background: "#dc262220",
+                                color: "#ef4444",
+                                background: "rgba(239,68,68,0.12)",
                                 padding: "2px 8px",
                                 borderRadius: 99,
                               }}
                             >
-                              ❌ {w.missed}
+                              {w.missed} missed
                             </span>
                           )}
                           <span
                             style={{
-                              color: "#6ee7b7",
+                              color: "#22c55e",
                               fontWeight: 800,
                               fontSize: 13,
                             }}
@@ -2304,8 +2286,8 @@ export default function AdminDashboard() {
                         border: `1px solid ${s === "missed" ? "#dc262630" : s === "posted" ? "#16a34a20" : t.border}`,
                       }}
                     >
-                      <div style={{ fontSize: 14 }}>
-                        {FORMAT_EMOJI[post.format]}
+                      <div style={{ fontSize: 11, color: t.text3 }}>
+                        {post.format}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div
@@ -2340,7 +2322,7 @@ export default function AdminDashboard() {
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {sc.emoji} {sc.label}
+                        {sc.label}
                       </div>
                     </div>
                   );

@@ -22,31 +22,25 @@ export const MAY_POSTS: ContentPost[] = [
 ]
 
 export const PILLAR_COLORS: Record<string, string> = {
-  'Brand Story':         '#7c3aed',
-  'Ingredient Education':'#0891b2',
-  'Mom Relatability':    '#db2777',
-  'Ingredient Science':  '#0891b2',
-  'Trust & Safety':      '#059669',
-  'Festival':            '#d97706',
-  'Why Ocealgo':         '#1a5c42',
-  'Comparison':          '#dc2626',
-  'Myth Busting':        '#7c3aed',
-  'FAQ':                 '#059669',
-  'Sustainability':      '#16a34a',
-  'Trust / FAQ':         '#059669',
-  'Product Deep Dive':   '#0891b2',
-  'Conversion / CTA':    '#d97706',
-}
-
-export const FORMAT_EMOJI: Record<string, string> = {
-  'Static Post': '🖼️',
-  'Carousel':    '📱',
-  'Reel':        '🎬',
+  'Brand Story':         '#6b7280',
+  'Ingredient Education':'#6b7280',
+  'Mom Relatability':    '#6b7280',
+  'Ingredient Science':  '#6b7280',
+  'Trust & Safety':      '#22c55e',
+  'Festival':            '#f59e0b',
+  'Why Ocealgo':         '#6b7280',
+  'Comparison':          '#6b7280',
+  'Myth Busting':        '#6b7280',
+  'FAQ':                 '#6b7280',
+  'Sustainability':      '#22c55e',
+  'Trust / FAQ':         '#22c55e',
+  'Product Deep Dive':   '#6b7280',
+  'Conversion / CTA':    '#f59e0b',
 }
 
 export const STATUS_CONFIG = {
-  pending:      { label: 'Pending',     color: '#94a3b8', bg: 'rgba(148,163,184,0.1)', emoji: '⏳' },
-  'in-progress':{ label: 'In Progress', color: '#d97706', bg: 'rgba(217,119,6,0.1)',   emoji: '🔄' },
-  posted:       { label: 'Posted',      color: '#16a34a', bg: 'rgba(22,163,74,0.1)',    emoji: '✅' },
-  missed:       { label: 'Missed',      color: '#dc2626', bg: 'rgba(220,38,38,0.1)',    emoji: '❌' },
+  pending:      { label: 'Pending',     color: '#6b7280', bg: 'rgba(107,114,128,0.1)' },
+  'in-progress':{ label: 'In Progress', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)'  },
+  posted:       { label: 'Posted',      color: '#22c55e', bg: 'rgba(34,197,94,0.1)'   },
+  missed:       { label: 'Missed',      color: '#ef4444', bg: 'rgba(239,68,68,0.1)'   },
 } as const

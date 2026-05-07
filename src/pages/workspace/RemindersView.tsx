@@ -155,8 +155,8 @@ export default function RemindersView() {
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => setShowAdd(false)} style={{ flex: 1, background: 'rgba(255,255,255,0.04)', border: 'none', color: '#64748b', borderRadius: 10, padding: 10, fontSize: 13, fontWeight: 700 }}>Cancel</button>
             <button onClick={handleAdd} disabled={saving || !form.title.trim() || !form.date}
-              style={{ flex: 2, background: saving ? '#475569' : 'linear-gradient(135deg,#1e3a5f,#1e40af)', color: '#fff', border: 'none', borderRadius: 10, padding: 10, fontSize: 13, fontWeight: 800, opacity: (!form.title.trim() || !form.date) ? 0.5 : 1 }}>
-              {saving ? 'Saving...' : 'Add Reminder 📅'}
+              style={{ flex: 2, background: saving ? '#475569' : '#ffffff', color: saving ? '#aaa' : '#000', border: 'none', borderRadius: 10, padding: 10, fontSize: 13, fontWeight: 800, opacity: (!form.title.trim() || !form.date) ? 0.5 : 1 }}>
+              {saving ? 'Saving...' : 'Add Reminder'}
             </button>
           </div>
         </div>
@@ -164,8 +164,8 @@ export default function RemindersView() {
 
       {/* Overdue banner */}
       {overdue.length > 0 && (
-        <div style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.2)', borderRadius: 12, padding: '10px 14px' }}>
-          <div style={{ fontSize: 11, color: '#dc2626', fontWeight: 700, marginBottom: 8 }}>⚠️ {overdue.length} Overdue</div>
+        <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 12, padding: '10px 14px' }}>
+          <div style={{ fontSize: 11, color: '#ef4444', fontWeight: 700, marginBottom: 8 }}>{overdue.length} Overdue</div>
           {overdue.map(r => (
             <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
               <button onClick={() => toggleDone(r)}
@@ -230,7 +230,7 @@ export default function RemindersView() {
             <div style={{ background: '#161b22', borderRadius: 14, padding: 14, border: '1px solid rgba(59,130,246,0.25)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <div style={{ fontSize: 12, color: '#93c5fd', fontWeight: 700 }}>
-                  📅 {new Date(selectedDay + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
+                  {new Date(selectedDay + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
                 </div>
                 <button onClick={() => setSelectedDay(null)}
                   style={{ background: 'none', border: 'none', color: '#475569', fontSize: 16, cursor: 'pointer' }}>✕</button>
@@ -276,7 +276,6 @@ export default function RemindersView() {
           )}
           {reminders.length === 0 && (
             <div style={{ textAlign: 'center', padding: 32, color: '#475569' }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>📅</div>
               <div style={{ fontWeight: 700 }}>No reminders yet</div>
               <div style={{ fontSize: 13, marginTop: 6 }}>Tap "+ Add" to create your first reminder</div>
             </div>

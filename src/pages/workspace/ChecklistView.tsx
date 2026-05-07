@@ -131,8 +131,8 @@ export default function ChecklistView() {
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => setShowAdd(false)} style={{ flex: 1, background: 'rgba(255,255,255,0.04)', border: 'none', color: '#64748b', borderRadius: 10, padding: 10, fontSize: 13, fontWeight: 700 }}>Cancel</button>
-            <button onClick={handleAdd} disabled={saving} style={{ flex: 2, background: saving ? '#475569' : 'linear-gradient(135deg,#1e3a5f,#1e40af)', color: '#fff', border: 'none', borderRadius: 10, padding: 10, fontSize: 13, fontWeight: 800 }}>
-              {saving ? 'Saving...' : 'Add Task ✅'}
+            <button onClick={handleAdd} disabled={saving} style={{ flex: 2, background: saving ? '#475569' : '#ffffff', color: saving ? '#aaa' : '#000', border: 'none', borderRadius: 10, padding: 10, fontSize: 13, fontWeight: 800 }}>
+              {saving ? 'Saving...' : 'Add Task'}
             </button>
           </div>
         </div>
@@ -174,7 +174,6 @@ export default function ChecklistView() {
 
       {adminItems.length === 0 && (
         <div style={{ textAlign: 'center', padding: 32, color: '#475569' }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
           <div style={{ fontWeight: 700 }}>{isMyList ? 'Your checklist is empty' : 'No tasks yet'}</div>
           {isMyList && <div style={{ fontSize: 13, marginTop: 6 }}>Tap "+ Add" to create your first task</div>}
         </div>

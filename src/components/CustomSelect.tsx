@@ -66,13 +66,13 @@ export default function CustomSelect({ value, onChange, options, placeholder = '
         onClick={() => { onChange(o.value); setOpen(false); setSearch('') }}
         style={{
           padding: '12px 16px', cursor: 'pointer',
-          background: value === o.value ? 'rgba(8,145,178,0.15)' : 'transparent',
-          color: value === o.value ? '#0891b2' : t.text,
-          borderLeft: value === o.value ? '3px solid #0891b2' : '3px solid transparent',
+          background: value === o.value ? (theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)') : 'transparent',
+          color: value === o.value ? t.text : t.text2,
+          borderLeft: value === o.value ? `2px solid ${t.primary}` : '2px solid transparent',
         }}
-        onMouseEnter={e => { if (value !== o.value) (e.currentTarget as HTMLElement).style.background = theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }}
+        onMouseEnter={e => { if (value !== o.value) (e.currentTarget as HTMLElement).style.background = theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)' }}
         onMouseLeave={e => { if (value !== o.value) (e.currentTarget as HTMLElement).style.background = 'transparent' }}>
-        <div style={{ fontSize: 14, fontWeight: value === o.value ? 700 : 500 }}>{o.label}</div>
+        <div style={{ fontSize: 14, fontWeight: value === o.value ? 700 : 400 }}>{o.label}</div>
         {o.sub && <div style={{ fontSize: 12, color: t.text3, marginTop: 2 }}>{o.sub}</div>}
       </div>
     ))
@@ -82,14 +82,14 @@ export default function CustomSelect({ value, onChange, options, placeholder = '
       <div onClick={() => { setOpen(!open); setSearch('') }}
         style={{
           width: '100%', background: t.bg3,
-          border: `1.5px solid ${error ? '#dc2626' : open ? '#0891b2' : t.border2}`,
+          border: `1.5px solid ${error ? '#ef4444' : open ? t.border2 : t.border}`,
           borderRadius: 12, padding: '13px 16px', fontSize: 15,
           color: selected ? t.text : t.text3, cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           boxSizing: 'border-box',
         }}>
         <span>{selected ? selected.label : placeholder}</span>
-        <span style={{ color: t.text3, fontSize: 12, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'none' }}>▼</span>
+        <span style={{ color: t.text3, fontSize: 11, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'none' }}>▼</span>
       </div>
 
       {open && (
@@ -97,7 +97,7 @@ export default function CustomSelect({ value, onChange, options, placeholder = '
           position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, zIndex: 1000,
           background: t.bg3, border: `1px solid ${t.border2}`,
           borderRadius: 12, overflow: 'hidden',
-          boxShadow: theme === 'dark' ? '0 12px 40px rgba(0,0,0,0.5)' : '0 8px 32px rgba(0,0,0,0.12)',
+          boxShadow: theme === 'dark' ? '0 12px 40px rgba(0,0,0,0.6)' : '0 8px 32px rgba(0,0,0,0.1)',
         }}>
           {searchable && (
             <div style={{ padding: '10px 12px', borderBottom: `1px solid ${t.border}` }}>
@@ -111,7 +111,7 @@ export default function CustomSelect({ value, onChange, options, placeholder = '
                   width: '100%', background: t.bg2,
                   border: `1px solid ${t.border}`,
                   borderRadius: 8, padding: '8px 12px',
-                  fontSize: 16, color: t.text, outline: 'none', boxSizing: 'border-box',
+                  fontSize: 15, color: t.text, outline: 'none', boxSizing: 'border-box',
                 }}
               />
             </div>
@@ -127,7 +127,7 @@ export default function CustomSelect({ value, onChange, options, placeholder = '
                 {ungrouped.length > 0 && renderOptions(ungrouped)}
                 {Object.entries(groups).map(([group, opts]) => (
                   <div key={group}>
-                    <div style={{ padding: '8px 16px 4px', fontSize: 11, color: t.text3, letterSpacing: 2, textTransform: 'uppercase', fontWeight: 700, borderTop: ungrouped.length > 0 ? `1px solid ${t.border}` : 'none' }}>
+                    <div style={{ padding: '8px 16px 4px', fontSize: 10, color: t.text3, letterSpacing: 2, textTransform: 'uppercase', fontWeight: 700, borderTop: ungrouped.length > 0 ? `1px solid ${t.border}` : 'none' }}>
                       {group}
                     </div>
                     {renderOptions(opts)}

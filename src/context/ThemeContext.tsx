@@ -14,19 +14,19 @@ interface ThemeContextType {
 }
 
 const dark = {
-  bg: '#0d1117', bg2: '#161b22', bg3: '#1e2530',
-  text: '#f1f5f9', text2: '#94a3b8', text3: '#475569',
-  border: 'rgba(255,255,255,0.08)', border2: 'rgba(255,255,255,0.14)',
-  card: '#161b22', cardHover: '#1e2530',
-  primary: '#1a5c42', primaryText: '#6ee7b7',
+  bg: '#0a0a0a', bg2: '#111111', bg3: '#1a1a1a',
+  text: '#ffffff', text2: '#a0a0a0', text3: '#555555',
+  border: 'rgba(255,255,255,0.07)', border2: 'rgba(255,255,255,0.13)',
+  card: '#111111', cardHover: '#1a1a1a',
+  primary: '#ffffff', primaryText: '#000000',
 }
 
 const light = {
-  bg: '#f8fafc', bg2: '#ffffff', bg3: '#f1f5f9',
-  text: '#0f172a', text2: '#475569', text3: '#94a3b8',
-  border: 'rgba(0,0,0,0.08)', border2: 'rgba(0,0,0,0.14)',
-  card: '#ffffff', cardHover: '#f8fafc',
-  primary: '#1a5c42', primaryText: '#1a5c42',
+  bg: '#ffffff', bg2: '#f5f5f5', bg3: '#eeeeee',
+  text: '#000000', text2: '#555555', text3: '#999999',
+  border: 'rgba(0,0,0,0.07)', border2: 'rgba(0,0,0,0.13)',
+  card: '#f5f5f5', cardHover: '#eeeeee',
+  primary: '#000000', primaryText: '#ffffff',
 }
 
 const ThemeContext = createContext<ThemeContextType>({
@@ -42,8 +42,8 @@ export function ThemeProvider({ children, userId }: { children: ReactNode; userI
 
   useEffect(() => {
     try { localStorage.setItem(storageKey, theme) } catch {}
-    document.body.style.background = theme === 'dark' ? '#0d1117' : '#f8fafc'
-    document.body.style.color = theme === 'dark' ? '#f1f5f9' : '#0f172a'
+    document.body.style.background = theme === 'dark' ? '#0a0a0a' : '#ffffff'
+    document.body.style.color = theme === 'dark' ? '#ffffff' : '#000000'
   }, [theme, storageKey])
 
   const toggle = () => setTheme(t => t === 'dark' ? 'light' : 'dark')

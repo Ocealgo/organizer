@@ -96,8 +96,8 @@ function parseZohoCSV(text: string): ParsedRow[] {
 function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return (
     <div>
-      <div style={{ fontSize: 10, color: '#64748b', marginBottom: 4, letterSpacing: 1, textTransform: 'uppercase' }}>{label}</div>
-      {hint && <div style={{ fontSize: 10, color: '#6ee7b7', marginBottom: 4 }}>💡 {hint}</div>}
+      <div style={{ fontSize: 10, color: '#888', marginBottom: 4, letterSpacing: 1, textTransform: 'uppercase' }}>{label}</div>
+      {hint && <div style={{ fontSize: 10, color: '#a0a0a0', marginBottom: 4 }}>{hint}</div>}
       {children}
     </div>
   )
@@ -212,17 +212,17 @@ export default function CSVImporter({ onBack, onDone }: Props) {
   // ── UPLOAD STEP ──────────────────────────────────────────────────────────
   if (step === 'upload') return (
     <div style={{ minHeight: '100vh', background: '#0d1117', paddingBottom: 40 }}>
-      <div style={{ background: 'linear-gradient(135deg,#0891b2,#0e7490)', padding: '24px 20px 20px' }}>
-        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#bae6fd', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 16 }}>← Back</button>
-        <div style={{ color: '#bae6fd', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Import 📥</div>
-        <div style={{ fontSize: 22, fontWeight: 900 }}>CSV Import</div>
+      <div style={{ background: '#000000', padding: '24px 20px 20px' }}>
+        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'rgba(255,255,255,0.7)', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 16 }}>← Back</button>
+        <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Import</div>
+        <div style={{ fontSize: 22, fontWeight: 900, color: '#fff' }}>CSV Import</div>
         <div style={{ color: '#e0f2fe', fontSize: 13, marginTop: 4 }}>Import distributors & retailers from Zoho</div>
       </div>
 
       <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
         {/* How to export from Zoho */}
         <div style={{ background: '#161b22', borderRadius: 14, padding: 16, border: '1px solid rgba(255,255,255,0.06)' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 10 }}>📋 How to export from Zoho</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 10 }}>How to export from Zoho</div>
           {[
             'Go to Zoho Books → Contacts',
             'Click "Export" → Select CSV format',
@@ -238,22 +238,22 @@ export default function CSVImporter({ onBack, onDone }: Props) {
 
         {/* What gets auto-filled */}
         <div style={{ background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.15)', borderRadius: 12, padding: 14 }}>
-          <div style={{ fontSize: 12, color: '#16a34a', fontWeight: 700, marginBottom: 8 }}>✅ Auto-filled from CSV</div>
+          <div style={{ fontSize: 12, color: '#22c55e', fontWeight: 700, marginBottom: 8 }}>Auto-filled from CSV</div>
           {['Name', 'Phone (if available)', 'Email (if available)', 'State / Region'].map(f => (
             <div key={f} style={{ fontSize: 12, color: '#86efac', padding: '2px 0' }}>• {f}</div>
           ))}
         </div>
 
         <div style={{ background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.15)', borderRadius: 12, padding: 14 }}>
-          <div style={{ fontSize: 12, color: '#d97706', fontWeight: 700, marginBottom: 8 }}>📝 You fill per entry</div>
+          <div style={{ fontSize: 12, color: '#f59e0b', fontWeight: 700, marginBottom: 8 }}>You fill per entry</div>
           {['Type (Distributor/Retailer)', 'Category', 'Price per packet', 'Full address'].map(f => (
             <div key={f} style={{ fontSize: 12, color: '#fde68a', padding: '2px 0' }}>• {f}</div>
           ))}
         </div>
 
         {error && (
-          <div style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.3)', borderRadius: 10, padding: '10px 14px', color: '#fca5a5', fontSize: 13 }}>
-            ⚠️ {error}
+          <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, padding: '10px 14px', color: '#ef4444', fontSize: 13 }}>
+            {error}
           </div>
         )}
 
@@ -262,8 +262,8 @@ export default function CSVImporter({ onBack, onDone }: Props) {
           onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
 
         <button onClick={() => fileRef.current?.click()}
-          style={{ background: 'linear-gradient(135deg,#0891b2,#0e7490)', color: '#fff', border: 'none', borderRadius: 14, padding: '18px', fontSize: 15, fontWeight: 800, boxShadow: '0 8px 24px rgba(8,145,178,0.3)' }}>
-          📁 Select CSV File
+          style={{ background: '#fff', color: '#000', border: 'none', borderRadius: 14, padding: '18px', fontSize: 15, fontWeight: 800 }}>
+          Select CSV File
         </button>
       </div>
     </div>
@@ -272,9 +272,8 @@ export default function CSVImporter({ onBack, onDone }: Props) {
   // ── DONE ─────────────────────────────────────────────────────────────────
   if (step === 'done') return (
     <div style={{ minHeight: '100vh', background: '#0d1117', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, textAlign: 'center' }}>
-      <div style={{ fontSize: 64, marginBottom: 20 }}>🎉</div>
       <div style={{ fontSize: 24, fontWeight: 900, color: '#fff', marginBottom: 8 }}>Import Complete!</div>
-      <div style={{ fontSize: 15, color: '#6ee7b7', marginBottom: 32 }}>
+      <div style={{ fontSize: 15, color: '#22c55e', marginBottom: 32 }}>
         {importCount} {importCount === 1 ? 'entry' : 'entries'} added to your network
       </div>
       <div style={{ background: '#161b22', borderRadius: 16, padding: 20, width: '100%', maxWidth: 300, marginBottom: 32, border: '1px solid rgba(22,163,74,0.2)' }}>
@@ -292,7 +291,7 @@ export default function CSVImporter({ onBack, onDone }: Props) {
         </div>
       </div>
       <button onClick={() => onDone(importCount)}
-        style={{ background: 'linear-gradient(135deg,#0891b2,#0e7490)', color: '#fff', border: 'none', borderRadius: 14, padding: '14px 32px', fontSize: 14, fontWeight: 800 }}>
+        style={{ background: '#fff', color: '#000', border: 'none', borderRadius: 14, padding: '14px 32px', fontSize: 14, fontWeight: 800 }}>
         View All Entries →
       </button>
     </div>
@@ -307,8 +306,8 @@ export default function CSVImporter({ onBack, onDone }: Props) {
   return (
     <div style={{ minHeight: '100vh', background: '#0d1117', paddingBottom: 40 }}>
       {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg,#0891b2,#0e7490)', padding: '20px 20px 16px' }}>
-        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#bae6fd', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 12 }}>← Cancel</button>
+      <div style={{ background: '#000000', padding: '20px 20px 16px' }}>
+        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'rgba(255,255,255,0.7)', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 12 }}>← Cancel</button>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <div style={{ fontSize: 13, color: '#bae6fd', fontWeight: 700 }}>Entry {currentIdx + 1} of {activeRows.length}</div>
           <div style={{ fontSize: 13, color: '#bae6fd', fontWeight: 700 }}>{progress}%</div>
@@ -333,13 +332,13 @@ export default function CSVImporter({ onBack, onDone }: Props) {
           <div style={{ fontSize: 18, fontWeight: 900, color: '#fff', marginBottom: 6 }}>{currentRow.name}</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {currentRow.phone && (
-              <span style={{ fontSize: 11, background: 'rgba(22,163,74,0.15)', color: '#16a34a', padding: '3px 10px', borderRadius: 99 }}>📞 {currentRow.phone}</span>
+              <span style={{ fontSize: 11, background: 'rgba(34,197,94,0.12)', color: '#22c55e', padding: '3px 10px', borderRadius: 99 }}>{currentRow.phone}</span>
             )}
             {currentRow.email && (
-              <span style={{ fontSize: 11, background: 'rgba(8,145,178,0.15)', color: '#0891b2', padding: '3px 10px', borderRadius: 99 }}>✉️ {currentRow.email}</span>
+              <span style={{ fontSize: 11, background: 'rgba(255,255,255,0.06)', color: '#94a3b8', padding: '3px 10px', borderRadius: 99 }}>{currentRow.email}</span>
             )}
             {currentRow.place && (
-              <span style={{ fontSize: 11, background: 'rgba(255,255,255,0.06)', color: '#94a3b8', padding: '3px 10px', borderRadius: 99 }}>📍 {currentRow.place}</span>
+              <span style={{ fontSize: 11, background: 'rgba(255,255,255,0.06)', color: '#94a3b8', padding: '3px 10px', borderRadius: 99 }}>{currentRow.place}</span>
             )}
             {currentRow.receivables > 0 && (
               <span style={{ fontSize: 11, background: 'rgba(217,119,6,0.15)', color: '#d97706', padding: '3px 10px', borderRadius: 99 }}>₹{currentRow.receivables.toLocaleString()} receivable</span>
@@ -348,8 +347,8 @@ export default function CSVImporter({ onBack, onDone }: Props) {
         </div>
 
         {isDuplicate && (
-          <div style={{ background: 'rgba(217,119,6,0.1)', border: '1px solid rgba(217,119,6,0.25)', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#fde68a' }}>
-            ⚠️ This name already exists in your network — it will be skipped on import
+          <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#f59e0b' }}>
+            This name already exists in your network — it will be skipped on import
           </div>
         )}
 
@@ -359,8 +358,8 @@ export default function CSVImporter({ onBack, onDone }: Props) {
           <div style={{ display: 'flex', gap: 8 }}>
             {(['distributor', 'retailer'] as PartyType[]).map(t => (
               <button key={t} onClick={() => updateRow('type', t)}
-                style={{ flex: 1, background: currentRow.type === t ? 'rgba(8,145,178,0.15)' : 'rgba(255,255,255,0.04)', color: currentRow.type === t ? '#0891b2' : '#64748b', border: `1.5px solid ${currentRow.type === t ? '#0891b2' : 'rgba(255,255,255,0.06)'}`, borderRadius: 12, padding: '12px', fontSize: 13, fontWeight: 800 }}>
-                {t === 'distributor' ? '🚚 Distributor' : '🏪 Retailer'}
+                style={{ flex: 1, background: currentRow.type === t ? '#fff' : 'rgba(255,255,255,0.04)', color: currentRow.type === t ? '#000' : '#64748b', border: `1.5px solid ${currentRow.type === t ? '#fff' : 'rgba(255,255,255,0.06)'}`, borderRadius: 12, padding: '12px', fontSize: 13, fontWeight: 800 }}>
+                {t === 'distributor' ? 'Distributor' : 'Retailer'}
               </button>
             ))}
           </div>
@@ -372,7 +371,7 @@ export default function CSVImporter({ onBack, onDone }: Props) {
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {CATEGORIES.map(c => (
               <button key={c} onClick={() => updateRow('category', c)}
-                style={{ background: currentRow.category === c ? 'rgba(124,58,237,0.2)' : 'rgba(255,255,255,0.04)', color: currentRow.category === c ? '#a78bfa' : '#64748b', border: `1px solid ${currentRow.category === c ? '#7c3aed' : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '6px 14px', fontSize: 12, fontWeight: 700 }}>
+                style={{ background: currentRow.category === c ? '#fff' : 'rgba(255,255,255,0.04)', color: currentRow.category === c ? '#000' : '#64748b', border: `1px solid ${currentRow.category === c ? '#fff' : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '6px 14px', fontSize: 12, fontWeight: 700 }}>
                 {c}
               </button>
             ))}

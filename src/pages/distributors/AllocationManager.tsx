@@ -12,32 +12,32 @@ import { localDateStr, localMonthStr, localDateOffset } from '../../utils/date'
 
 interface Props { onBack: () => void; parties: Party[]; isAdmin?: boolean }
 
-const STATUS_STYLE: Record<AllocationStatus, { color: string; bg: string; emoji: string; label: string }> = {
-  pending:   { color: '#d97706', bg: 'rgba(217,119,6,0.12)',   emoji: '🟡', label: 'Pending' },
-  sent:      { color: '#0891b2', bg: 'rgba(8,145,178,0.12)',   emoji: '🔵', label: 'Sent' },
-  paid:      { color: '#16a34a', bg: 'rgba(22,163,74,0.12)',   emoji: '✅', label: 'Paid' },
-  overdue:   { color: '#dc2626', bg: 'rgba(220,38,38,0.12)',   emoji: '🔴', label: 'Overdue' },
-  cancelled: { color: '#64748b', bg: 'rgba(100,116,139,0.12)', emoji: '🚫', label: 'Cancelled' },
+const STATUS_STYLE: Record<AllocationStatus, { color: string; bg: string; label: string }> = {
+  pending:   { color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  label: 'Pending' },
+  sent:      { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)',  label: 'Sent' },
+  paid:      { color: '#22c55e', bg: 'rgba(34,197,94,0.12)',   label: 'Paid' },
+  overdue:   { color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   label: 'Overdue' },
+  cancelled: { color: '#6b7280', bg: 'rgba(107,114,128,0.12)', label: 'Cancelled' },
 }
 
 function Field({ label, hint, error, children }: { label: string; hint?: string; error?: string; children: React.ReactNode }) {
   return (
     <div>
-      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>{label}</div>
-      {hint && <div style={{ fontSize: 11, color: '#6ee7b7', marginBottom: 6 }}>💡 {hint}</div>}
+      <div style={{ fontSize: 11, color: '#888', marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>{label}</div>
+      {hint && <div style={{ fontSize: 11, color: '#a0a0a0', marginBottom: 6 }}>{hint}</div>}
       {children}
-      {error && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 4 }}>⚠️ {error}</div>}
+      {error && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>{error}</div>}
     </div>
   )
 }
 
-function inputStyle(hasError?: boolean, dark = true): React.CSSProperties {
+function inputStyle(hasError?: boolean, _dark = true): React.CSSProperties {
   return {
     width: '100%',
-    background: dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-    border: `1.5px solid ${hasError ? '#dc2626' : dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.12)'}`,
+    background: 'rgba(128,128,128,0.08)',
+    border: `1.5px solid ${hasError ? '#ef4444' : 'rgba(128,128,128,0.2)'}`,
     borderRadius: 12, padding: '13px 16px', fontSize: 16,
-    color: dark ? '#fff' : '#0f172a', outline: 'none', boxSizing: 'border-box',
+    color: 'inherit', outline: 'none', boxSizing: 'border-box',
   }
 }
 
@@ -184,7 +184,7 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
       })
       await addDoc(collection(db, 'alerts'), {
         type: 'new_allocation',
-        message: `📦 New allocation: ${toDisplay(packets, config.packetsPerCarton)} of ${product?.name || 'product'} → ${party.name} (${isCompanyOrigin ? 'Ocealgo' : fromDist?.name || 'distributor'})`,
+        message: `New allocation: ${toDisplay(packets, config.packetsPerCarton)} of ${product?.name || 'product'} → ${party.name} (${isCompanyOrigin ? 'Ocealgo' : fromDist?.name || 'distributor'})`,
         relatedId: allocRef.id, read: false, createdAt: Date.now(),
       })
       await updateDoc(doc(db, 'parties', form.partyId), { status: 'active' })
@@ -409,8 +409,8 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
 
   // Party options for list-tab filter (all parties including retailers under distributors)
   const partyOptions = parties.map(p => ({
-    value: p.id!, label: `${p.type === 'distributor' ? '🚚' : '🏪'} ${p.name}`,
-    sub: `${p.category} • ${p.place || p.address}`,
+    value: p.id!, label: p.name,
+    sub: `${p.type === 'distributor' ? 'Dist' : 'Ret'} · ${p.category} • ${p.place || p.address}`,
     group: p.type === 'distributor' ? 'Distributors' : (p as any).underDistributorId ? 'Retailers (under Distributor)' : 'Independent Retailers',
   }))
 
@@ -419,14 +419,14 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
     ? parties
         .filter(p => !(p.type === 'retailer' && (p as any).underDistributorId))
         .map(p => ({
-          value: p.id!, label: `${p.type === 'distributor' ? '🚚' : '🏪'} ${p.name}`,
-          sub: `${p.category} • ${p.place || p.address}`,
+          value: p.id!, label: p.name,
+          sub: `${p.type === 'distributor' ? 'Dist' : 'Ret'} · ${p.category} • ${p.place || p.address}`,
           group: p.type === 'distributor' ? 'Distributors' : 'Independent Retailers',
         }))
     : form.fromId
       ? parties
           .filter(p => p.type === 'retailer' && (p as any).underDistributorId === form.fromId)
-          .map(p => ({ value: p.id!, label: `🏪 ${p.name}`, sub: `${p.category} • ${p.place || p.address}` }))
+          .map(p => ({ value: p.id!, label: p.name, sub: `${p.category} • ${p.place || p.address}` }))
       : []
 
   const blockedRetailersCount = parties.filter(p => p.type === 'retailer' && (p as any).underDistributorId).length
@@ -449,13 +449,13 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
     return (
       <>
       <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
-        <div style={{ background: 'linear-gradient(135deg,#1a5c42,#16a34a)', padding: '20px 20px 16px' }}>
-          <button onClick={() => setHistoryPartyId(null)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#bbf7d0', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 14 }}>← Network</button>
-          <div style={{ color: '#bbf7d0', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 2 }}>
-            {histParty.type === 'distributor' ? '🚚 Distributor' : '🏪 Retailer'} History
+        <div style={{ background: '#000000', padding: '20px 20px 16px' }}>
+          <button onClick={() => setHistoryPartyId(null)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'rgba(255,255,255,0.7)', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 14 }}>← Network</button>
+          <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 2 }}>
+            {histParty.type === 'distributor' ? 'Distributor' : 'Retailer'} History
           </div>
           <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', marginBottom: 2 }}>{histParty.name}</div>
-          <div style={{ fontSize: 12, color: '#a7f3d0' }}>{histParty.place || histParty.address} · {histParty.phone}</div>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>{histParty.place || histParty.address} · {histParty.phone}</div>
         </div>
 
         <div style={{ padding: '14px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -484,8 +484,8 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
               : stockEntries.map(([id, qty]) => ({ name: id, qty, id }))
             const hasAny = allEntries.some(e => e.qty > 0)
             return (
-              <div style={{ background: t.card, borderRadius: 14, padding: '14px 16px', border: `1.5px solid rgba(22,163,74,0.25)` }}>
-                <div style={{ fontSize: 11, color: '#6ee7b7', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>📦 Current Stock</div>
+              <div style={{ background: t.card, borderRadius: 14, padding: '14px 16px', border: `1.5px solid rgba(34,197,94,0.2)` }}>
+                <div style={{ fontSize: 11, color: '#22c55e', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>Current Stock</div>
                 {!hasAny ? (
                   <div style={{ fontSize: 13, color: t.text3 }}>No stock recorded</div>
                 ) : (
@@ -493,7 +493,7 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                     {allEntries.map(e => (
                       <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: 13, color: t.text2 }}>{e.name}</span>
-                        <span style={{ fontSize: 14, fontWeight: 800, color: e.qty > 0 ? '#6ee7b7' : t.text3 }}>
+                        <span style={{ fontSize: 14, fontWeight: 800, color: e.qty > 0 ? '#22c55e' : t.text3 }}>
                           {e.qty > 0 ? toDisplay(e.qty, config.packetsPerCarton) : '—'}
                         </span>
                       </div>
@@ -523,7 +523,7 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                     <div style={{ fontSize: 11, color: t.text3 }}>by {a.createdByName}</div>
                   </div>
                   <span style={{ background: ss.bg, color: ss.color, fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 99, flexShrink: 0 }}>
-                    {ss.emoji} {ss.label}
+                    {ss.label}
                   </span>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: isOutbound ? '1fr' : '1fr 1fr', gap: 6 }}>
@@ -558,7 +558,6 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                 return (
                   <div key={r.id} style={{ background: t.card, borderRadius: 14, padding: '14px 16px', border: `1px solid ${t.border}` }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                      <span style={{ fontSize: 18 }}>🏪</span>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 700, fontSize: 14, color: t.text }}>{r.name}</div>
                         <div style={{ fontSize: 11, color: t.text3 }}>{r.place || r.address}</div>
@@ -573,13 +572,13 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                     {/* Retailer current stock */}
                     {rTotalStock > 0 && (
                       <div style={{ background: isDark ? 'rgba(22,163,74,0.06)' : 'rgba(22,163,74,0.05)', border: '1px solid rgba(22,163,74,0.15)', borderRadius: 8, padding: '8px 10px', marginBottom: rAllocs.length > 0 ? 8 : 0 }}>
-                        <div style={{ fontSize: 10, color: '#6ee7b7', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 }}>In Stock</div>
+                        <div style={{ fontSize: 10, color: '#22c55e', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 }}>In Stock</div>
                         {rStockEntries.filter(([, qty]) => (qty as number) > 0).map(([pid, qty]) => {
                           const prod = products.find(p => p.id === pid)
                           return (
                             <div key={pid} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
                               <span style={{ color: t.text2 }}>{prod?.name || pid}</span>
-                              <span style={{ fontWeight: 700, color: '#6ee7b7' }}>{toDisplay(qty as number, config.packetsPerCarton)}</span>
+                              <span style={{ fontWeight: 700, color: '#22c55e' }}>{toDisplay(qty as number, config.packetsPerCarton)}</span>
                             </div>
                           )
                         })}
@@ -590,8 +589,8 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                         <span style={{ color: t.text3 }}>
                           {a.sentAt ? new Date(a.sentAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : a.plannedDate} · {a.packets} pkts{a.productName ? ` · ${a.productName}` : ''}
                         </span>
-                        <span style={{ color: a.status === 'sent' || a.status === 'paid' ? '#16a34a' : '#d97706', fontWeight: 700 }}>
-                          {a.status === 'sent' || a.status === 'paid' ? '✅' : '⏳'}
+                        <span style={{ color: a.status === 'sent' || a.status === 'paid' ? '#22c55e' : '#f59e0b', fontWeight: 700 }}>
+                          {a.status === 'sent' || a.status === 'paid' ? 'Sent' : 'Pending'}
                         </span>
                       </div>
                     ))}
@@ -610,27 +609,27 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
   return (
     <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
       {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg,#1a5c42,#16a34a)', padding: '20px 20px 0' }}>
-        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#bbf7d0', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 14 }}>← Back</button>
-        <div style={{ color: '#bbf7d0', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 2 }}>Allocations 📦</div>
-        <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 12 }}>Stock Allocations</div>
+      <div style={{ background: '#000000', padding: '20px 20px 0' }}>
+        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'rgba(255,255,255,0.7)', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 14 }}>← Back</button>
+        <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 2 }}>Allocations</div>
+        <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 12, color: '#fff' }}>Stock Allocations</div>
 
         {/* Summary pills */}
         <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 14, paddingBottom: 2 }}>
           {counts.overdue > 0 && (
-            <div style={{ background: 'rgba(220,38,38,0.25)', borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 800, color: '#fca5a5', whiteSpace: 'nowrap' }}>🔴 {counts.overdue} Overdue</div>
+            <div style={{ background: 'rgba(239,68,68,0.2)', borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 800, color: '#ef4444', whiteSpace: 'nowrap' }}>{counts.overdue} Overdue</div>
           )}
-          <div style={{ background: 'rgba(217,119,6,0.2)', borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, color: '#fde68a', whiteSpace: 'nowrap' }}>🟡 {counts.pending} Pending</div>
-          <div style={{ background: 'rgba(8,145,178,0.2)', borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, color: '#bae6fd', whiteSpace: 'nowrap' }}>🔵 {counts.sent} Sent</div>
-          <div style={{ background: 'rgba(22,163,74,0.2)', borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, color: '#86efac', whiteSpace: 'nowrap' }}>✅ {counts.paid} Paid</div>
-          {totalCredit > 0 && <div style={{ background: 'rgba(124,58,237,0.2)', borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, color: '#ddd6fe', whiteSpace: 'nowrap' }}>💜 ₹{totalCredit.toLocaleString()} credit due</div>}
+          <div style={{ background: 'rgba(245,158,11,0.15)', borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, color: '#f59e0b', whiteSpace: 'nowrap' }}>{counts.pending} Pending</div>
+          <div style={{ background: 'rgba(96,165,250,0.15)', borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, color: '#60a5fa', whiteSpace: 'nowrap' }}>{counts.sent} Sent</div>
+          <div style={{ background: 'rgba(34,197,94,0.15)', borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, color: '#22c55e', whiteSpace: 'nowrap' }}>{counts.paid} Paid</div>
+          {totalCredit > 0 && <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap' }}>₹{totalCredit.toLocaleString()} credit due</div>}
         </div>
 
         <div style={{ display: 'flex', gap: 8 }}>
           {([
-            { id: 'list',    label: '📋 List' },
-            { id: 'add',     label: '➕ New' },
-            { id: 'network', label: '🌐 Network' },
+            { id: 'list',    label: 'List' },
+            { id: 'add',     label: 'New' },
+            { id: 'network', label: 'Network' },
           ] as const).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               style={{ background: tab === t.id ? 'rgba(255,255,255,0.2)' : 'transparent', color: tab === t.id ? '#fff' : 'rgba(255,255,255,0.5)', border: 'none', borderRadius: '12px 12px 0 0', padding: '9px 18px', fontSize: 12, fontWeight: 700 }}>
@@ -648,12 +647,12 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
             {/* Source filter */}
             <div style={{ display: 'flex', gap: 8 }}>
               {([
-                { val: 'all',         label: '📋 All' },
-                { val: 'company',     label: '🏭 From Company' },
-                { val: 'distributor', label: '🚚 From Distributor' },
+                { val: 'all',         label: 'All' },
+                { val: 'company',     label: 'From Company' },
+                { val: 'distributor', label: 'From Distributor' },
               ] as const).map(opt => (
                 <button key={opt.val} onClick={() => setFilterSource(opt.val)}
-                  style={{ flex: 1, background: filterSource === opt.val ? 'rgba(22,163,74,0.15)' : isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', color: filterSource === opt.val ? '#16a34a' : '#64748b', border: `1.5px solid ${filterSource === opt.val ? '#16a34a' : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)'}`, borderRadius: 12, padding: '10px 6px', fontSize: 12, fontWeight: 800 }}>
+                  style={{ flex: 1, background: filterSource === opt.val ? 'rgba(255,255,255,0.15)' : t.bg3, color: filterSource === opt.val ? '#fff' : t.text2, border: `1.5px solid ${filterSource === opt.val ? 'rgba(255,255,255,0.3)' : t.border2}`, borderRadius: 12, padding: '10px 6px', fontSize: 12, fontWeight: 800 }}>
                   {opt.label}
                 </button>
               ))}
@@ -661,16 +660,16 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
 
             {/* Indent distributor filter */}
             {filterSource !== 'company' && (
-              <div style={{ background: t.card, borderRadius: 14, padding: 14, border: `1px solid rgba(8,145,178,0.2)` }}>
-                <div style={{ fontSize: 11, color: '#0891b2', marginBottom: 8, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>🚚 Filter by Distributor</div>
+              <div style={{ background: t.card, borderRadius: 14, padding: 14, border: `1px solid ${t.border2}` }}>
+                <div style={{ fontSize: 11, color: t.text2, marginBottom: 8, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Filter by Distributor</div>
                 <CustomSelect
                   value={filterDistributor}
                   onChange={setFilterDistributor}
                   placeholder="All distributors"
                   options={[
-                    { value: 'all', label: '📋 All distributors' },
+                    { value: 'all', label: 'All distributors' },
                     ...parties.filter(p => p.type === 'distributor').map(p => ({
-                      value: p.id!, label: `🚚 ${p.name}`, sub: p.place || p.address,
+                      value: p.id!, label: p.name, sub: p.place || p.address,
                     })),
                   ]}
                 />
@@ -685,12 +684,12 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                   : ['all', 'overdue', 'pending', 'sent', 'paid', 'cancelled'] as const
                 ).map(s => (
                   <button key={s} onClick={() => setFilterStatus(s)}
-                    style={{ background: filterStatus === s ? (s === 'all' ? '#1a5c42' : STATUS_STYLE[s as AllocationStatus]?.bg || '#1a5c42') : 'rgba(255,255,255,0.04)', color: filterStatus === s ? (s === 'all' ? '#6ee7b7' : STATUS_STYLE[s as AllocationStatus]?.color || '#6ee7b7') : '#64748b', border: `1px solid ${filterStatus === s ? (s === 'all' ? '#16a34a' : STATUS_STYLE[s as AllocationStatus]?.color || '#16a34a') : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', textTransform: 'capitalize' }}>
+                    style={{ background: filterStatus === s ? (STATUS_STYLE[s as AllocationStatus]?.bg || 'rgba(255,255,255,0.15)') : 'rgba(255,255,255,0.04)', color: filterStatus === s ? (STATUS_STYLE[s as AllocationStatus]?.color || '#fff') : '#888', border: `1px solid ${filterStatus === s ? (STATUS_STYLE[s as AllocationStatus]?.color || 'rgba(255,255,255,0.3)') : 'rgba(255,255,255,0.08)'}`, borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', textTransform: 'capitalize' }}>
                     {s === 'all'
                       ? `All (${counts.all})`
                       : s === 'pending' && counts.pending > 0
-                        ? `${STATUS_STYLE[s]?.emoji} pending (${counts.pending})`
-                        : `${STATUS_STYLE[s]?.emoji} ${s}`}
+                        ? `pending (${counts.pending})`
+                        : STATUS_STYLE[s as AllocationStatus]?.label || s}
                   </button>
                 ))}
               </div>
@@ -698,8 +697,8 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                 <div style={{ display: 'flex', gap: 6 }}>
                   {(['all', 'cash', 'credit'] as const).map(p => (
                     <button key={p} onClick={() => setFilterPayment(p)}
-                      style={{ background: filterPayment === p ? 'rgba(124,58,237,0.15)' : 'rgba(255,255,255,0.04)', color: filterPayment === p ? '#a78bfa' : '#64748b', border: `1px solid ${filterPayment === p ? '#7c3aed' : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700 }}>
-                      {p === 'all' ? 'All payments' : p === 'cash' ? '💵 Cash' : '📋 Credit'}
+                      style={{ background: filterPayment === p ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.04)', color: filterPayment === p ? '#fff' : '#888', border: `1px solid ${filterPayment === p ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700 }}>
+                      {p === 'all' ? 'All payments' : p === 'cash' ? 'Cash' : 'Credit'}
                     </button>
                   ))}
                 </div>
@@ -717,10 +716,9 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
             {/* Allocation cards */}
             {filtered.length === 0 ? (
               filterSource !== 'distributor' && (
-                <div style={{ textAlign: 'center', padding: 40, color: '#475569' }}>
-                  <div style={{ fontSize: 36, marginBottom: 10 }}>📦</div>
+                <div style={{ textAlign: 'center', padding: 40, color: t.text3 }}>
                   <div style={{ fontWeight: 700 }}>No allocations found</div>
-                  <div style={{ fontSize: 13, marginTop: 6 }}>Tap "New Allocation" to create one</div>
+                  <div style={{ fontSize: 13, marginTop: 6 }}>Tap "New" to create one</div>
                 </div>
               )
             ) : filtered.map(a => {
@@ -729,79 +727,78 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
               const isSentCredit = a.status === 'sent' && a.paymentType === 'credit'
               const daysUntil = Math.ceil((new Date(a.plannedDate).getTime() - Date.now()) / 86400000)
               return (
-                <div key={a.id} style={{ background: t.card, borderRadius: 16, padding: 16, border: `1.5px solid ${isOverdue ? '#dc262644' : ss.color + '33'}` }}>
+                <div key={a.id} style={{ background: t.card, borderRadius: 16, padding: 16, border: `1.5px solid ${ss.color}33` }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
-                    <div style={{ fontSize: 20, flexShrink: 0 }}>{a.partyType === 'distributor' ? '🚚' : '🏪'}</div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 800, fontSize: 15 }}>{a.partyName}</div>
-                      <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
-                        {a.fromType === 'distributor' ? `🚚 ${a.fromName}` : '🏭 Ocealgo'} → {a.partyName}
+                      <div style={{ fontSize: 10, color: t.text2, marginTop: 2 }}>
+                        {a.fromType === 'distributor' ? a.fromName : 'Ocealgo'} → {a.partyName}
                       </div>
-                      <div style={{ fontSize: 10, color: '#475569' }}>by {a.createdByName}</div>
+                      <div style={{ fontSize: 10, color: t.text3 }}>by {a.createdByName}</div>
                     </div>
                     <span style={{ background: ss.bg, color: ss.color, fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 99, whiteSpace: 'nowrap' }}>
-                      {ss.emoji} {ss.label}
+                      {ss.label}
                     </span>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: a.fromType === 'distributor' ? '1fr 1fr' : '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
-                    <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '8px', textAlign: 'center' }}>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: '#e2e8f0' }}>{toDisplay(a.packets, config.packetsPerCarton)}</div>
-                      <div style={{ fontSize: 9, color: '#64748b', marginTop: 2 }}>quantity</div>
+                    <div style={{ background: t.bg3, borderRadius: 10, padding: '8px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: t.text }}>{toDisplay(a.packets, config.packetsPerCarton)}</div>
+                      <div style={{ fontSize: 9, color: t.text3, marginTop: 2 }}>quantity</div>
                     </div>
                     {a.fromType !== 'distributor' && (
-                      <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '8px', textAlign: 'center' }}>
-                        <div style={{ fontSize: 13, fontWeight: 800, color: '#16a34a' }}>₹{a.totalAmount.toLocaleString()}</div>
-                        <div style={{ fontSize: 9, color: '#64748b', marginTop: 2 }}>{a.paymentType === 'cash' ? '💵 cash' : '📋 credit'}</div>
+                      <div style={{ background: t.bg3, borderRadius: 10, padding: '8px', textAlign: 'center' }}>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: '#22c55e' }}>₹{a.totalAmount.toLocaleString()}</div>
+                        <div style={{ fontSize: 9, color: t.text3, marginTop: 2 }}>{a.paymentType === 'cash' ? 'cash' : 'credit'}</div>
                       </div>
                     )}
-                    <div style={{ background: isOverdue ? 'rgba(220,38,38,0.1)' : 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '8px', textAlign: 'center', border: isOverdue ? '1px solid rgba(220,38,38,0.2)' : 'none' }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: isOverdue ? '#dc2626' : a.status === 'pending' ? '#d97706' : '#64748b' }}>
+                    <div style={{ background: isOverdue ? 'rgba(239,68,68,0.08)' : t.bg3, borderRadius: 10, padding: '8px', textAlign: 'center', border: isOverdue ? '1px solid rgba(239,68,68,0.2)' : 'none' }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: isOverdue ? '#ef4444' : a.status === 'pending' ? '#f59e0b' : t.text2 }}>
                         {a.status === 'pending' || a.status === 'overdue'
                           ? isOverdue ? 'Overdue!' : daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `${daysUntil}d`
                           : a.sentAt ? new Date(a.sentAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}
                       </div>
-                      <div style={{ fontSize: 9, color: '#64748b', marginTop: 2 }}>
+                      <div style={{ fontSize: 9, color: t.text3, marginTop: 2 }}>
                         {a.status === 'pending' || a.status === 'overdue' ? (a.fromType === 'distributor' ? 'awaiting confirmation' : `planned ${a.plannedDate}`) : 'sent'}
                       </div>
                     </div>
                   </div>
-                  {a.notes && <div style={{ fontSize: 11, color: '#475569', marginBottom: 10 }}>📝 {a.notes}</div>}
+                  {a.notes && <div style={{ fontSize: 11, color: t.text3, marginBottom: 10 }}>{a.notes}</div>}
                   {isAdmin && (
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       {(a.status === 'pending' || a.status === 'overdue') && (
                         <>
                           <button onClick={() => { setDispatchDateAlloc(a); setDispatchDate(localDateStr()) }} disabled={acting === a.id}
-                            style={{ flex: 1, background: a.fromType === 'distributor' ? 'linear-gradient(135deg,#0e4f7a,#0891b2)' : 'linear-gradient(135deg,#1a5c42,#16a34a)', color: '#fff', border: 'none', borderRadius: 10, padding: '10px', fontSize: 12, fontWeight: 800, opacity: acting === a.id ? 0.5 : 1 }}>
-                            {acting === a.id ? 'Processing...' : a.fromType === 'distributor' ? '✅ Confirm Sent' : '📦 Dispatch Now'}
+                            style={{ flex: 1, background: t.primary, color: t.primaryText, border: 'none', borderRadius: 10, padding: '10px', fontSize: 12, fontWeight: 800, opacity: acting === a.id ? 0.5 : 1 }}>
+                            {acting === a.id ? 'Processing...' : a.fromType === 'distributor' ? 'Confirm Sent' : 'Dispatch Now'}
                           </button>
                           <button onClick={() => handleCancelAllocation(a)} disabled={acting === a.id}
-                            style={{ background: 'rgba(220,38,38,0.1)', color: '#dc2626', border: '1px solid rgba(220,38,38,0.25)', borderRadius: 10, padding: '10px 14px', fontSize: 12, fontWeight: 700, opacity: acting === a.id ? 0.5 : 1 }}>
-                            🚫 Cancel
+                            style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: 12, fontWeight: 700, opacity: acting === a.id ? 0.5 : 1 }}>
+                            Cancel
                           </button>
                         </>
                       )}
                       {a.fromType !== 'distributor' && isSentCredit && (
                         <button onClick={() => handleMarkPaid(a)} disabled={acting === a.id}
-                          style={{ flex: 1, background: 'rgba(22,163,74,0.15)', color: '#16a34a', border: '1.5px solid rgba(22,163,74,0.3)', borderRadius: 10, padding: '10px', fontSize: 12, fontWeight: 800, opacity: acting === a.id ? 0.5 : 1 }}>
-                          {acting === a.id ? '...' : '✅ Mark Paid'}
+                          style={{ flex: 1, background: 'rgba(34,197,94,0.12)', color: '#22c55e', border: '1.5px solid rgba(34,197,94,0.25)', borderRadius: 10, padding: '10px', fontSize: 12, fontWeight: 800, opacity: acting === a.id ? 0.5 : 1 }}>
+                          {acting === a.id ? '...' : 'Mark Paid'}
                         </button>
                       )}
                       {a.fromType !== 'distributor' && a.status === 'sent' && a.paymentType === 'cash' && (
-                        <div style={{ flex: 1, background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.15)', borderRadius: 10, padding: '10px', fontSize: 12, color: '#16a34a', textAlign: 'center', fontWeight: 700 }}>✅ Cash received</div>
+                        <div style={{ flex: 1, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)', borderRadius: 10, padding: '10px', fontSize: 12, color: '#22c55e', textAlign: 'center', fontWeight: 700 }}>Cash received</div>
                       )}
                       {a.fromType !== 'distributor' && a.status === 'paid' && (
-                        <div style={{ flex: 1, background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.15)', borderRadius: 10, padding: '10px', fontSize: 12, color: '#16a34a', textAlign: 'center', fontWeight: 700 }}>
-                          ✅ Fully paid {a.paidAt ? new Date(a.paidAt).toLocaleDateString('en-IN') : ''}
+                        <div style={{ flex: 1, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)', borderRadius: 10, padding: '10px', fontSize: 12, color: '#22c55e', textAlign: 'center', fontWeight: 700 }}>
+                          Fully paid {a.paidAt ? new Date(a.paidAt).toLocaleDateString('en-IN') : ''}
                         </div>
                       )}
                       {a.fromType === 'distributor' && a.status === 'sent' && (
-                        <div style={{ flex: 1, background: 'rgba(8,145,178,0.08)', border: '1px solid rgba(8,145,178,0.15)', borderRadius: 10, padding: '10px', fontSize: 12, color: '#0891b2', textAlign: 'center', fontWeight: 700 }}>✅ Stock transferred</div>
+                        <div style={{ flex: 1, background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.15)', borderRadius: 10, padding: '10px', fontSize: 12, color: '#60a5fa', textAlign: 'center', fontWeight: 700 }}>Stock transferred</div>
                       )}
                     </div>
                   )}
                   {!isAdmin && (a.status === 'pending' || a.status === 'overdue') && (
-                    <div style={{ background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.15)', borderRadius: 10, padding: '8px 12px', fontSize: 11, color: '#d97706' }}>
-                      ⏳ Waiting for admin to dispatch
+                    <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 10, padding: '8px 12px', fontSize: 11, color: '#f59e0b' }}>
+                      Waiting for admin to dispatch
                     </div>
                   )}
                 </div>
@@ -825,39 +822,38 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                   return (
                     <div key={indent.id} style={{ background: t.card, borderRadius: 16, padding: 16, border: '1.5px solid rgba(8,145,178,0.3)' }}>
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
-                        <div style={{ fontSize: 20, flexShrink: 0 }}>🔖</div>
                         <div style={{ flex: 1 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                            <span style={{ fontSize: 10, fontWeight: 700, background: 'rgba(8,145,178,0.15)', color: '#0891b2', padding: '2px 7px', borderRadius: 99 }}>INDENT</span>
-                            <span style={{ fontSize: 10, fontWeight: 700, background: 'rgba(217,119,6,0.12)', color: '#d97706', padding: '2px 7px', borderRadius: 99 }}>
-                              {indent.status === 'partial' ? '🔄 Partial' : '⏳ Pending'}
+                            <span style={{ fontSize: 10, fontWeight: 700, background: 'rgba(96,165,250,0.12)', color: '#60a5fa', padding: '2px 7px', borderRadius: 99 }}>INDENT</span>
+                            <span style={{ fontSize: 10, fontWeight: 700, background: 'rgba(245,158,11,0.12)', color: '#f59e0b', padding: '2px 7px', borderRadius: 99 }}>
+                              {indent.status === 'partial' ? 'Partial' : 'Pending'}
                             </span>
                           </div>
-                          <div style={{ fontWeight: 800, fontSize: 15, color: t.text }}>🏪 {indent.retailerName}</div>
-                          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>🚚 {indent.distributorName} · {indent.productName}</div>
-                          <div style={{ fontSize: 11, color: '#64748b' }}>by {indent.requestedByName} · {new Date(indent.requestedAt).toLocaleDateString('en-IN')}</div>
+                          <div style={{ fontWeight: 800, fontSize: 15, color: t.text }}>{indent.retailerName}</div>
+                          <div style={{ fontSize: 11, color: t.text2, marginTop: 2 }}>{indent.distributorName} · {indent.productName}</div>
+                          <div style={{ fontSize: 11, color: t.text3 }}>by {indent.requestedByName} · {new Date(indent.requestedAt).toLocaleDateString('en-IN')}</div>
                         </div>
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
-                        <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '10px', textAlign: 'center' }}>
-                          <div style={{ fontSize: 16, fontWeight: 900, color: '#e2e8f0' }}>{indent.requestedPackets} pkts</div>
-                          <div style={{ fontSize: 9, color: '#64748b', marginTop: 2 }}>requested</div>
+                        <div style={{ background: t.bg3, borderRadius: 10, padding: '10px', textAlign: 'center' }}>
+                          <div style={{ fontSize: 16, fontWeight: 900, color: t.text }}>{indent.requestedPackets} pkts</div>
+                          <div style={{ fontSize: 9, color: t.text3, marginTop: 2 }}>requested</div>
                         </div>
-                        <div style={{ background: distStock > 0 ? 'rgba(22,163,74,0.08)' : 'rgba(220,38,38,0.08)', border: `1px solid ${distStock > 0 ? 'rgba(22,163,74,0.2)' : 'rgba(220,38,38,0.3)'}`, borderRadius: 10, padding: '10px', textAlign: 'center' }}>
-                          <div style={{ fontSize: 16, fontWeight: 900, color: distStock > 0 ? '#16a34a' : '#dc2626' }}>{distStock} pkts</div>
-                          <div style={{ fontSize: 9, color: '#64748b', marginTop: 2 }}>dist. stock</div>
+                        <div style={{ background: distStock > 0 ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${distStock > 0 ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.25)'}`, borderRadius: 10, padding: '10px', textAlign: 'center' }}>
+                          <div style={{ fontSize: 16, fontWeight: 900, color: distStock > 0 ? '#22c55e' : '#ef4444' }}>{distStock} pkts</div>
+                          <div style={{ fontSize: 9, color: t.text3, marginTop: 2 }}>dist. stock</div>
                         </div>
                       </div>
                       {distStock < neededQty && (
-                        <div style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.2)', borderRadius: 10, padding: '8px 12px', marginBottom: 10, fontSize: 12, color: '#dc2626' }}>
-                          ⚠️ Distributor has {distStock} pkts — needs {neededQty} pkts to fulfill
+                        <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, padding: '8px 12px', marginBottom: 10, fontSize: 12, color: '#ef4444' }}>
+                          Distributor has {distStock} pkts — needs {neededQty} pkts to fulfill
                         </div>
                       )}
                       {isAdmin && (
                         <>
-                          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>Quantity to send (max: {indent.requestedPackets} pkts)</div>
+                          <div style={{ fontSize: 11, color: t.text2, marginBottom: 6 }}>Quantity to send (max: {indent.requestedPackets} pkts)</div>
                           {indentErrors[indent.id!] && (
-                            <div style={{ fontSize: 11, color: '#dc2626', marginBottom: 6 }}>⚠️ {indentErrors[indent.id!]}</div>
+                            <div style={{ fontSize: 11, color: '#ef4444', marginBottom: 6 }}>{indentErrors[indent.id!]}</div>
                           )}
                           <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                             <input
@@ -871,18 +867,18 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                                 } else { setIndentErrors(prev => { const nx = { ...prev }; delete nx[indent.id!]; return nx }) }
                               }}
                               max={indent.requestedPackets}
-                              style={{ flex: 1, background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', border: `1.5px solid ${indentErrors[indent.id!] ? '#dc2626' : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.12)'}`, borderRadius: 10, padding: '11px 14px', fontSize: 16, fontWeight: 700, color: t.text, outline: 'none' }}
+                              style={{ flex: 1, background: 'rgba(128,128,128,0.08)', border: `1.5px solid ${indentErrors[indent.id!] ? '#ef4444' : 'rgba(128,128,128,0.2)'}`, borderRadius: 10, padding: '11px 14px', fontSize: 16, fontWeight: 700, color: t.text, outline: 'none' }}
                             />
                             <button
                               onClick={() => handleSendIndent(indent)}
                               disabled={sendingIndent === indent.id || distStock < 1}
-                              style={{ background: sendingIndent === indent.id || distStock < 1 ? '#475569' : 'linear-gradient(135deg,#0e4f7a,#0891b2)', color: '#fff', border: 'none', borderRadius: 10, padding: '11px 20px', fontSize: 13, fontWeight: 800, whiteSpace: 'nowrap', opacity: distStock < 1 ? 0.6 : 1 }}>
-                              {sendingIndent === indent.id ? '...' : '📦 Send'}
+                              style={{ background: sendingIndent === indent.id || distStock < 1 ? t.bg3 : t.primary, color: sendingIndent === indent.id || distStock < 1 ? t.text2 : t.primaryText, border: 'none', borderRadius: 10, padding: '11px 20px', fontSize: 13, fontWeight: 800, whiteSpace: 'nowrap', opacity: distStock < 1 ? 0.6 : 1 }}>
+                              {sendingIndent === indent.id ? '...' : 'Send'}
                             </button>
                           </div>
                           <button onClick={() => handleCancelIndent(indent)} disabled={sendingIndent === indent.id}
-                            style={{ width: '100%', background: 'rgba(220,38,38,0.08)', color: '#dc2626', border: '1px solid rgba(220,38,38,0.2)', borderRadius: 10, padding: '8px', fontSize: 12, fontWeight: 700 }}>
-                            🚫 Cancel Indent
+                            style={{ width: '100%', background: 'rgba(239,68,68,0.08)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, padding: '8px', fontSize: 12, fontWeight: 700 }}>
+                            Cancel Indent
                           </button>
                         </>
                       )}
@@ -900,19 +896,19 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
 
             {/* Source selector */}
             <div>
-              <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8, letterSpacing: 1, textTransform: 'uppercase' }}>Allocate From</div>
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 8, letterSpacing: 1, textTransform: 'uppercase' }}>Allocate From</div>
               <div style={{ display: 'flex', gap: 8 }}>
                 {([
-                  { val: 'company' as const,     label: '🏭 Company Stock' },
-                  { val: 'distributor' as const, label: '🚚 Distributor Stock' },
+                  { val: 'company' as const,     label: 'Company Stock' },
+                  { val: 'distributor' as const, label: 'Distributor Stock' },
                 ]).map(opt => (
                   <button key={opt.val}
                     onClick={() => setForm({ ...emptyForm, fromType: opt.val })}
                     style={{
                       flex: 1,
-                      background: form.fromType === opt.val ? 'rgba(22,163,74,0.15)' : isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
-                      color: form.fromType === opt.val ? '#16a34a' : '#64748b',
-                      border: `1.5px solid ${form.fromType === opt.val ? '#16a34a' : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)'}`,
+                      background: form.fromType === opt.val ? t.primary : t.bg3,
+                      color: form.fromType === opt.val ? t.primaryText : t.text2,
+                      border: `1.5px solid ${form.fromType === opt.val ? t.primary : t.border2}`,
                       borderRadius: 12, padding: '12px', fontSize: 13, fontWeight: 800,
                     }}>
                     {opt.label}
@@ -929,7 +925,7 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                   onChange={v => setForm({ ...form, fromId: v, partyId: '' })}
                   placeholder="Select distributor..."
                   options={parties.filter(p => p.type === 'distributor').map(p => ({
-                    value: p.id!, label: `🚚 ${p.name}`, sub: p.place || p.address,
+                    value: p.id!, label: p.name, sub: p.place || p.address,
                   }))}
                   error={!!errors.fromId}
                 />
@@ -944,23 +940,23 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                 const productSelected = !!form.productId
                 return (
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <div style={{ flex: 1, background: !productSelected ? 'rgba(100,116,139,0.08)' : prodAvail > 0 ? 'rgba(22,163,74,0.08)' : 'rgba(220,38,38,0.08)', border: `1px solid ${!productSelected ? 'rgba(100,116,139,0.2)' : prodAvail > 0 ? 'rgba(22,163,74,0.2)' : 'rgba(220,38,38,0.3)'}`, borderRadius: 12, padding: '12px 14px' }}>
-                      <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Company Available</div>
+                    <div style={{ flex: 1, background: !productSelected ? t.bg3 : prodAvail > 0 ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${!productSelected ? t.border2 : prodAvail > 0 ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.25)'}`, borderRadius: 12, padding: '12px 14px' }}>
+                      <div style={{ fontSize: 10, color: t.text3, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Company Available</div>
                       {!productSelected
-                        ? <div style={{ fontSize: 13, color: '#64748b' }}>Select product first</div>
+                        ? <div style={{ fontSize: 13, color: t.text2 }}>Select product first</div>
                         : <>
-                          <div style={{ fontSize: 20, fontWeight: 900, color: prodAvail > 0 ? '#16a34a' : '#dc2626' }}>{toDisplay(prodAvail, config.packetsPerCarton)}</div>
-                          {prodAvail === 0 && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 2 }}>No stock — set stock in Stock Management</div>}
+                          <div style={{ fontSize: 20, fontWeight: 900, color: prodAvail > 0 ? '#22c55e' : '#ef4444' }}>{toDisplay(prodAvail, config.packetsPerCarton)}</div>
+                          {prodAvail === 0 && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 2 }}>No stock — set stock in Stock Management</div>}
                         </>
                       }
                     </div>
                     {productSelected && form.packets && parseInt(form.packets) > 0 && (() => {
                       const after = prodAvail - toPackets(form.packets)
                       return (
-                        <div style={{ flex: 1, background: after >= 0 ? 'rgba(8,145,178,0.08)' : 'rgba(220,38,38,0.1)', border: `1px solid ${after >= 0 ? 'rgba(8,145,178,0.2)' : 'rgba(220,38,38,0.3)'}`, borderRadius: 12, padding: '12px 14px' }}>
-                          <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>After This</div>
-                          <div style={{ fontSize: 20, fontWeight: 900, color: after >= 0 ? '#0891b2' : '#dc2626' }}>{toDisplay(Math.max(0, after), config.packetsPerCarton)}</div>
-                          {after < 0 && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 2 }}>Insufficient!</div>}
+                        <div style={{ flex: 1, background: after >= 0 ? t.bg3 : 'rgba(239,68,68,0.08)', border: `1px solid ${after >= 0 ? t.border2 : 'rgba(239,68,68,0.25)'}`, borderRadius: 12, padding: '12px 14px' }}>
+                          <div style={{ fontSize: 10, color: t.text3, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>After This</div>
+                          <div style={{ fontSize: 20, fontWeight: 900, color: after >= 0 ? t.text : '#ef4444' }}>{toDisplay(Math.max(0, after), config.packetsPerCarton)}</div>
+                          {after < 0 && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 2 }}>Insufficient!</div>}
                         </div>
                       )
                     })()}
@@ -973,20 +969,20 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                   const distStock = selectedFromDist && form.productId ? (selectedFromDist.stock?.[form.productId] || 0) : null
                   return (
                     <>
-                      <div style={{ flex: 1, background: distStock !== null && distStock > 0 ? 'rgba(22,163,74,0.08)' : 'rgba(100,116,139,0.08)', border: `1px solid ${distStock !== null && distStock > 0 ? 'rgba(22,163,74,0.2)' : 'rgba(100,116,139,0.2)'}`, borderRadius: 12, padding: '12px 14px' }}>
-                        <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Distributor Stock</div>
+                      <div style={{ flex: 1, background: distStock !== null && distStock > 0 ? 'rgba(34,197,94,0.08)' : t.bg3, border: `1px solid ${distStock !== null && distStock > 0 ? 'rgba(34,197,94,0.2)' : t.border2}`, borderRadius: 12, padding: '12px 14px' }}>
+                        <div style={{ fontSize: 10, color: t.text3, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Distributor Stock</div>
                         {distStock === null
-                          ? <div style={{ fontSize: 12, color: '#64748b' }}>Select distributor & product</div>
-                          : <div style={{ fontSize: 20, fontWeight: 900, color: distStock > 0 ? '#16a34a' : '#dc2626' }}>{distStock} pkts</div>
+                          ? <div style={{ fontSize: 12, color: t.text2 }}>Select distributor & product</div>
+                          : <div style={{ fontSize: 20, fontWeight: 900, color: distStock > 0 ? '#22c55e' : '#ef4444' }}>{distStock} pkts</div>
                         }
                       </div>
                       {distStock !== null && form.packets && parseInt(form.packets) > 0 && (() => {
                         const after = distStock - toPackets(form.packets)
                         return (
-                          <div style={{ flex: 1, background: after >= 0 ? 'rgba(8,145,178,0.08)' : 'rgba(220,38,38,0.1)', border: `1px solid ${after >= 0 ? 'rgba(8,145,178,0.2)' : 'rgba(220,38,38,0.3)'}`, borderRadius: 12, padding: '12px 14px' }}>
-                            <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>After This</div>
-                            <div style={{ fontSize: 20, fontWeight: 900, color: after >= 0 ? '#0891b2' : '#dc2626' }}>{Math.max(0, after)} pkts</div>
-                            {after < 0 && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 2 }}>Insufficient!</div>}
+                          <div style={{ flex: 1, background: after >= 0 ? t.bg3 : 'rgba(239,68,68,0.08)', border: `1px solid ${after >= 0 ? t.border2 : 'rgba(239,68,68,0.25)'}`, borderRadius: 12, padding: '12px 14px' }}>
+                            <div style={{ fontSize: 10, color: t.text3, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>After This</div>
+                            <div style={{ fontSize: 20, fontWeight: 900, color: after >= 0 ? t.text : '#ef4444' }}>{Math.max(0, after)} pkts</div>
+                            {after < 0 && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 2 }}>Insufficient!</div>}
                           </div>
                         )
                       })()}
@@ -997,8 +993,8 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
             )}
 
             {form.fromType === 'company' && blockedRetailersCount > 0 && (
-              <div style={{ background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#d97706' }}>
-                ⚠️ {blockedRetailersCount} retailer{blockedRetailersCount > 1 ? 's' : ''} under distributors are hidden — use "Distributor Stock" to allocate to them.
+              <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#f59e0b' }}>
+                {blockedRetailersCount} retailer{blockedRetailersCount > 1 ? 's' : ''} under distributors are hidden — use "Distributor Stock" to allocate to them.
               </div>
             )}
 
@@ -1009,8 +1005,8 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
             </Field>
 
             {selectedParty && (
-              <div style={{ background: 'rgba(8,145,178,0.08)', border: '1px solid rgba(8,145,178,0.15)', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#7dd3fc' }}>
-                📍 {selectedParty.address} • 📞 {selectedParty.phone}
+              <div style={{ background: t.bg3, border: `1px solid ${t.border2}`, borderRadius: 10, padding: '10px 14px', fontSize: 12, color: t.text2 }}>
+                {selectedParty.address} • {selectedParty.phone}
               </div>
             )}
 
@@ -1022,22 +1018,20 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                   {products.map(p => (
                     <button key={p.id} onClick={() => setForm(f => ({ ...f, productId: p.id!, pricePerPacket: String(p.defaultPricePerUnit || '') }))}
                       style={{
-                        background: form.productId === p.id
-                          ? isDark ? 'rgba(22,163,74,0.15)' : 'rgba(22,163,74,0.1)'
-                          : isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
-                        border: `1.5px solid ${form.productId === p.id ? '#16a34a' : isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)'}`,
+                        background: form.productId === p.id ? 'rgba(34,197,94,0.1)' : t.bg3,
+                        border: `1.5px solid ${form.productId === p.id ? '#22c55e' : t.border2}`,
                         borderRadius: 12, padding: '12px 16px',
                         display: 'flex', alignItems: 'center', gap: 10,
-                        color: form.productId === p.id ? '#6ee7b7' : isDark ? '#94a3b8' : '#64748b',
+                        color: form.productId === p.id ? '#22c55e' : t.text2,
                         textAlign: 'left', cursor: 'pointer', width: '100%',
                       }}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: 14, color: form.productId === p.id ? (isDark ? '#6ee7b7' : '#16a34a') : t.text }}>{p.name}</div>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: form.productId === p.id ? '#22c55e' : t.text }}>{p.name}</div>
                         <div style={{ fontSize: 11, marginTop: 2, color: t.text2 }}>
                           {p.unitsPerCarton} {p.unitLabel}/carton · ₹{p.defaultPricePerUnit}/{p.unitLabel}
                         </div>
                       </div>
-                      {form.productId === p.id && <span style={{ fontSize: 16, color: '#16a34a' }}>✓</span>}
+                      {form.productId === p.id && <span style={{ fontSize: 14, color: '#22c55e', fontWeight: 700 }}>✓</span>}
                     </button>
                   ))}
                 </div>
@@ -1049,8 +1043,8 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
               <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                 {(['packets', 'cartons'] as const).map(u => (
                   <button key={u} onClick={() => setUnit(u)}
-                    style={{ flex: 1, background: unit === u ? 'rgba(22,163,74,0.15)' : 'rgba(255,255,255,0.04)', color: unit === u ? '#16a34a' : '#64748b', border: `1.5px solid ${unit === u ? '#16a34a' : 'rgba(255,255,255,0.06)'}`, borderRadius: 10, padding: '9px', fontSize: 12, fontWeight: 700 }}>
-                    {u === 'packets' ? '📦 Packets' : `📫 Cartons (1=${config.packetsPerCarton})`}
+                    style={{ flex: 1, background: unit === u ? t.primary : t.bg3, color: unit === u ? t.primaryText : t.text2, border: `1.5px solid ${unit === u ? t.primary : t.border2}`, borderRadius: 10, padding: '9px', fontSize: 12, fontWeight: 700 }}>
+                    {u === 'packets' ? 'Packets' : `Cartons (1=${config.packetsPerCarton})`}
                   </button>
                 ))}
               </div>
@@ -1058,7 +1052,7 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                 placeholder={unit === 'cartons' ? 'No. of cartons' : 'No. of packets'}
                 style={inputStyle(!!errors.packets, isDark)} />
               {form.packets && parseInt(form.packets) > 0 && (
-                <div style={{ marginTop: 6, fontSize: 12, color: '#6ee7b7', fontWeight: 600 }}>
+                <div style={{ marginTop: 6, fontSize: 12, color: '#22c55e', fontWeight: 600 }}>
                   = {toDisplay(toPackets(form.packets), config.packetsPerCarton)}
                   {form.pricePerPacket && parseFloat(form.pricePerPacket) > 0 && ` • ₹${(toPackets(form.packets) * parseFloat(form.pricePerPacket)).toLocaleString()}`}
                 </div>
@@ -1074,9 +1068,9 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
 
                 <Field label="Payment Type">
                   <div style={{ display: 'flex', gap: 8 }}>
-                    {([['cash', '💵 Cash'], ['credit', '📋 Credit']] as [PaymentType, string][]).map(([val, label]) => (
+                    {([['cash', 'Cash'], ['credit', 'Credit']] as [PaymentType, string][]).map(([val, label]) => (
                       <button key={val} onClick={() => setForm({ ...form, paymentType: val })}
-                        style={{ flex: 1, background: form.paymentType === val ? (val === 'cash' ? 'rgba(22,163,74,0.15)' : 'rgba(217,119,6,0.15)') : 'rgba(255,255,255,0.04)', color: form.paymentType === val ? (val === 'cash' ? '#16a34a' : '#d97706') : '#64748b', border: `1.5px solid ${form.paymentType === val ? (val === 'cash' ? '#16a34a' : '#d97706') : 'rgba(255,255,255,0.06)'}`, borderRadius: 12, padding: '12px', fontSize: 14, fontWeight: 800 }}>
+                        style={{ flex: 1, background: form.paymentType === val ? (val === 'cash' ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)') : t.bg3, color: form.paymentType === val ? (val === 'cash' ? '#22c55e' : '#f59e0b') : t.text2, border: `1.5px solid ${form.paymentType === val ? (val === 'cash' ? '#22c55e' : '#f59e0b') : t.border2}`, borderRadius: 12, padding: '12px', fontSize: 14, fontWeight: 800 }}>
                         {label}
                       </button>
                     ))}
@@ -1093,12 +1087,12 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
               <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}
                 placeholder="Any notes about this allocation..."
                 rows={2}
-                style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '13px 16px', fontSize: 16, color: '#fff', outline: 'none', resize: 'none', boxSizing: 'border-box' }} />
+                style={{ width: '100%', background: 'rgba(128,128,128,0.08)', border: `1.5px solid rgba(128,128,128,0.2)`, borderRadius: 12, padding: '13px 16px', fontSize: 16, color: 'inherit', outline: 'none', resize: 'none', boxSizing: 'border-box' }} />
             </Field>
 
             <button onClick={handleCreate} disabled={saving}
-              style={{ background: saving ? '#475569' : 'linear-gradient(135deg,#1a5c42,#16a34a)', color: '#fff', border: 'none', borderRadius: 14, padding: 16, fontSize: 15, fontWeight: 800 }}>
-              {saving ? 'Creating...' : 'Create Allocation 📦'}
+              style={{ background: saving ? t.bg3 : t.primary, color: saving ? t.text2 : t.primaryText, border: 'none', borderRadius: 14, padding: 16, fontSize: 15, fontWeight: 800 }}>
+              {saving ? 'Creating...' : 'Create Allocation'}
             </button>
           </div>
         )}
@@ -1115,19 +1109,19 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {([
                   { val: 'all',      label: 'All' },
-                  { val: 'active',   label: '🟢 Active' },
-                  { val: 'prospect', label: '🟡 Prospect' },
-                  { val: 'inactive', label: '⛔ Inactive' },
+                  { val: 'active',   label: 'Active' },
+                  { val: 'prospect', label: 'Prospect' },
+                  { val: 'inactive', label: 'Inactive' },
                 ] as const).map(s => (
                   <button key={s.val} onClick={() => setNetworkStatusFilter(s.val)}
                     style={{
                       background: networkStatusFilter === s.val
-                        ? s.val === 'all' ? (isDark ? 'rgba(22,163,74,0.2)' : 'rgba(22,163,74,0.12)') : s.val === 'active' ? 'rgba(22,163,74,0.15)' : s.val === 'prospect' ? 'rgba(217,119,6,0.15)' : 'rgba(220,38,38,0.12)'
-                        : isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
+                        ? s.val === 'active' ? 'rgba(34,197,94,0.12)' : s.val === 'prospect' ? 'rgba(245,158,11,0.12)' : s.val === 'inactive' ? 'rgba(239,68,68,0.1)' : 'rgba(255,255,255,0.12)'
+                        : t.bg3,
                       color: networkStatusFilter === s.val
-                        ? s.val === 'all' ? '#16a34a' : s.val === 'active' ? '#16a34a' : s.val === 'prospect' ? '#d97706' : '#dc2626'
-                        : '#64748b',
-                      border: `1px solid ${networkStatusFilter === s.val ? (s.val === 'active' ? '#16a34a' : s.val === 'prospect' ? '#d97706' : s.val === 'inactive' ? '#dc2626' : '#16a34a') : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)'}`,
+                        ? s.val === 'active' ? '#22c55e' : s.val === 'prospect' ? '#f59e0b' : s.val === 'inactive' ? '#ef4444' : '#fff'
+                        : t.text2,
+                      border: `1px solid ${networkStatusFilter === s.val ? (s.val === 'active' ? '#22c55e' : s.val === 'prospect' ? '#f59e0b' : s.val === 'inactive' ? '#ef4444' : 'rgba(255,255,255,0.3)') : t.border2}`,
                       borderRadius: 20, padding: '5px 12px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
                     }}>
                     {s.label}
@@ -1150,8 +1144,7 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
               </div>
 
               {distributors.length === 0 && (
-                <div style={{ textAlign: 'center', padding: 32, color: '#475569' }}>
-                  <div style={{ fontSize: 32, marginBottom: 10 }}>🚚</div>
+                <div style={{ textAlign: 'center', padding: 32, color: t.text3 }}>
                   <div style={{ fontWeight: 700 }}>No distributors yet</div>
                 </div>
               )}
@@ -1166,29 +1159,28 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                 const subRetailers = parties.filter(p => p.type === 'retailer' && (p as any).underDistributorId === dist.id)
 
                 return (
-                  <div key={dist.id} style={{ background: t.card, borderRadius: 16, border: '1.5px solid rgba(8,145,178,0.2)', overflow: 'hidden' }}>
+                  <div key={dist.id} style={{ background: t.card, borderRadius: 16, border: `1.5px solid ${t.border2}`, overflow: 'hidden' }}>
                     {/* Distributor header */}
-                    <div style={{ background: 'rgba(8,145,178,0.08)', padding: '14px 16px' }}>
+                    <div style={{ background: t.bg3, padding: '14px 16px' }}>
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                        <span style={{ fontSize: 24 }}>🚚</span>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 800, fontSize: 15 }}>{dist.name}</div>
-                          <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>{dist.place || dist.address} • 📞 {dist.phone}</div>
+                          <div style={{ fontSize: 11, color: t.text2, marginTop: 1 }}>{dist.place || dist.address} • {dist.phone}</div>
                         </div>
-                        <span style={{ fontSize: 11, color: (dist as any).status === 'active' ? '#16a34a' : '#d97706', background: (dist as any).status === 'active' ? 'rgba(22,163,74,0.1)' : 'rgba(217,119,6,0.1)', padding: '3px 9px', borderRadius: 99, fontWeight: 700 }}>
-                          {(dist as any).status === 'active' ? '🟢 Active' : '🟡 Prospect'}
+                        <span style={{ fontSize: 11, color: (dist as any).status === 'active' ? '#22c55e' : '#f59e0b', background: (dist as any).status === 'active' ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)', padding: '3px 9px', borderRadius: 99, fontWeight: 700 }}>
+                          {(dist as any).status === 'active' ? 'Active' : 'Prospect'}
                         </span>
                       </div>
                       {/* Allocation stats */}
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginTop: 10 }}>
                         {[
-                          { label: 'From Company', val: toDisplay(receivedPackets, config.packetsPerCarton), color: '#0891b2' },
-                          { label: 'To Retailers', val: sentToRetailers > 0 ? toDisplay(sentToRetailers, config.packetsPerCarton) : pendingToRetailers > 0 ? `${toDisplay(pendingToRetailers, config.packetsPerCarton)} pending` : '—', color: sentToRetailers > 0 ? '#16a34a' : '#d97706' },
-                          { label: 'Credit Due', val: creditDue > 0 ? `₹${(creditDue / 1000).toFixed(0)}k` : '—', color: '#7c3aed' },
+                          { label: 'From Company', val: toDisplay(receivedPackets, config.packetsPerCarton), color: t.text },
+                          { label: 'To Retailers', val: sentToRetailers > 0 ? toDisplay(sentToRetailers, config.packetsPerCarton) : pendingToRetailers > 0 ? `${toDisplay(pendingToRetailers, config.packetsPerCarton)} pending` : '—', color: sentToRetailers > 0 ? '#22c55e' : '#f59e0b' },
+                          { label: 'Credit Due', val: creditDue > 0 ? `₹${(creditDue / 1000).toFixed(0)}k` : '—', color: creditDue > 0 ? '#ef4444' : t.text2 },
                         ].map(s => (
-                          <div key={s.label} style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: '7px', textAlign: 'center' }}>
+                          <div key={s.label} style={{ background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)', borderRadius: 8, padding: '7px', textAlign: 'center' }}>
                             <div style={{ fontSize: 12, fontWeight: 900, color: s.color }}>{s.val}</div>
-                            <div style={{ fontSize: 9, color: '#64748b', marginTop: 1 }}>{s.label}</div>
+                            <div style={{ fontSize: 9, color: t.text3, marginTop: 1 }}>{s.label}</div>
                           </div>
                         ))}
                       </div>
@@ -1202,12 +1194,12 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                       if (stockEntries.length === 0) return null
                       return (
                         <div style={{ padding: '10px 16px 12px', borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}` }}>
-                          <div style={{ fontSize: 10, color: '#6ee7b7', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>📦 In Stock</div>
+                          <div style={{ fontSize: 10, color: '#22c55e', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>In Stock</div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                             {stockEntries.map(e => (
                               <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <span style={{ fontSize: 12, color: t.text2 }}>{e.name}</span>
-                                <span style={{ fontSize: 12, fontWeight: 800, color: '#6ee7b7' }}>{toDisplay(e.qty, config.packetsPerCarton)}</span>
+                                <span style={{ fontSize: 12, fontWeight: 800, color: '#22c55e' }}>{toDisplay(e.qty, config.packetsPerCarton)}</span>
                               </div>
                             ))}
                           </div>
@@ -1240,9 +1232,9 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                               </div>
                               <div style={{ fontSize: 11, color: t.text2, marginBottom: 6, display: 'flex', gap: 10 }}>
                                 <span>Requested: <strong style={{ color: t.text }}>{indent.requestedPackets} pkts</strong></span>
-                                <span style={{ color: distStockN > 0 ? '#16a34a' : '#dc2626', fontWeight: 700 }}>Dist: {distStockN} pkts</span>
+                                <span style={{ color: distStockN > 0 ? '#22c55e' : '#ef4444', fontWeight: 700 }}>Dist: {distStockN} pkts</span>
                               </div>
-                              {indentErrors[indent.id!] && <div style={{ fontSize: 11, color: '#dc2626', marginBottom: 6 }}>⚠️ {indentErrors[indent.id!]}</div>}
+                              {indentErrors[indent.id!] && <div style={{ fontSize: 11, color: '#ef4444', marginBottom: 6 }}>{indentErrors[indent.id!]}</div>}
                               <div style={{ display: 'flex', gap: 6 }}>
                                 <input
                                   type="number"
@@ -1260,13 +1252,13 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                                 <button
                                   onClick={() => handleSendIndent(indent)}
                                   disabled={sendingIndent === indent.id || distStockN < 1}
-                                  style={{ background: distStockN < 1 ? '#475569' : 'rgba(8,145,178,0.15)', color: '#0891b2', border: '1px solid rgba(8,145,178,0.3)', borderRadius: 8, padding: '8px 12px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', opacity: distStockN < 1 ? 0.5 : 1 }}>
-                                  {sendingIndent === indent.id ? '...' : '📦 Send'}
+                                  style={{ background: distStockN < 1 ? t.bg3 : t.primary, color: distStockN < 1 ? t.text3 : t.primaryText, border: 'none', borderRadius: 8, padding: '8px 12px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', opacity: distStockN < 1 ? 0.5 : 1 }}>
+                                  {sendingIndent === indent.id ? '...' : 'Send'}
                                 </button>
                                 <button
                                   onClick={() => handleCancelIndent(indent)}
                                   disabled={sendingIndent === indent.id}
-                                  style={{ background: 'rgba(220,38,38,0.1)', color: '#dc2626', border: '1px solid rgba(220,38,38,0.2)', borderRadius: 8, padding: '8px 10px', fontSize: 13, fontWeight: 700 }}>
+                                  style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '8px 10px', fontSize: 13, fontWeight: 700 }}>
                                   ✕
                                 </button>
                               </div>
@@ -1291,27 +1283,26 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                         const rSentPackets = rSentAllocs.reduce((s, a) => s + a.packets, 0)
                         const rPendingPackets = rPendingAllocs.reduce((s, a) => s + a.packets, 0)
                         return (
-                        <div key={r.id} style={{ paddingTop: i > 0 ? 10 : 0, marginTop: i > 0 ? 10 : 0, borderTop: i > 0 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                        <div key={r.id} style={{ paddingTop: i > 0 ? 10 : 0, marginTop: i > 0 ? 10 : 0, borderTop: i > 0 ? `1px solid ${t.border}` : 'none' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <span style={{ fontSize: 16 }}>🏪</span>
                             <div style={{ flex: 1 }}>
                               <div style={{ fontSize: 13, fontWeight: 700 }}>{r.name}</div>
-                              <div style={{ fontSize: 11, color: '#64748b' }}>{r.place || r.address}</div>
+                              <div style={{ fontSize: 11, color: t.text2 }}>{r.place || r.address}</div>
                             </div>
                             <div style={{ textAlign: 'right' }}>
-                              <div style={{ fontSize: 10, color: (r as any).status === 'active' ? '#16a34a' : '#d97706', fontWeight: 700 }}>
-                                {(r as any).status === 'active' ? '🟢' : '🟡'}
+                              <div style={{ fontSize: 10, color: (r as any).status === 'active' ? '#22c55e' : '#f59e0b', fontWeight: 700 }}>
+                                {(r as any).status === 'active' ? 'Active' : 'Prospect'}
                               </div>
-                              {rSentPackets > 0 && <div style={{ fontSize: 10, color: '#0891b2', marginTop: 1 }}>{rSentPackets} pkts sent</div>}
-                              {rPendingPackets > 0 && <div style={{ fontSize: 10, color: '#d97706', marginTop: 1 }}>{rPendingPackets} pkts pending</div>}
+                              {rSentPackets > 0 && <div style={{ fontSize: 10, color: t.text2, marginTop: 1 }}>{rSentPackets} pkts sent</div>}
+                              {rPendingPackets > 0 && <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 1 }}>{rPendingPackets} pkts pending</div>}
                             </div>
                           </div>
                           {/* Recent allocations from distributor to this retailer */}
                           {rAllocs.slice(0, 3).map((a) => (
-                            <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(255,255,255,0.03)', borderRadius: 6, padding: '5px 8px', marginTop: 5, fontSize: 11 }}>
-                              <span style={{ color: '#64748b' }}>{a.sentAt ? new Date(a.sentAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : a.plannedDate} — {a.packets} pkts{a.productName ? ` · ${a.productName}` : ''}</span>
-                              <span style={{ color: a.status === 'sent' || a.status === 'paid' ? '#16a34a' : '#d97706', fontWeight: 700 }}>
-                                {a.status === 'sent' || a.status === 'paid' ? '✅ Sent' : '⏳ Pending'}
+                            <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', background: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderRadius: 6, padding: '5px 8px', marginTop: 5, fontSize: 11 }}>
+                              <span style={{ color: t.text2 }}>{a.sentAt ? new Date(a.sentAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : a.plannedDate} — {a.packets} pkts{a.productName ? ` · ${a.productName}` : ''}</span>
+                              <span style={{ color: a.status === 'sent' || a.status === 'paid' ? '#22c55e' : '#f59e0b', fontWeight: 700 }}>
+                                {a.status === 'sent' || a.status === 'paid' ? 'Sent' : 'Pending'}
                               </span>
                             </div>
                           ))}
@@ -1319,14 +1310,14 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                             const rStockEntries = Object.entries(r.stock || {}).filter(([, qty]) => (qty as number) > 0)
                             if (rStockEntries.length === 0) return null
                             return (
-                              <div style={{ background: isDark ? 'rgba(22,163,74,0.05)' : 'rgba(22,163,74,0.04)', border: '1px solid rgba(22,163,74,0.12)', borderRadius: 6, padding: '6px 8px', marginTop: 6 }}>
-                                <div style={{ fontSize: 9, color: '#6ee7b7', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 3 }}>In Stock</div>
+                              <div style={{ background: isDark ? 'rgba(34,197,94,0.05)' : 'rgba(34,197,94,0.04)', border: '1px solid rgba(34,197,94,0.12)', borderRadius: 6, padding: '6px 8px', marginTop: 6 }}>
+                                <div style={{ fontSize: 9, color: '#22c55e', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 3 }}>In Stock</div>
                                 {rStockEntries.map(([pid, qty]) => {
                                   const prod = products.find(p => p.id === pid)
                                   return (
                                     <div key={pid} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
                                       <span style={{ color: t.text2 }}>{prod?.name || pid}</span>
-                                      <span style={{ fontWeight: 700, color: '#6ee7b7' }}>{toDisplay(qty as number, config.packetsPerCarton)}</span>
+                                      <span style={{ fontWeight: 700, color: '#22c55e' }}>{toDisplay(qty as number, config.packetsPerCarton)}</span>
                                     </div>
                                   )
                                 })}
@@ -1352,9 +1343,9 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
 
               {/* Independent retailers */}
               {independents.length > 0 && (
-                <div style={{ background: t.card, borderRadius: 16, border: '1.5px solid rgba(22,163,74,0.15)', overflow: 'hidden' }}>
-                  <div style={{ background: 'rgba(22,163,74,0.06)', padding: '12px 16px', fontSize: 12, color: '#6ee7b7', fontWeight: 700 }}>
-                    🏪 Independent Retailers ({independents.length})
+                <div style={{ background: t.card, borderRadius: 16, border: `1.5px solid ${t.border2}`, overflow: 'hidden' }}>
+                  <div style={{ background: t.bg3, padding: '12px 16px', fontSize: 12, color: t.text2, fontWeight: 700 }}>
+                    Independent Retailers ({independents.length})
                   </div>
                   <div style={{ padding: '10px 16px 14px', display: 'flex', flexDirection: 'column', gap: 0 }}>
                     {independents.map((r, i) => {
@@ -1362,33 +1353,32 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                       const rCredit = rAllocs.filter(a => a.status === 'sent' && a.paymentType === 'credit').reduce((s, a) => s + a.totalAmount, 0)
                       const rAllocated = rAllocs.filter(a => a.status !== 'cancelled').reduce((s, a) => s + a.packets, 0)
                       return (
-                        <div key={r.id} style={{ paddingTop: i > 0 ? 10 : 0, marginTop: i > 0 ? 10 : 0, borderTop: i > 0 ? `1px solid ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.06)'}` : 'none' }}>
+                        <div key={r.id} style={{ paddingTop: i > 0 ? 10 : 0, marginTop: i > 0 ? 10 : 0, borderTop: i > 0 ? `1px solid ${t.border}` : 'none' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <span style={{ fontSize: 16 }}>🏪</span>
                             <div style={{ flex: 1 }}>
                               <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>{r.name}</div>
-                              <div style={{ fontSize: 11, color: '#64748b' }}>{r.place || r.address}</div>
+                              <div style={{ fontSize: 11, color: t.text2 }}>{r.place || r.address}</div>
                             </div>
                             <div style={{ textAlign: 'right' }}>
-                              <div style={{ fontSize: 10, color: (r as any).status === 'active' ? '#16a34a' : '#d97706', fontWeight: 700 }}>
-                                {(r as any).status === 'active' ? '🟢 Active' : '🟡 Prospect'}
+                              <div style={{ fontSize: 10, color: (r as any).status === 'active' ? '#22c55e' : '#f59e0b', fontWeight: 700 }}>
+                                {(r as any).status === 'active' ? 'Active' : 'Prospect'}
                               </div>
-                              {rAllocated > 0 && <div style={{ fontSize: 10, color: '#0891b2', marginTop: 1 }}>{toDisplay(rAllocated, config.packetsPerCarton)} allocated</div>}
-                              {rCredit > 0 && <div style={{ fontSize: 10, color: '#7c3aed', marginTop: 1 }}>₹{rCredit.toLocaleString()} due</div>}
+                              {rAllocated > 0 && <div style={{ fontSize: 10, color: t.text2, marginTop: 1 }}>{toDisplay(rAllocated, config.packetsPerCarton)} allocated</div>}
+                              {rCredit > 0 && <div style={{ fontSize: 10, color: '#ef4444', marginTop: 1 }}>₹{rCredit.toLocaleString()} due</div>}
                             </div>
                           </div>
                           {(() => {
                             const rStockEntries = Object.entries(r.stock || {}).filter(([, qty]) => (qty as number) > 0)
                             if (rStockEntries.length === 0) return null
                             return (
-                              <div style={{ background: isDark ? 'rgba(22,163,74,0.05)' : 'rgba(22,163,74,0.04)', border: '1px solid rgba(22,163,74,0.12)', borderRadius: 6, padding: '6px 8px', marginTop: 6 }}>
-                                <div style={{ fontSize: 9, color: '#6ee7b7', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 3 }}>In Stock</div>
+                              <div style={{ background: isDark ? 'rgba(34,197,94,0.05)' : 'rgba(34,197,94,0.04)', border: '1px solid rgba(34,197,94,0.12)', borderRadius: 6, padding: '6px 8px', marginTop: 6 }}>
+                                <div style={{ fontSize: 9, color: '#22c55e', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 3 }}>In Stock</div>
                                 {rStockEntries.map(([pid, qty]) => {
                                   const prod = products.find(p => p.id === pid)
                                   return (
                                     <div key={pid} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
                                       <span style={{ color: t.text2 }}>{prod?.name || pid}</span>
-                                      <span style={{ fontWeight: 700, color: '#6ee7b7' }}>{toDisplay(qty as number, config.packetsPerCarton)}</span>
+                                      <span style={{ fontWeight: 700, color: '#22c55e' }}>{toDisplay(qty as number, config.packetsPerCarton)}</span>
                                     </div>
                                   )
                                 })}
@@ -1397,7 +1387,7 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                           })()}
                           {isAdmin && (
                             <button onClick={() => setHistoryPartyId(r.id!)}
-                              style={{ marginTop: 8, width: '100%', background: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)'}`, borderRadius: 8, padding: '7px', fontSize: 12, fontWeight: 700, color: t.text2, cursor: 'pointer' }}>
+                              style={{ marginTop: 8, width: '100%', background: t.bg3, border: `1px solid ${t.border2}`, borderRadius: 8, padding: '7px', fontSize: 12, fontWeight: 700, color: t.text2, cursor: 'pointer' }}>
                               History →
                             </button>
                           )}
@@ -1420,7 +1410,7 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
             onClick={() => setDispatchDateAlloc(null)} />
           <div style={{ position: 'relative', zIndex: 1, background: t.card, borderRadius: 20, padding: '24px 20px', maxWidth: 360, width: '100%', border: `1.5px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`, boxShadow: '0 24px 64px rgba(0,0,0,0.45)' }}>
             <div style={{ fontSize: 13, color: t.text3, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700 }}>
-              {dispatchDateAlloc.fromType === 'distributor' ? '✅ Confirm Sent' : '📦 Dispatch Now'}
+              {dispatchDateAlloc.fromType === 'distributor' ? 'Confirm Sent' : 'Dispatch Now'}
             </div>
             <div style={{ fontSize: 17, fontWeight: 800, color: t.text, marginBottom: 4 }}>{dispatchDateAlloc.partyName}</div>
             <div style={{ fontSize: 13, color: t.text3, marginBottom: 20 }}>
@@ -1440,7 +1430,7 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
               <button
                 onClick={async () => { const a = dispatchDateAlloc; setDispatchDateAlloc(null); await handleDispatch(a, dispatchDate) }}
                 disabled={acting === dispatchDateAlloc.id}
-                style={{ flex: 2, background: dispatchDateAlloc.fromType === 'distributor' ? 'linear-gradient(135deg,#0e4f7a,#0891b2)' : 'linear-gradient(135deg,#1a5c42,#16a34a)', color: '#fff', border: 'none', borderRadius: 12, padding: '13px', fontSize: 14, fontWeight: 800, cursor: 'pointer' }}>
+                style={{ flex: 2, background: t.primary, color: t.primaryText, border: 'none', borderRadius: 12, padding: '13px', fontSize: 14, fontWeight: 800, cursor: 'pointer' }}>
                 {dispatchDateAlloc.fromType === 'distributor' ? 'Confirm Sent' : 'Dispatch'}
               </button>
             </div>

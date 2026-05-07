@@ -48,7 +48,7 @@ function DefaultPriceEditor() {
         placeholder="Price per packet"
         style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '10px 14px', fontSize: 14, color: '#fff', outline: 'none' }} />
       <button onClick={handleSave} disabled={saving}
-        style={{ background: '#16a34a', border: 'none', color: '#fff', borderRadius: 10, padding: '0 16px', fontWeight: 800, fontSize: 13 }}>
+        style={{ background: '#22c55e', border: 'none', color: '#fff', borderRadius: 10, padding: '0 16px', fontWeight: 800, fontSize: 13 }}>
         {saving ? '...' : 'Save'}
       </button>
       <button onClick={() => setEditing(false)}
@@ -56,8 +56,8 @@ function DefaultPriceEditor() {
     </div>
   ) : (
     <button onClick={() => { setEditing(true); setVal(String(current || '')) }}
-      style={{ background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(22,163,74,0.2)', color: '#16a34a', borderRadius: 10, padding: '10px 16px', fontSize: 13, fontWeight: 700, width: '100%' }}>
-      💰 Default: {current > 0 ? `₹${current}/packet` : 'Not set'} — tap to edit
+      style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)', color: '#22c55e', borderRadius: 10, padding: '10px 16px', fontSize: 13, fontWeight: 700, width: '100%' }}>
+      Default: {current > 0 ? `₹${current}/packet` : 'Not set'} — tap to edit
     </button>
   )
 }
@@ -216,7 +216,7 @@ export default function StockManager({ onBack }: Props) {
     : parties.filter(p => (p as any).status === partyStatusFilter)
 
   const partyOptions = filteredParties.map(p => ({
-    value: p.id!, label: `${p.type === 'distributor' ? '🚚' : '🏪'} ${p.name}`,
+    value: p.id!, label: p.name,
     sub: `₹${p.pricePerPacket}/pkt · ${p.place || p.address}`,
     group: p.type === 'distributor' ? 'Distributors' : 'Retailers',
   }))
@@ -227,10 +227,10 @@ export default function StockManager({ onBack }: Props) {
 
   return (
     <div style={{ minHeight: '100vh', background: '#0d1117', paddingBottom: 40 }}>
-      <div style={{ background: 'linear-gradient(135deg,#1a5c42,#16a34a)', padding: '24px 20px 0' }}>
-        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#bbf7d0', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 16 }}>← Back</button>
-        <div style={{ color: '#bbf7d0', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Inventory 📦</div>
-        <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 16 }}>Stock Management</div>
+      <div style={{ background: '#000000', padding: '24px 20px 0' }}>
+        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'rgba(255,255,255,0.7)', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 16 }}>← Back</button>
+        <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Inventory</div>
+        <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', marginBottom: 16 }}>Stock Management</div>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           {[
             { label: 'Total', val: toDisplay(displayTotal, config.packetsPerCarton), color: '#fff' },
@@ -247,7 +247,7 @@ export default function StockManager({ onBack }: Props) {
           {(['overview', 'dispatch', 'history', 'monthly'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               style={{ flex: 1, background: tab === t ? 'rgba(255,255,255,0.2)' : 'transparent', color: tab === t ? '#fff' : 'rgba(255,255,255,0.5)', border: 'none', borderRadius: '10px 10px 0 0', padding: '9px 4px', fontSize: 10, fontWeight: 800, whiteSpace: 'nowrap' }}>
-              {t === 'overview' ? '📊 Overview' : t === 'dispatch' ? '📦 Dispatch' : t === 'history' ? '📋 History' : '📅 Monthly'}
+              {t === 'overview' ? 'Overview' : t === 'dispatch' ? 'Dispatch' : t === 'history' ? 'History' : 'Monthly'}
             </button>
           ))}
         </div>
@@ -261,7 +261,7 @@ export default function StockManager({ onBack }: Props) {
             {isAdmin && (
               <>
                 <div style={{ background: '#161b22', borderRadius: 14, padding: 16, border: '1px solid rgba(255,255,255,0.06)' }}>
-                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>⚙️ Carton Setting</div>
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Carton Setting</div>
                   {editCarton ? (
                     <div style={{ display: 'flex', gap: 8 }}>
                       <input type="number" value={newCarton} onChange={e => setNewCarton(e.target.value)} placeholder="Packets per carton"
@@ -271,13 +271,13 @@ export default function StockManager({ onBack }: Props) {
                     </div>
                   ) : (
                     <button onClick={() => setEditCarton(true)}
-                      style={{ background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(22,163,74,0.2)', color: '#16a34a', borderRadius: 10, padding: '10px 16px', fontSize: 13, fontWeight: 700, width: '100%' }}>
-                      📫 1 Carton = {config.packetsPerCarton} packets — tap to edit
+                      style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)', color: '#22c55e', borderRadius: 10, padding: '10px 16px', fontSize: 13, fontWeight: 700, width: '100%' }}>
+                      1 Carton = {config.packetsPerCarton} packets — tap to edit
                     </button>
                   )}
                 </div>
                 <div style={{ background: '#161b22', borderRadius: 14, padding: 16, border: '1px solid rgba(255,255,255,0.06)' }}>
-                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>📦 Stock Per Product</div>
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Stock Per Product</div>
                   {products.length === 0 ? (
                     <div style={{ fontSize: 12, color: '#64748b', textAlign: 'center', padding: '12px 0' }}>No active products. Add products in Products section first.</div>
                   ) : products.map((p, idx) => {
@@ -314,8 +314,8 @@ export default function StockManager({ onBack }: Props) {
                           </div>
                         ) : (
                           <button onClick={() => { setEditingProductActive(p.id!); setEditingProductStock(prev => ({ ...prev, [p.id!]: String(pTotal) })) }}
-                            style={{ background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.15)', color: '#16a34a', borderRadius: 10, padding: '8px 14px', fontSize: 12, fontWeight: 700, width: '100%' }}>
-                            ✏️ Set Total Stock
+                            style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)', color: '#22c55e', borderRadius: 10, padding: '8px 14px', fontSize: 12, fontWeight: 700, width: '100%' }}>
+                            Set Total Stock
                           </button>
                         )}
                       </div>
@@ -330,19 +330,18 @@ export default function StockManager({ onBack }: Props) {
                 <span style={{ fontSize: 13, color: '#16a34a', fontWeight: 800 }}>{displayTotal > 0 ? Math.round(((displayTotal - displayAvailable) / displayTotal) * 100) : 0}%</span>
               </div>
               <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 99, height: 10, overflow: 'hidden' }}>
-                <div style={{ height: '100%', background: 'linear-gradient(90deg,#16a34a,#22c55e)', width: `${displayTotal > 0 ? ((displayTotal - displayAvailable) / displayTotal) * 100 : 0}%`, borderRadius: 99, transition: 'width 0.5s' }} />
+                <div style={{ height: '100%', background: '#22c55e', width: `${displayTotal > 0 ? ((displayTotal - displayAvailable) / displayTotal) * 100 : 0}%`, borderRadius: 99, transition: 'width 0.5s' }} />
               </div>
             </div>
             <div style={{ fontSize: 12, color: '#64748b', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Recent Dispatches</div>
             {dispatches.slice(0, 5).map(d => (
               <div key={d.id} style={{ background: '#161b22', borderRadius: 12, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10, border: '1px solid rgba(255,255,255,0.05)' }}>
-                <div style={{ fontSize: 18 }}>{d.partyType === 'distributor' ? '🚚' : '🏪'}</div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 700, fontSize: 13 }}>{d.partyName}</div>
                   <div style={{ fontSize: 11, color: '#64748b' }}>{toDisplay(d.packets, config.packetsPerCarton)} • {new Date(d.dispatchedAt).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}</div>
                 </div>
-                <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 99, background: d.paymentType === 'cash' ? 'rgba(22,163,74,0.15)' : 'rgba(217,119,6,0.15)', color: d.paymentType === 'cash' ? '#16a34a' : '#d97706' }}>
-                  {d.paymentType === 'cash' ? '💵' : '📋'}
+                <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 99, background: d.paymentType === 'cash' ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)', color: d.paymentType === 'cash' ? '#22c55e' : '#f59e0b' }}>
+                  {d.paymentType === 'cash' ? 'Cash' : 'Credit'}
                 </span>
               </div>
             ))}
@@ -352,8 +351,8 @@ export default function StockManager({ onBack }: Props) {
         {/* DISPATCH */}
         {tab === 'dispatch' && isAdmin && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(22,163,74,0.2)', borderRadius: 12, padding: '12px 14px', fontSize: 13, color: '#86efac' }}>
-              📦 Available: <strong>{toDisplay(available, config.packetsPerCarton)}</strong>
+            <div style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)', borderRadius: 12, padding: '12px 14px', fontSize: 13, color: '#22c55e' }}>
+              Available: <strong>{toDisplay(available, config.packetsPerCarton)}</strong>
             </div>
 
             <div>
@@ -366,17 +365,17 @@ export default function StockManager({ onBack }: Props) {
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
                 {([
                   { val: 'all',      label: 'All' },
-                  { val: 'active',   label: '🟢 Active' },
-                  { val: 'prospect', label: '🟡 Prospect' },
-                  { val: 'inactive', label: '⛔ Inactive' },
+                  { val: 'active',   label: 'Active' },
+                  { val: 'prospect', label: 'Prospect' },
+                  { val: 'inactive', label: 'Inactive' },
                 ] as const).map(s => (
                   <button key={s.val} onClick={() => setPartyStatusFilter(s.val)}
-                    style={{ background: partyStatusFilter === s.val ? (s.val === 'active' ? 'rgba(22,163,74,0.15)' : s.val === 'prospect' ? 'rgba(217,119,6,0.15)' : s.val === 'inactive' ? 'rgba(220,38,38,0.12)' : 'rgba(22,163,74,0.15)') : 'rgba(255,255,255,0.04)', color: partyStatusFilter === s.val ? (s.val === 'active' ? '#16a34a' : s.val === 'prospect' ? '#d97706' : s.val === 'inactive' ? '#dc2626' : '#16a34a') : '#64748b', border: `1px solid ${partyStatusFilter === s.val ? (s.val === 'active' ? '#16a34a' : s.val === 'prospect' ? '#d97706' : s.val === 'inactive' ? '#dc2626' : '#16a34a') : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                    style={{ background: partyStatusFilter === s.val ? (s.val === 'active' ? 'rgba(34,197,94,0.12)' : s.val === 'prospect' ? 'rgba(245,158,11,0.12)' : s.val === 'inactive' ? 'rgba(239,68,68,0.1)' : 'rgba(255,255,255,0.12)') : 'rgba(255,255,255,0.04)', color: partyStatusFilter === s.val ? (s.val === 'active' ? '#22c55e' : s.val === 'prospect' ? '#f59e0b' : s.val === 'inactive' ? '#ef4444' : '#fff') : '#64748b', border: `1px solid ${partyStatusFilter === s.val ? (s.val === 'active' ? '#22c55e' : s.val === 'prospect' ? '#f59e0b' : s.val === 'inactive' ? '#ef4444' : 'rgba(255,255,255,0.3)') : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
                     {s.label}
                   </button>
                 ))}
               </div>
-              {errors.partyId && <div style={{ fontSize: 11, color: '#dc2626', marginBottom: 6 }}>⚠️ {errors.partyId}</div>}
+              {errors.partyId && <div style={{ fontSize: 11, color: '#ef4444', marginBottom: 6 }}>{errors.partyId}</div>}
               <CustomSelect value={form.partyId} onChange={v => setForm({ ...form, partyId: v })}
                 placeholder="Select distributor or retailer..." options={partyOptions} error={!!errors.partyId} />
             </div>
@@ -385,8 +384,8 @@ export default function StockManager({ onBack }: Props) {
               const req = requests.find(r => r.partyId === form.partyId && r.month === selectedMonth)
               if (!req) return null
               return (
-                <div style={{ background: 'rgba(8,145,178,0.1)', border: '1px solid rgba(8,145,178,0.2)', borderRadius: 12, padding: '12px 14px' }}>
-                  <div style={{ fontSize: 12, color: '#0891b2', fontWeight: 700, marginBottom: 4 }}>📅 Monthly Request Linked</div>
+                <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '12px 14px' }}>
+                  <div style={{ fontSize: 12, color: '#64748b', fontWeight: 700, marginBottom: 4 }}>Monthly Request Linked</div>
                   <div style={{ fontSize: 12, color: '#7dd3fc' }}>
                     Requested: {toDisplay(req.requestedPackets, config.packetsPerCarton)} •
                     Fulfilled: {toDisplay(req.fulfilledPackets, config.packetsPerCarton)} •
@@ -398,12 +397,12 @@ export default function StockManager({ onBack }: Props) {
 
             <div>
               <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>Quantity</div>
-              {errors.quantity && <div style={{ fontSize: 11, color: '#dc2626', marginBottom: 6 }}>⚠️ {errors.quantity}</div>}
+              {errors.quantity && <div style={{ fontSize: 11, color: '#ef4444', marginBottom: 6 }}>{errors.quantity}</div>}
               <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                 {(['packets', 'cartons'] as const).map(u => (
                   <button key={u} onClick={() => setUnit(u)}
-                    style={{ flex: 1, background: unit === u ? 'rgba(22,163,74,0.15)' : 'rgba(255,255,255,0.04)', color: unit === u ? '#16a34a' : '#64748b', border: `1.5px solid ${unit === u ? '#16a34a' : 'rgba(255,255,255,0.06)'}`, borderRadius: 10, padding: '9px', fontSize: 12, fontWeight: 700 }}>
-                    {u === 'packets' ? '📦 Packets' : `📫 Cartons (1=${config.packetsPerCarton})`}
+                    style={{ flex: 1, background: unit === u ? '#fff' : 'rgba(255,255,255,0.04)', color: unit === u ? '#000' : '#64748b', border: `1.5px solid ${unit === u ? '#fff' : 'rgba(255,255,255,0.06)'}`, borderRadius: 10, padding: '9px', fontSize: 12, fontWeight: 700 }}>
+                    {u === 'packets' ? 'Packets' : `Cartons (1=${config.packetsPerCarton})`}
                   </button>
                 ))}
               </div>
@@ -412,7 +411,7 @@ export default function StockManager({ onBack }: Props) {
                 style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: `1.5px solid ${errors.quantity ? '#dc2626' : 'rgba(255,255,255,0.1)'}`, borderRadius: 12, padding: '13px 16px', fontSize: 22, fontWeight: 800, color: '#fff', outline: 'none', boxSizing: 'border-box' }} />
               {form.quantity && parseInt(form.quantity) > 0 && (() => {
                 const p = parties.find(pp => pp.id === form.partyId)
-                return <div style={{ marginTop: 8, fontSize: 13, color: '#6ee7b7', fontWeight: 700 }}>
+                return <div style={{ marginTop: 8, fontSize: 13, color: '#22c55e', fontWeight: 700 }}>
                   = {toDisplay(toPackets(form.quantity), config.packetsPerCarton)}
                   {p && ` • ₹${(toPackets(form.quantity) * p.pricePerPacket).toLocaleString()}`}
                 </div>
@@ -422,9 +421,9 @@ export default function StockManager({ onBack }: Props) {
             <div>
               <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8, letterSpacing: 1, textTransform: 'uppercase' }}>Payment Type</div>
               <div style={{ display: 'flex', gap: 8 }}>
-                {([['cash', '💵 Cash'], ['credit', '📋 Credit']] as [PaymentType, string][]).map(([val, label]) => (
+                {([['cash', 'Cash'], ['credit', 'Credit']] as [PaymentType, string][]).map(([val, label]) => (
                   <button key={val} onClick={() => setForm({ ...form, paymentType: val })}
-                    style={{ flex: 1, background: form.paymentType === val ? (val === 'cash' ? 'rgba(22,163,74,0.15)' : 'rgba(217,119,6,0.15)') : 'rgba(255,255,255,0.04)', color: form.paymentType === val ? (val === 'cash' ? '#16a34a' : '#d97706') : '#64748b', border: `1.5px solid ${form.paymentType === val ? (val === 'cash' ? '#16a34a' : '#d97706') : 'rgba(255,255,255,0.06)'}`, borderRadius: 12, padding: '12px', fontSize: 14, fontWeight: 800 }}>
+                    style={{ flex: 1, background: form.paymentType === val ? (val === 'cash' ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)') : 'rgba(255,255,255,0.04)', color: form.paymentType === val ? (val === 'cash' ? '#22c55e' : '#f59e0b') : '#64748b', border: `1.5px solid ${form.paymentType === val ? (val === 'cash' ? '#22c55e' : '#f59e0b') : 'rgba(255,255,255,0.06)'}`, borderRadius: 12, padding: '12px', fontSize: 14, fontWeight: 800 }}>
                     {label}
                   </button>
                 ))}
@@ -439,8 +438,8 @@ export default function StockManager({ onBack }: Props) {
             </div>
 
             <button onClick={handleDispatch} disabled={saving}
-              style={{ background: saving ? '#475569' : 'linear-gradient(135deg,#1a5c42,#16a34a)', color: '#fff', border: 'none', borderRadius: 14, padding: 16, fontSize: 15, fontWeight: 800 }}>
-              {saving ? 'Processing...' : 'Dispatch Stock 📦'}
+              style={{ background: saving ? '#475569' : '#fff', color: saving ? '#aaa' : '#000', border: 'none', borderRadius: 14, padding: 16, fontSize: 15, fontWeight: 800 }}>
+              {saving ? 'Processing...' : 'Dispatch Stock'}
             </button>
           </div>
         )}
@@ -454,22 +453,20 @@ export default function StockManager({ onBack }: Props) {
             </div>
             {dispatches.filter(d => d.month === selectedMonth).length === 0 ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#475569' }}>
-                <div style={{ fontSize: 36, marginBottom: 12 }}>📋</div>
                 <div style={{ fontWeight: 700 }}>No dispatches this month</div>
               </div>
             ) : dispatches.filter(d => d.month === selectedMonth).map(d => (
               <div key={d.id} style={{ background: '#161b22', borderRadius: 14, padding: 16, border: '1px solid rgba(255,255,255,0.05)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                  <div style={{ fontSize: 22 }}>{d.partyType === 'distributor' ? '🚚' : '🏪'}</div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 800, fontSize: 14 }}>{d.partyName}</div>
-                    <div style={{ fontSize: 11, color: '#6ee7b7', fontWeight: 600 }}>
-                      🕐 {new Date(d.dispatchedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                    <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>
+                      {new Date(d.dispatchedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
                     </div>
                     <div style={{ fontSize: 11, color: '#64748b' }}>by {d.dispatchedByName}</div>
                   </div>
-                  <span style={{ fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 99, background: d.paymentType === 'cash' ? 'rgba(22,163,74,0.15)' : 'rgba(217,119,6,0.15)', color: d.paymentType === 'cash' ? '#16a34a' : '#d97706' }}>
-                    {d.paymentType === 'cash' ? '💵 Cash' : '📋 Credit'}
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 99, background: d.paymentType === 'cash' ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)', color: d.paymentType === 'cash' ? '#22c55e' : '#f59e0b' }}>
+                    {d.paymentType === 'cash' ? 'Cash' : 'Credit'}
                   </span>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -477,12 +474,12 @@ export default function StockManager({ onBack }: Props) {
                     <div style={{ fontWeight: 800, fontSize: 13 }}>{toDisplay(d.packets, config.packetsPerCarton)}</div>
                     <div style={{ fontSize: 9, color: '#64748b' }}>dispatched</div>
                   </div>
-                  <div style={{ flex: 1, background: 'rgba(22,163,74,0.1)', borderRadius: 10, padding: '8px', textAlign: 'center' }}>
-                    <div style={{ fontWeight: 800, fontSize: 13, color: '#16a34a' }}>₹{d.totalAmount.toLocaleString()}</div>
+                  <div style={{ flex: 1, background: 'rgba(34,197,94,0.08)', borderRadius: 10, padding: '8px', textAlign: 'center' }}>
+                    <div style={{ fontWeight: 800, fontSize: 13, color: '#22c55e' }}>₹{d.totalAmount.toLocaleString()}</div>
                     <div style={{ fontSize: 9, color: '#64748b' }}>value</div>
                   </div>
                 </div>
-                {d.notes && <div style={{ fontSize: 11, color: '#475569', marginTop: 8 }}>📝 {d.notes}</div>}
+                {d.notes && <div style={{ fontSize: 11, color: '#475569', marginTop: 8 }}>{d.notes}</div>}
               </div>
             ))}
           </div>
@@ -496,13 +493,13 @@ export default function StockManager({ onBack }: Props) {
               <DateInput type="month" value={selectedMonth} onChange={v => setSelectedMonth(v)} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <div style={{ background: '#161b22', borderRadius: 14, padding: 14, border: '1px solid rgba(22,163,74,0.2)' }}>
+              <div style={{ background: '#161b22', borderRadius: 14, padding: 14, border: '1px solid rgba(34,197,94,0.2)' }}>
                 <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>DISPATCHED</div>
-                <div style={{ fontSize: 18, fontWeight: 900, color: '#16a34a' }}>{toDisplay(monthlyTotal, config.packetsPerCarton)}</div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: '#22c55e' }}>{toDisplay(monthlyTotal, config.packetsPerCarton)}</div>
               </div>
-              <div style={{ background: '#161b22', borderRadius: 14, padding: 14, border: '1px solid rgba(8,145,178,0.2)' }}>
+              <div style={{ background: '#161b22', borderRadius: 14, padding: 14, border: '1px solid rgba(255,255,255,0.08)' }}>
                 <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>REVENUE</div>
-                <div style={{ fontSize: 18, fontWeight: 900, color: '#0891b2' }}>₹{monthlyRevenue.toLocaleString()}</div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: '#fff' }}>₹{monthlyRevenue.toLocaleString()}</div>
               </div>
             </div>
 
@@ -511,12 +508,12 @@ export default function StockManager({ onBack }: Props) {
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
               {([
                 { val: 'all', label: 'All' },
-                { val: 'active', label: '🟢 Active' },
-                { val: 'prospect', label: '🟡 Prospect' },
-                { val: 'inactive', label: '⛔ Inactive' },
+                { val: 'active', label: 'Active' },
+                { val: 'prospect', label: 'Prospect' },
+                { val: 'inactive', label: 'Inactive' },
               ] as const).map(s => (
                 <button key={s.val} onClick={() => setPartyStatusFilter(s.val)}
-                  style={{ background: partyStatusFilter === s.val ? (s.val === 'active' ? 'rgba(22,163,74,0.15)' : s.val === 'prospect' ? 'rgba(217,119,6,0.15)' : s.val === 'inactive' ? 'rgba(220,38,38,0.12)' : 'rgba(22,163,74,0.15)') : 'rgba(255,255,255,0.04)', color: partyStatusFilter === s.val ? (s.val === 'active' ? '#16a34a' : s.val === 'prospect' ? '#d97706' : s.val === 'inactive' ? '#dc2626' : '#16a34a') : '#64748b', border: `1px solid ${partyStatusFilter === s.val ? (s.val === 'active' ? '#16a34a' : s.val === 'prospect' ? '#d97706' : s.val === 'inactive' ? '#dc2626' : '#16a34a') : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  style={{ background: partyStatusFilter === s.val ? (s.val === 'active' ? 'rgba(34,197,94,0.12)' : s.val === 'prospect' ? 'rgba(245,158,11,0.12)' : s.val === 'inactive' ? 'rgba(239,68,68,0.1)' : 'rgba(255,255,255,0.12)') : 'rgba(255,255,255,0.04)', color: partyStatusFilter === s.val ? (s.val === 'active' ? '#22c55e' : s.val === 'prospect' ? '#f59e0b' : s.val === 'inactive' ? '#ef4444' : '#fff') : '#64748b', border: `1px solid ${partyStatusFilter === s.val ? (s.val === 'active' ? '#22c55e' : s.val === 'prospect' ? '#f59e0b' : s.val === 'inactive' ? '#ef4444' : 'rgba(255,255,255,0.3)') : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
                   {s.label}
                 </button>
               ))}
@@ -529,14 +526,13 @@ export default function StockManager({ onBack }: Props) {
               return (
                 <div key={party.id} style={{ background: '#161b22', borderRadius: 14, padding: 16, border: '1px solid rgba(255,255,255,0.06)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                    <span style={{ fontSize: 18 }}>{party.type === 'distributor' ? '🚚' : '🏪'}</span>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 800, fontSize: 14 }}>{party.name}</div>
                       <div style={{ fontSize: 11, color: '#64748b' }}>{party.category} • {party.place || party.address}</div>
                     </div>
                     {req && (
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 99, background: req.status === 'fulfilled' ? 'rgba(22,163,74,0.15)' : req.status === 'partial' ? 'rgba(8,145,178,0.15)' : 'rgba(217,119,6,0.15)', color: req.status === 'fulfilled' ? '#16a34a' : req.status === 'partial' ? '#0891b2' : '#d97706' }}>
-                        {req.status === 'fulfilled' ? '✅ Fulfilled' : req.status === 'partial' ? '🔄 Partial' : '⏳ Pending'}
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 99, background: req.status === 'fulfilled' ? 'rgba(34,197,94,0.12)' : req.status === 'partial' ? 'rgba(255,255,255,0.08)' : 'rgba(245,158,11,0.12)', color: req.status === 'fulfilled' ? '#22c55e' : req.status === 'partial' ? '#fff' : '#f59e0b' }}>
+                        {req.status === 'fulfilled' ? 'Fulfilled' : req.status === 'partial' ? 'Partial' : 'Pending'}
                       </span>
                     )}
                   </div>
@@ -548,7 +544,7 @@ export default function StockManager({ onBack }: Props) {
                         <span>Dispatched: {toDisplay(totalDispatched, config.packetsPerCarton)}</span>
                       </div>
                       <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 99, height: 6, overflow: 'hidden' }}>
-                        <div style={{ width: `${Math.min(100, req.requestedPackets > 0 ? (totalDispatched / req.requestedPackets) * 100 : 0)}%`, height: '100%', background: req.status === 'fulfilled' ? '#16a34a' : 'linear-gradient(90deg,#0891b2,#6ee7b7)', borderRadius: 99 }} />
+                        <div style={{ width: `${Math.min(100, req.requestedPackets > 0 ? (totalDispatched / req.requestedPackets) * 100 : 0)}%`, height: '100%', background: req.status === 'fulfilled' ? '#22c55e' : '#fff', borderRadius: 99 }} />
                       </div>
                     </div>
                   )}
@@ -558,11 +554,11 @@ export default function StockManager({ onBack }: Props) {
                     <div key={d.id} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '8px 12px', marginBottom: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
                         <div style={{ fontSize: 12, color: '#e2e8f0', fontWeight: 600 }}>{toDisplay(d.packets, config.packetsPerCarton)}</div>
-                        <div style={{ fontSize: 10, color: '#6ee7b7' }}>🕐 {new Date(d.dispatchedAt).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}</div>
+                        <div style={{ fontSize: 10, color: '#64748b' }}>{new Date(d.dispatchedAt).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}</div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
                         <div style={{ fontSize: 12, color: '#16a34a', fontWeight: 700 }}>₹{d.totalAmount.toLocaleString()}</div>
-                        <div style={{ fontSize: 10, color: d.paymentType === 'cash' ? '#16a34a' : '#d97706' }}>{d.paymentType === 'cash' ? '💵 Cash' : '📋 Credit'}</div>
+                        <div style={{ fontSize: 10, color: d.paymentType === 'cash' ? '#22c55e' : '#f59e0b' }}>{d.paymentType === 'cash' ? 'Cash' : 'Credit'}</div>
                       </div>
                     </div>
                   ))}

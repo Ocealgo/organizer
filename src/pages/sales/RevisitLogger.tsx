@@ -12,12 +12,12 @@ type ActionKey = 'stock_update' | 'new_order' | 'payment_collection' | 'relation
 
 const today2 = () => localDateOffset(2)
 
-const BASE_ACTIONS: { key: ActionKey; emoji: string; label: string; sub: string }[] = [
-  { key: 'stock_update',        emoji: '📊', label: 'Stock Update',        sub: 'Log current stock level — enter qty sold' },
-  { key: 'new_order',           emoji: '📦', label: 'New Order',           sub: 'They want more stock — create allocation' },
-  { key: 'payment_collection',  emoji: '💰', label: 'Payment Collected',   sub: 'Collected cash against outstanding credit' },
-  { key: 'relationship_visit',  emoji: '🤝', label: 'Relationship Visit',  sub: 'Just visited, no specific action' },
-  { key: 'no_longer_active',    emoji: '❌', label: 'No Longer Active',    sub: 'Stopped selling / changed supplier' },
+const BASE_ACTIONS: { key: ActionKey; label: string; sub: string }[] = [
+  { key: 'stock_update',        label: 'Stock Update',        sub: 'Log current stock level — enter qty sold' },
+  { key: 'new_order',           label: 'New Order',           sub: 'They want more stock — create allocation' },
+  { key: 'payment_collection',  label: 'Payment Collected',   sub: 'Collected cash against outstanding credit' },
+  { key: 'relationship_visit',  label: 'Relationship Visit',  sub: 'Just visited, no specific action' },
+  { key: 'no_longer_active',    label: 'No Longer Active',    sub: 'Stopped selling / changed supplier' },
 ]
 
 export default function RevisitLogger({ party, onBack, onDone, logDate }: Props) {
@@ -50,13 +50,13 @@ export default function RevisitLogger({ party, onBack, onDone, logDate }: Props)
   const [subRetailers, setSubRetailers] = useState<Party[]>([])
   const [distributions, setDistributions] = useState<Record<string, { qty: string; pricePerUnit: string; payment: 'cash' | 'credit' }>>({})
 
-  const partyLabel = party.type === 'distributor' ? '🚚 Distributor' : '🏪 Retailer'
+  const partyLabel = party.type === 'distributor' ? 'Distributor' : 'Retailer'
   const isUnderDistributor = party.type === 'retailer' && !!(party as any).underDistributorId
 
   const actionOptions = [
     ...BASE_ACTIONS.filter(a => !(isUnderDistributor && a.key === 'payment_collection')),
     ...(party.type === 'distributor'
-      ? [{ key: 'distribute_to_retailers' as ActionKey, emoji: '📋', label: 'Distribute to Retailers', sub: 'Log stock pushed out to your retailer network' }]
+      ? [{ key: 'distribute_to_retailers' as ActionKey, label: 'Distribute to Retailers', sub: 'Log stock pushed out to your retailer network' }]
       : []),
   ]
 
@@ -171,7 +171,7 @@ export default function RevisitLogger({ party, onBack, onDone, logDate }: Props)
         } as PaymentCollectionAction)
         await addDoc(collection(db, 'alerts'), {
           type: 'payment_collected',
-          message: `💰 ${appUser!.name} collected ₹${parseFloat(paymentAmount).toLocaleString()} from ${party.name} — pending approval`,
+          message: `${appUser!.name} collected ₹${parseFloat(paymentAmount).toLocaleString()} from ${party.name} — pending approval`,
           relatedId: party.id!, read: false, createdAt: Date.now(),
         })
       }
@@ -242,25 +242,25 @@ export default function RevisitLogger({ party, onBack, onDone, logDate }: Props)
   return (
     <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
       {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg,#0d3d2e,#1a5c42)', padding: '20px 20px 20px' }}>
-        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#6ee7b7', padding: '6px 14px', borderRadius: 20, fontSize: 13, marginBottom: 14 }}>← Back</button>
-        <div style={{ fontSize: 13, color: '#a7f3d0' }}>{partyLabel}</div>
+      <div style={{ background: '#000000', padding: '20px 20px 20px' }}>
+        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'rgba(255,255,255,0.7)', padding: '6px 14px', borderRadius: 20, fontSize: 13, marginBottom: 14 }}>← Back</button>
+        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)' }}>{partyLabel}</div>
         <div style={{ fontSize: 22, fontWeight: 900, color: '#fff' }}>{party.name}</div>
-        <div style={{ fontSize: 13, color: '#a7f3d0', marginTop: 3 }}>
+        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', marginTop: 3 }}>
           {party.place || party.address} •
-          <span style={{ color: (party as any).status === 'active' ? '#86efac' : '#fde68a', marginLeft: 6 }}>
-            {(party as any).status === 'active' ? '🟢 Active' : '🟡 Prospect'}
+          <span style={{ color: (party as any).status === 'active' ? '#22c55e' : '#f59e0b', marginLeft: 6 }}>
+            {(party as any).status === 'active' ? 'Active' : 'Prospect'}
           </span>
         </div>
         {outstandingAmount > 0 && (
-          <div style={{ background: 'rgba(220,38,38,0.2)', border: '1px solid rgba(220,38,38,0.35)', borderRadius: 12, padding: '10px 14px', marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 12, padding: '10px 14px', marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
-              <div style={{ fontSize: 10, color: '#fca5a5', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700 }}>Outstanding Credit</div>
-              <div style={{ fontSize: 22, fontWeight: 900, color: '#f87171', lineHeight: 1.2 }}>₹{outstandingAmount.toLocaleString()}</div>
+              <div style={{ fontSize: 10, color: '#ef4444', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700 }}>Outstanding Credit</div>
+              <div style={{ fontSize: 22, fontWeight: 900, color: '#ef4444', lineHeight: 1.2 }}>₹{outstandingAmount.toLocaleString()}</div>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 11, color: '#fca5a5' }}>{outstandingAllocs.length} unpaid dispatch{outstandingAllocs.length > 1 ? 'es' : ''}</div>
-              <div style={{ fontSize: 10, color: 'rgba(252,165,165,0.7)', marginTop: 2 }}>Collect before new order</div>
+              <div style={{ fontSize: 11, color: '#ef4444' }}>{outstandingAllocs.length} unpaid dispatch{outstandingAllocs.length > 1 ? 'es' : ''}</div>
+              <div style={{ fontSize: 10, color: 'rgba(239,68,68,0.6)', marginTop: 2 }}>Collect before new order</div>
             </div>
           </div>
         )}
@@ -274,19 +274,18 @@ export default function RevisitLogger({ party, onBack, onDone, logDate }: Props)
           return (
             <div key={opt.key}>
               <button onClick={() => toggleAction(opt.key)}
-                style={{ width: '100%', background: active ? 'rgba(22,163,74,0.1)' : t.card, border: `2px solid ${active ? '#16a34a' : t.border}`, borderRadius: 14, padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left', cursor: 'pointer' }}>
-                <span style={{ fontSize: 26 }}>{opt.emoji}</span>
+                style={{ width: '100%', background: active ? 'rgba(34,197,94,0.08)' : t.card, border: `2px solid ${active ? '#22c55e' : t.border}`, borderRadius: 14, padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left', cursor: 'pointer' }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: 16, color: active ? '#16a34a' : t.text }}>{opt.label}</div>
+                  <div style={{ fontWeight: 700, fontSize: 16, color: active ? '#22c55e' : t.text }}>{opt.label}</div>
                   <div style={{ fontSize: 13, color: t.text2, marginTop: 2 }}>{opt.sub}</div>
                 </div>
-                <div style={{ width: 22, height: 22, borderRadius: '50%', border: `2px solid ${active ? '#16a34a' : t.border2}`, background: active ? '#16a34a' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <div style={{ width: 22, height: 22, borderRadius: '50%', border: `2px solid ${active ? '#22c55e' : t.border2}`, background: active ? '#22c55e' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   {active && <span style={{ color: '#fff', fontSize: 13, fontWeight: 900 }}>✓</span>}
                 </div>
               </button>
 
               {active && (
-                <div style={{ background: t.card, borderRadius: '0 0 14px 14px', padding: '16px', border: `2px solid #16a34a`, borderTop: 'none', marginTop: -2, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ background: t.card, borderRadius: '0 0 14px 14px', padding: '16px', border: `2px solid #22c55e`, borderTop: 'none', marginTop: -2, display: 'flex', flexDirection: 'column', gap: 12 }}>
 
                   {/* STOCK UPDATE */}
                   {opt.key === 'stock_update' && (
@@ -295,27 +294,26 @@ export default function RevisitLogger({ party, onBack, onDone, logDate }: Props)
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {products.map(p => (
                           <button key={p.id} onClick={() => setStockProductId(p.id!)}
-                            style={{ background: stockProductId === p.id ? 'rgba(22,163,74,0.12)' : t.bg3, border: `1.5px solid ${stockProductId === p.id ? '#16a34a' : t.border}`, borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left' }}>
-                            <span style={{ fontSize: 18 }}>📦</span>
+                            style={{ background: stockProductId === p.id ? 'rgba(34,197,94,0.1)' : t.bg3, border: `1.5px solid ${stockProductId === p.id ? '#22c55e' : t.border}`, borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left' }}>
                             <div style={{ flex: 1 }}>
-                              <div style={{ fontWeight: 700, fontSize: 14, color: stockProductId === p.id ? '#16a34a' : t.text }}>{p.name}</div>
+                              <div style={{ fontWeight: 700, fontSize: 14, color: stockProductId === p.id ? '#22c55e' : t.text }}>{p.name}</div>
                               <div style={{ fontSize: 11, color: t.text3 }}>
                                 Current stock: {(party.stock?.[p.id!]) ?? 0} {p.unitLabel}
                               </div>
                             </div>
-                            {stockProductId === p.id && <span style={{ color: '#16a34a' }}>✓</span>}
+                            {stockProductId === p.id && <span style={{ color: '#22c55e', fontWeight: 700 }}>✓</span>}
                           </button>
                         ))}
                       </div>
                       {stockProductId && (
                         <>
-                          <div style={{ background: 'rgba(8,145,178,0.08)', borderRadius: 10, padding: '10px 12px', fontSize: 12, color: '#0891b2' }}>
-                            💡 Enter qty sold — balance calculates automatically
+                          <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 10, padding: '10px 12px', fontSize: 12, color: t.text2 }}>
+                            Enter qty sold — balance calculates automatically
                           </div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                             <div>
                               <div style={{ fontSize: 10, color: t.text3, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Opening Qty</div>
-                              <div style={{ ...inputStyle, fontSize: 16, fontWeight: 900, color: '#94a3b8', display: 'flex', alignItems: 'center' }}>
+                              <div style={{ ...inputStyle, fontSize: 16, fontWeight: 900, color: t.text2, display: 'flex', alignItems: 'center' }}>
                                 {stockOpening}
                               </div>
                             </div>
@@ -326,8 +324,8 @@ export default function RevisitLogger({ party, onBack, onDone, logDate }: Props)
                             </div>
                           </div>
                           <div>
-                            <div style={{ fontSize: 10, color: '#6ee7b7', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Balance Qty</div>
-                            <div style={{ ...inputStyle, fontSize: 18, fontWeight: 900, color: stockBalance > 0 ? '#6ee7b7' : '#f87171', background: 'rgba(22,163,74,0.08)', display: 'flex', alignItems: 'center' }}>
+                            <div style={{ fontSize: 10, color: '#22c55e', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Balance Qty</div>
+                            <div style={{ ...inputStyle, fontSize: 18, fontWeight: 900, color: stockBalance > 0 ? '#22c55e' : '#ef4444', background: 'rgba(34,197,94,0.06)', display: 'flex', alignItems: 'center' }}>
                               {stockBalance}
                             </div>
                           </div>
@@ -340,21 +338,20 @@ export default function RevisitLogger({ party, onBack, onDone, logDate }: Props)
                   {opt.key === 'new_order' && (
                     <>
                       {isUnderDistributor && (
-                        <div style={{ background: 'rgba(8,145,178,0.08)', border: '1px solid rgba(8,145,178,0.2)', borderRadius: 10, padding: '10px 12px', fontSize: 12, color: '#0891b2' }}>
-                          🚚 Stock via <strong>{(party as any).underDistributorName}</strong> — allocation will be created under that distributor
+                        <div style={{ background: 'rgba(255,255,255,0.05)', border: `1px solid ${t.border2}`, borderRadius: 10, padding: '10px 12px', fontSize: 12, color: t.text2 }}>
+                          Stock via <strong>{(party as any).underDistributorName}</strong> — allocation will be created under that distributor
                         </div>
                       )}
                       <div style={{ fontSize: 12, color: t.text3, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Product</div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {products.map(p => (
                           <button key={p.id} onClick={() => setOrderProduct(p)}
-                            style={{ background: orderProduct?.id === p.id ? 'rgba(22,163,74,0.12)' : t.bg3, border: `1.5px solid ${orderProduct?.id === p.id ? '#16a34a' : t.border}`, borderRadius: 10, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left' }}>
-                            <span style={{ fontSize: 20 }}>📦</span>
+                            style={{ background: orderProduct?.id === p.id ? 'rgba(34,197,94,0.1)' : t.bg3, border: `1.5px solid ${orderProduct?.id === p.id ? '#22c55e' : t.border}`, borderRadius: 10, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left' }}>
                             <div style={{ flex: 1 }}>
-                              <div style={{ fontWeight: 700, fontSize: 14, color: orderProduct?.id === p.id ? '#16a34a' : t.text }}>{p.name}</div>
+                              <div style={{ fontWeight: 700, fontSize: 14, color: orderProduct?.id === p.id ? '#22c55e' : t.text }}>{p.name}</div>
                               <div style={{ fontSize: 12, color: t.text2 }}>₹{p.defaultPricePerUnit}/{p.unitLabel}</div>
                             </div>
-                            {orderProduct?.id === p.id && <span style={{ color: '#16a34a' }}>✓</span>}
+                            {orderProduct?.id === p.id && <span style={{ color: '#22c55e', fontWeight: 700 }}>✓</span>}
                           </button>
                         ))}
                       </div>
@@ -367,12 +364,12 @@ export default function RevisitLogger({ party, onBack, onDone, logDate }: Props)
                           </div>
                           {isUnderDistributor && orderQty && parseInt(orderQty) > 0 && (
                             <>
-                              <div style={{ background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#6ee7b7', fontWeight: 600 }}>
-                                📦 {parseInt(orderQty)} {orderProduct.unitLabel} of {orderProduct.name} → {(party as any).underDistributorName}
+                              <div style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#22c55e', fontWeight: 600 }}>
+                                {parseInt(orderQty)} {orderProduct.unitLabel} of {orderProduct.name} → {(party as any).underDistributorName}
                               </div>
                               <button onClick={handleSave} disabled={saving}
-                                style={{ background: saving ? '#475569' : 'linear-gradient(135deg,#0d3d2e,#1a5c42)', color: '#fff', border: 'none', borderRadius: 12, padding: '14px', fontSize: 15, fontWeight: 800 }}>
-                                {saving ? 'Placing...' : '📦 Place Order'}
+                                style={{ background: saving ? t.bg3 : t.primary, color: saving ? t.text2 : t.primaryText, border: 'none', borderRadius: 12, padding: '14px', fontSize: 15, fontWeight: 800 }}>
+                                {saving ? 'Placing...' : 'Place Order'}
                               </button>
                             </>
                           )}
@@ -383,15 +380,15 @@ export default function RevisitLogger({ party, onBack, onDone, logDate }: Props)
                                 <input type="number" value={orderPrice} onChange={e => setOrderPrice(e.target.value)}
                                   placeholder={`₹${orderProduct.defaultPricePerUnit}`} style={inputStyle} />
                                 {orderQty && orderPrice && (
-                                  <div style={{ fontSize: 13, color: '#6ee7b7', marginTop: 5, fontWeight: 600 }}>
+                                  <div style={{ fontSize: 13, color: '#22c55e', marginTop: 5, fontWeight: 600 }}>
                                     Total: ₹{(parseInt(orderQty) * parseFloat(orderPrice)).toLocaleString()}
                                   </div>
                                 )}
                               </div>
                               <div style={{ display: 'flex', gap: 8 }}>
-                                {([['cash', '💵 Cash'], ['credit', '📋 Credit']] as const).map(([val, label]) => (
+                                {([['cash', 'Cash'], ['credit', 'Credit']] as const).map(([val, label]) => (
                                   <button key={val} onClick={() => setOrderPayment(val)}
-                                    style={{ flex: 1, background: orderPayment === val ? (val === 'cash' ? 'rgba(22,163,74,0.15)' : 'rgba(217,119,6,0.15)') : t.bg3, color: orderPayment === val ? (val === 'cash' ? '#16a34a' : '#d97706') : t.text2, border: `1.5px solid ${orderPayment === val ? (val === 'cash' ? '#16a34a' : '#d97706') : t.border}`, borderRadius: 10, padding: '10px', fontSize: 13, fontWeight: 800 }}>
+                                    style={{ flex: 1, background: orderPayment === val ? (val === 'cash' ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)') : t.bg3, color: orderPayment === val ? (val === 'cash' ? '#22c55e' : '#f59e0b') : t.text2, border: `1.5px solid ${orderPayment === val ? (val === 'cash' ? '#22c55e' : '#f59e0b') : t.border}`, borderRadius: 10, padding: '10px', fontSize: 13, fontWeight: 800 }}>
                                     {label}
                                   </button>
                                 ))}
@@ -402,12 +399,12 @@ export default function RevisitLogger({ party, onBack, onDone, logDate }: Props)
                               </div>
                               {orderQty && parseInt(orderQty) > 0 && orderPrice && (
                                 <>
-                                  <div style={{ background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#6ee7b7', fontWeight: 600 }}>
-                                    📦 {parseInt(orderQty)} {orderProduct.unitLabel} of {orderProduct.name} · ₹{(parseInt(orderQty) * parseFloat(orderPrice)).toLocaleString()} · {orderDate}
+                                  <div style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#22c55e', fontWeight: 600 }}>
+                                    {parseInt(orderQty)} {orderProduct.unitLabel} of {orderProduct.name} · ₹{(parseInt(orderQty) * parseFloat(orderPrice)).toLocaleString()} · {orderDate}
                                   </div>
                                   <button onClick={handleSave} disabled={saving}
-                                    style={{ background: saving ? '#475569' : 'linear-gradient(135deg,#0d3d2e,#1a5c42)', color: '#fff', border: 'none', borderRadius: 12, padding: '14px', fontSize: 15, fontWeight: 800 }}>
-                                    {saving ? 'Placing...' : '📦 Place Order'}
+                                    style={{ background: saving ? t.bg3 : t.primary, color: saving ? t.text2 : t.primaryText, border: 'none', borderRadius: 12, padding: '14px', fontSize: 15, fontWeight: 800 }}>
+                                    {saving ? 'Placing...' : 'Place Order'}
                                   </button>
                                 </>
                               )}
@@ -433,7 +430,6 @@ export default function RevisitLogger({ party, onBack, onDone, logDate }: Props)
                         return (
                           <div key={r.id} style={{ background: t.bg3, borderRadius: 12, padding: 14, border: `1.5px solid ${dist.qty ? '#16a34a33' : t.border}` }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                              <span style={{ fontSize: 16 }}>🏪</span>
                               <div>
                                 <div style={{ fontWeight: 700, fontSize: 14, color: t.text }}>{r.name}</div>
                                 <div style={{ fontSize: 11, color: t.text3 }}>{r.place || r.address}</div>
@@ -452,15 +448,15 @@ export default function RevisitLogger({ party, onBack, onDone, logDate }: Props)
                               </div>
                             </div>
                             {total > 0 && (
-                              <div style={{ fontSize: 13, color: '#6ee7b7', fontWeight: 600, marginBottom: 8 }}>
+                              <div style={{ fontSize: 13, color: '#22c55e', fontWeight: 600, marginBottom: 8 }}>
                                 Total: ₹{total.toLocaleString()}
                               </div>
                             )}
                             <div style={{ display: 'flex', gap: 6 }}>
                               {(['cash', 'credit'] as const).map(p => (
                                 <button key={p} onClick={() => setDist('payment', p)}
-                                  style={{ flex: 1, background: dist.payment === p ? (p === 'cash' ? 'rgba(22,163,74,0.15)' : 'rgba(217,119,6,0.15)') : t.bg3, color: dist.payment === p ? (p === 'cash' ? '#16a34a' : '#d97706') : t.text2, border: `1.5px solid ${dist.payment === p ? (p === 'cash' ? '#16a34a' : '#d97706') : t.border}`, borderRadius: 8, padding: '8px', fontSize: 12, fontWeight: 700 }}>
-                                  {p === 'cash' ? '💵 Cash' : '📋 Credit'}
+                                  style={{ flex: 1, background: dist.payment === p ? (p === 'cash' ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)') : t.bg3, color: dist.payment === p ? (p === 'cash' ? '#22c55e' : '#f59e0b') : t.text2, border: `1.5px solid ${dist.payment === p ? (p === 'cash' ? '#22c55e' : '#f59e0b') : t.border}`, borderRadius: 8, padding: '8px', fontSize: 12, fontWeight: 700 }}>
+                                  {p === 'cash' ? 'Cash' : 'Credit'}
                                 </button>
                               ))}
                             </div>
@@ -473,8 +469,8 @@ export default function RevisitLogger({ party, onBack, onDone, logDate }: Props)
                   {/* PAYMENT COLLECTION */}
                   {opt.key === 'payment_collection' && (
                     <>
-                      <div style={{ background: 'rgba(217,119,6,0.1)', border: '1px solid rgba(217,119,6,0.2)', borderRadius: 10, padding: '10px 12px', fontSize: 12, color: '#d97706' }}>
-                        ⏳ Payment logged as pending — admin needs to approve
+                      <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 10, padding: '10px 12px', fontSize: 12, color: '#f59e0b' }}>
+                        Payment logged as pending — admin needs to approve
                       </div>
                       <div>
                         <div style={{ fontSize: 12, color: t.text3, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Amount Collected (₹)</div>
@@ -507,8 +503,8 @@ export default function RevisitLogger({ party, onBack, onDone, logDate }: Props)
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {['Stopped selling our product', 'Changed supplier', 'Closed down', 'Low sales / not profitable', 'Other'].map(r => (
                           <button key={r} onClick={() => setInactiveReason(r)}
-                            style={{ background: inactiveReason === r ? 'rgba(220,38,38,0.12)' : t.bg3, color: inactiveReason === r ? '#dc2626' : t.text2, border: `1.5px solid ${inactiveReason === r ? '#dc2626' : t.border}`, borderRadius: 10, padding: '11px 14px', fontSize: 14, textAlign: 'left', fontWeight: inactiveReason === r ? 700 : 400 }}>
-                            {inactiveReason === r ? '● ' : '○ '}{r}
+                            style={{ background: inactiveReason === r ? 'rgba(239,68,68,0.1)' : t.bg3, color: inactiveReason === r ? '#ef4444' : t.text2, border: `1.5px solid ${inactiveReason === r ? '#ef4444' : t.border}`, borderRadius: 10, padding: '11px 14px', fontSize: 14, textAlign: 'left', fontWeight: inactiveReason === r ? 700 : 400 }}>
+                            {r}
                           </button>
                         ))}
                       </div>
@@ -521,8 +517,8 @@ export default function RevisitLogger({ party, onBack, onDone, logDate }: Props)
         })}
 
         <button onClick={handleSave} disabled={saving || !canSave}
-          style={{ background: saving ? '#475569' : canSave ? 'linear-gradient(135deg,#0d3d2e,#1a5c42)' : '#334155', color: '#fff', border: 'none', borderRadius: 14, padding: 18, fontSize: 16, fontWeight: 800, opacity: !canSave ? 0.5 : 1, marginTop: 8 }}>
-          {saving ? 'Saving...' : 'Save Visit Log ✅'}
+          style={{ background: canSave && !saving ? t.primary : t.bg3, color: canSave && !saving ? t.primaryText : t.text2, border: 'none', borderRadius: 14, padding: 18, fontSize: 16, fontWeight: 800, opacity: !canSave ? 0.5 : 1, marginTop: 8 }}>
+          {saving ? 'Saving...' : 'Save Visit Log'}
         </button>
       </div>
     </div>

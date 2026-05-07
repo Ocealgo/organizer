@@ -21,19 +21,19 @@ function Field({ label, hint, error, children }: {
 }) {
   return (
     <div>
-      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>{label}</div>
-      {hint && <div style={{ fontSize: 11, color: '#6ee7b7', marginBottom: 6 }}>💡 {hint}</div>}
+      <div style={{ fontSize: 11, color: '#888', marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>{label}</div>
+      {hint && <div style={{ fontSize: 11, color: '#a0a0a0', marginBottom: 6 }}>{hint}</div>}
       {children}
-      {error && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 4 }}>⚠️ {error}</div>}
+      {error && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>{error}</div>}
     </div>
   )
 }
 
 function inputStyle(hasError?: boolean): React.CSSProperties {
   return {
-    width: '100%', background: 'rgba(255,255,255,0.06)',
-    border: `1.5px solid ${hasError ? '#dc2626' : 'rgba(255,255,255,0.1)'}`,
-    borderRadius: 12, padding: '13px 16px', fontSize: 16, color: '#fff',
+    width: '100%', background: 'rgba(128,128,128,0.08)',
+    border: `1.5px solid ${hasError ? '#ef4444' : 'rgba(128,128,128,0.2)'}`,
+    borderRadius: 12, padding: '13px 16px', fontSize: 16, color: 'inherit',
     outline: 'none', boxSizing: 'border-box',
   }
 }
@@ -201,27 +201,27 @@ export default function PartyManager({ onBack }: Props) {
   if (tab === 'allocations') return <AllocationManager onBack={() => setTab('list')} parties={parties} isAdmin={isAdmin} />
 
 
-  const distributorOptions = distributors.map(d => ({ value: d.id!, label: `🚚 ${d.name}` }))
+  const distributorOptions = distributors.map(d => ({ value: d.id!, label: d.name }))
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0d1117', paddingBottom: 40 }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg, #0a0a0a)', paddingBottom: 40 }}>
       {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg,#0891b2,#0e7490)', padding: '24px 20px 16px' }}>
-        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#bae6fd', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 16 }}>← Back</button>
-        <div style={{ color: '#bae6fd', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Network 🤝</div>
-        <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 2 }}>Distributors & Retailers</div>
-        <div style={{ color: '#e0f2fe', fontSize: 13, marginBottom: 16 }}>
+      <div style={{ background: '#000000', padding: '24px 20px 16px' }}>
+        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'rgba(255,255,255,0.7)', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 16 }}>← Back</button>
+        <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Network</div>
+        <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 2, color: '#fff' }}>Distributors & Retailers</div>
+        <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, marginBottom: 16 }}>
           {distributors.length} distributors • {parties.filter(p => p.type === 'retailer').length} retailers
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {([
-            { id: 'list', label: '📋 View All' },
-            { id: 'add', label: editingId ? '✏️ Editing' : '➕ Add New' },
-            { id: 'import', label: '📥 Import CSV' },
-            { id: 'allocations', label: '📦 Allocations' },
+            { id: 'list', label: 'View All' },
+            { id: 'add', label: editingId ? 'Editing' : 'Add New' },
+            { id: 'import', label: 'Import CSV' },
+            { id: 'allocations', label: 'Allocations' },
           ] as const).map(t => (
             <button key={t.id} onClick={() => { setTab(t.id); if (t.id !== 'add') { setEditingId(null); setForm(emptyForm) } }}
-              style={{ background: tab === t.id ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.08)', color: tab === t.id ? '#fff' : 'rgba(255,255,255,0.6)', border: 'none', borderRadius: 20, padding: '7px 14px', fontSize: 11, fontWeight: 700 }}>
+              style={{ background: tab === t.id ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)', color: tab === t.id ? '#fff' : 'rgba(255,255,255,0.5)', border: 'none', borderRadius: 20, padding: '7px 14px', fontSize: 11, fontWeight: 700 }}>
               {t.label}
             </button>
           ))}
@@ -233,17 +233,17 @@ export default function PartyManager({ onBack }: Props) {
         {/* LIST */}
         {tab === 'list' && (
           <>
-            <div style={{ background: '#161b22', borderRadius: 14, padding: 14, marginBottom: 14, border: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 14, padding: 14, marginBottom: 14, border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', gap: 10 }}>
               <input value={placeSearch} onChange={e => setPlaceSearch(e.target.value)}
                 placeholder="Search by name, place, area..."
-                style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '11px 14px', fontSize: 15, color: '#fff', outline: 'none', boxSizing: 'border-box' }} />
+                style={{ width: '100%', background: 'rgba(128,128,128,0.1)', border: '1px solid rgba(128,128,128,0.2)', borderRadius: 10, padding: '11px 14px', fontSize: 15, color: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
 
               {/* Type filter */}
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {(['all', 'distributor', 'retailer'] as const).map(f => (
                   <button key={f} onClick={() => { setTypeFilter(f); if (f === 'distributor') setDistributorFilter('all') }}
-                    style={{ background: typeFilter === f ? '#0891b2' : 'rgba(255,255,255,0.04)', color: typeFilter === f ? '#fff' : '#64748b', border: `1px solid ${typeFilter === f ? '#0891b2' : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 14px', fontSize: 12, fontWeight: 700 }}>
-                    {f === 'all' ? 'All' : f === 'distributor' ? '🚚 Dist.' : '🏪 Retailer'}
+                    style={{ background: typeFilter === f ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.04)', color: typeFilter === f ? '#fff' : '#888', border: `1px solid ${typeFilter === f ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 20, padding: '5px 14px', fontSize: 12, fontWeight: 700 }}>
+                    {f === 'all' ? 'All' : f === 'distributor' ? 'Dist.' : 'Retailer'}
                   </button>
                 ))}
               </div>
@@ -252,12 +252,12 @@ export default function PartyManager({ onBack }: Props) {
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {([
                   ['all',      'All'],
-                  ['active',   '🟢 Active'],
-                  ['prospect', '🟡 Prospect'],
-                  ['inactive', '⛔ Inactive'],
+                  ['active',   'Active'],
+                  ['prospect', 'Prospect'],
+                  ['inactive', 'Inactive'],
                 ] as [string, string][]).map(([val, label]) => (
                   <button key={val} onClick={() => setStatusFilter(val as any)}
-                    style={{ background: statusFilter === val ? 'rgba(22,163,74,0.15)' : 'rgba(255,255,255,0.04)', color: statusFilter === val ? '#16a34a' : '#64748b', border: `1px solid ${statusFilter === val ? 'rgba(22,163,74,0.3)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 14px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                    style={{ background: statusFilter === val ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.04)', color: statusFilter === val ? '#fff' : '#888', border: `1px solid ${statusFilter === val ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 20, padding: '5px 14px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
                     {label}
                   </button>
                 ))}
@@ -266,7 +266,7 @@ export default function PartyManager({ onBack }: Props) {
               {/* Distributor sub-filter — shown when retailers are visible */}
               {typeFilter !== 'distributor' && distributors.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 11, color: '#475569', marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>Under Distributor</div>
+                  <div style={{ fontSize: 11, color: '#888', marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>Under Distributor</div>
                   <CustomSelect
                     value={distributorFilter}
                     onChange={setDistributorFilter}
@@ -274,7 +274,7 @@ export default function PartyManager({ onBack }: Props) {
                     options={[
                       { value: 'all', label: 'All retailers' },
                       { value: 'independent', label: 'Independent retailers' },
-                      ...distributors.map(d => ({ value: d.id!, label: `🚚 ${d.name}`, sub: d.place || d.address })),
+                      ...distributors.map(d => ({ value: d.id!, label: d.name, sub: d.place || d.address })),
                     ]}
                   />
                 </div>
@@ -284,41 +284,40 @@ export default function PartyManager({ onBack }: Props) {
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {(['all', ...CATEGORIES] as ('all' | PartyCategory)[]).map(c => (
                   <button key={c} onClick={() => setCategoryFilter(c)}
-                    style={{ background: categoryFilter === c ? '#7c3aed' : 'rgba(255,255,255,0.04)', color: categoryFilter === c ? '#fff' : '#64748b', border: `1px solid ${categoryFilter === c ? '#7c3aed' : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 12px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                    style={{ background: categoryFilter === c ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.04)', color: categoryFilter === c ? '#fff' : '#888', border: `1px solid ${categoryFilter === c ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 20, padding: '5px 12px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
                     {c}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>Showing {filtered.length} of {parties.length} entries</div>
+            <div style={{ fontSize: 12, color: '#888', marginBottom: 10 }}>Showing {filtered.length} of {parties.length} entries</div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {filtered.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 40, color: '#475569' }}>
-                  <div style={{ fontSize: 36, marginBottom: 12 }}>🤝</div>
+                <div style={{ textAlign: 'center', padding: 40, color: '#555' }}>
                   <div style={{ fontWeight: 700 }}>No entries found</div>
                   <div style={{ fontSize: 13, marginTop: 6 }}>Try different filters or add a new entry</div>
                 </div>
               ) : filtered.map(p => (
-                <div key={p.id} style={{ background: '#161b22', borderRadius: 14, padding: 16, border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div key={p.id} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 14, padding: 16, border: '1px solid rgba(255,255,255,0.08)' }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                    <div style={{ width: 42, height: 42, background: p.type === 'distributor' ? 'rgba(8,145,178,0.2)' : 'rgba(22,163,74,0.2)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
-                      {p.type === 'distributor' ? '🚚' : '🏪'}
+                    <div style={{ width: 42, height: 42, background: p.type === 'distributor' ? 'rgba(99,102,241,0.15)' : 'rgba(34,197,94,0.12)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: p.type === 'distributor' ? '#818cf8' : '#22c55e', flexShrink: 0 }}>
+                      {p.type === 'distributor' ? 'D' : 'R'}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, flexWrap: 'wrap' }}>
                         <div style={{ fontWeight: 800, fontSize: 15 }}>{p.name}</div>
-                        <span style={{ fontSize: 10, background: 'rgba(124,58,237,0.15)', color: '#a78bfa', padding: '2px 8px', borderRadius: 99 }}>{p.category}</span>
+                        <span style={{ fontSize: 10, background: 'rgba(128,128,128,0.15)', color: '#a0a0a0', padding: '2px 8px', borderRadius: 99 }}>{p.category}</span>
                       </div>
-                      <div style={{ fontSize: 12, color: '#64748b' }}>📞 {p.phone}</div>
-                      <div style={{ fontSize: 12, color: '#64748b' }}>📍 {p.address}</div>
-                      {p.place && <div style={{ fontSize: 11, color: '#475569' }}>🏘️ {p.place}</div>}
-                      {p.underDistributorName && <div style={{ fontSize: 11, color: '#0891b2', marginTop: 2 }}>Under: {p.underDistributorName}</div>}
+                      <div style={{ fontSize: 12, color: '#888' }}>{p.phone}</div>
+                      <div style={{ fontSize: 12, color: '#888' }}>{p.address}</div>
+                      {p.place && <div style={{ fontSize: 11, color: '#666' }}>{p.place}</div>}
+                      {p.underDistributorName && <div style={{ fontSize: 11, color: '#a0a0a0', marginTop: 2 }}>Under: {p.underDistributorName}</div>}
                       {p.type === 'retailer' && (
                         <button onClick={() => startChangeParent(p)}
-                          style={{ background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.2)', color: '#a78bfa', borderRadius: 8, padding: '4px 10px', fontSize: 10, marginTop: 6, cursor: 'pointer' }}>
-                          🔀 Change Parent
+                          style={{ background: 'rgba(128,128,128,0.1)', border: '1px solid rgba(128,128,128,0.2)', color: '#a0a0a0', borderRadius: 8, padding: '4px 10px', fontSize: 10, marginTop: 6, cursor: 'pointer' }}>
+                          Change Parent
                         </button>
                       )}
                       {(() => {
@@ -327,18 +326,18 @@ export default function PartyManager({ onBack }: Props) {
                         const stockEntries = Object.entries(p.stock || {}).filter(([, qty]) => (qty as number) > 0)
                         return (
                           <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            <span style={{ fontSize: 11, background: 'rgba(8,145,178,0.15)', color: '#0891b2', padding: '3px 10px', borderRadius: 99, fontWeight: 700, alignSelf: 'flex-start' }}>
-                              📦 {toDisplay(allocatedPkts, config.packetsPerCarton)} allocated
+                            <span style={{ fontSize: 11, background: 'rgba(128,128,128,0.12)', color: '#a0a0a0', padding: '3px 10px', borderRadius: 99, fontWeight: 700, alignSelf: 'flex-start' }}>
+                              {toDisplay(allocatedPkts, config.packetsPerCarton)} allocated
                             </span>
                             {stockEntries.length > 0 && (
-                              <div style={{ background: 'rgba(22,163,74,0.06)', border: '1px solid rgba(22,163,74,0.15)', borderRadius: 8, padding: '6px 10px', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                                <div style={{ fontSize: 9, color: '#6ee7b7', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 2 }}>In Stock</div>
+                              <div style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.15)', borderRadius: 8, padding: '6px 10px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                <div style={{ fontSize: 9, color: '#22c55e', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 2 }}>In Stock</div>
                                 {stockEntries.map(([pid, qty]) => {
                                   const prod = products.find(pr => pr.id === pid)
                                   return (
                                     <div key={pid} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
-                                      <span style={{ color: '#94a3b8' }}>{prod?.name || pid}</span>
-                                      <span style={{ fontWeight: 700, color: '#6ee7b7' }}>{toDisplay(qty as number, config.packetsPerCarton)}</span>
+                                      <span style={{ color: '#888' }}>{prod?.name || pid}</span>
+                                      <span style={{ fontWeight: 700, color: '#22c55e' }}>{toDisplay(qty as number, config.packetsPerCarton)}</span>
                                     </div>
                                   )
                                 })}
@@ -347,28 +346,28 @@ export default function PartyManager({ onBack }: Props) {
                           </div>
                         )
                       })()}
-                      <div style={{ fontSize: 10, color: '#475569', marginTop: 4 }}>Added by {p.addedByName}</div>
+                      <div style={{ fontSize: 10, color: '#555', marginTop: 4 }}>Added by {p.addedByName}</div>
 
                       {/* Dispatch log toggle */}
                       <button onClick={e => { e.stopPropagation(); setExpandedDispatch(expandedDispatch === p.id ? null : p.id!) }}
-                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '5px 10px', fontSize: 11, color: '#64748b', marginTop: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '5px 10px', fontSize: 11, color: '#888', marginTop: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                         {expandedDispatch === p.id ? '▲' : '▼'} Last dispatches
                       </button>
 
                       {expandedDispatch === p.id && (() => {
                         const pd = dispatches.filter(d => d.partyId === p.id).slice(0, 3)
                         return pd.length === 0 ? (
-                          <div style={{ fontSize: 11, color: '#475569', marginTop: 8, padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>No dispatches yet</div>
+                          <div style={{ fontSize: 11, color: '#555', marginTop: 8, padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>No dispatches yet</div>
                         ) : (
                           <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
                             {pd.map(d => (
                               <div key={d.id} style={{ fontSize: 11, background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '8px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <div>
-                                  <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{toDisplay(d.packets, config.packetsPerCarton)}</div>
-                                  <div style={{ color: '#475569', fontSize: 10 }}>{new Date(d.dispatchedAt || d.createdAt).toLocaleDateString('en-IN')}</div>
+                                  <div style={{ fontWeight: 600 }}>{toDisplay(d.packets, config.packetsPerCarton)}</div>
+                                  <div style={{ color: '#555', fontSize: 10 }}>{new Date(d.dispatchedAt || d.createdAt).toLocaleDateString('en-IN')}</div>
                                 </div>
-                                <span style={{ fontSize: 10, color: d.paymentType === 'cash' ? '#16a34a' : '#d97706', background: d.paymentType === 'cash' ? 'rgba(22,163,74,0.1)' : 'rgba(217,119,6,0.1)', padding: '2px 8px', borderRadius: 99 }}>
-                                  {d.paymentType === 'cash' ? '💵 Cash' : '📋 Credit'}
+                                <span style={{ fontSize: 10, color: d.paymentType === 'cash' ? '#22c55e' : '#f59e0b', background: d.paymentType === 'cash' ? 'rgba(34,197,94,0.1)' : 'rgba(245,158,11,0.1)', padding: '2px 8px', borderRadius: 99 }}>
+                                  {d.paymentType === 'cash' ? 'Cash' : 'Credit'}
                                 </span>
                               </div>
                             ))}
@@ -378,13 +377,13 @@ export default function PartyManager({ onBack }: Props) {
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       <button onClick={() => startEdit(p)}
-                        style={{ background: 'rgba(8,145,178,0.1)', border: '1px solid rgba(8,145,178,0.2)', color: '#0891b2', borderRadius: 10, padding: '7px 10px', fontSize: 13, flexShrink: 0 }}>
-                        ✏️
+                        style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', borderRadius: 10, padding: '7px 12px', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                        Edit
                       </button>
                       {isAdmin && (
                         <button onClick={() => handleDelete(p.id!)} disabled={deleting === p.id}
-                          style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.2)', color: '#dc2626', borderRadius: 10, padding: '7px 10px', fontSize: 13, opacity: deleting === p.id ? 0.5 : 1, flexShrink: 0 }}>
-                          🗑️
+                          style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444', borderRadius: 10, padding: '7px 12px', fontSize: 11, fontWeight: 700, opacity: deleting === p.id ? 0.5 : 1, flexShrink: 0 }}>
+                          Del
                         </button>
                       )}
                     </div>
@@ -399,8 +398,8 @@ export default function PartyManager({ onBack }: Props) {
         {tab === 'add' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {editingId && (
-              <div style={{ background: 'rgba(8,145,178,0.1)', border: '1px solid rgba(8,145,178,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#0891b2' }}>
-                ✏️ Editing existing entry — changes will be saved
+              <div style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#a0a0a0' }}>
+                Editing existing entry — changes will be saved
               </div>
             )}
 
@@ -411,8 +410,8 @@ export default function PartyManager({ onBack }: Props) {
                 <div style={{ display: 'flex', gap: 8 }}>
                   {(['distributor', 'retailer'] as PartyType[]).map(t => (
                     <button key={t} onClick={() => setForm({ ...form, type: t })}
-                      style={{ flex: 1, background: form.type === t ? 'rgba(8,145,178,0.15)' : 'rgba(255,255,255,0.04)', color: form.type === t ? '#0891b2' : '#64748b', border: `1.5px solid ${form.type === t ? '#0891b2' : 'rgba(255,255,255,0.06)'}`, borderRadius: 12, padding: '12px', fontSize: 13, fontWeight: 800 }}>
-                      {t === 'distributor' ? '🚚 Distributor' : '🏪 Retailer'}
+                      style={{ flex: 1, background: form.type === t ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.04)', color: form.type === t ? '#fff' : '#888', border: `1.5px solid ${form.type === t ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 12, padding: '12px', fontSize: 13, fontWeight: 800 }}>
+                      {t === 'distributor' ? 'Distributor' : 'Retailer'}
                     </button>
                   ))}
                 </div>
@@ -421,20 +420,20 @@ export default function PartyManager({ onBack }: Props) {
 
             {/* Status legend — new parties always start as Prospect */}
             {!editingId && (
-              <div style={{ background: 'rgba(217,119,6,0.07)', border: '1px solid rgba(217,119,6,0.2)', borderRadius: 12, padding: '12px 14px' }}>
-                <div style={{ fontSize: 11, color: '#d97706', fontWeight: 700, marginBottom: 8, letterSpacing: 1, textTransform: 'uppercase' }}>
-                  🟡 Starting as Prospect
+              <div style={{ background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 12, padding: '12px 14px' }}>
+                <div style={{ fontSize: 11, color: '#f59e0b', fontWeight: 700, marginBottom: 8, letterSpacing: 1, textTransform: 'uppercase' }}>
+                  Starting as Prospect
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                   {[
-                    { icon: '🟡', label: 'Prospect', desc: 'New contact, not yet buying from us' },
-                    { icon: '🟢', label: 'Active', desc: 'Currently placing orders' },
-                    { icon: '⛔', label: 'Inactive', desc: 'Was active, no longer buying' },
+                    { color: '#f59e0b', label: 'Prospect', desc: 'New contact, not yet buying from us' },
+                    { color: '#22c55e', label: 'Active', desc: 'Currently placing orders' },
+                    { color: '#ef4444', label: 'Inactive', desc: 'Was active, no longer buying' },
                   ].map(s => (
                     <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 13 }}>{s.icon}</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', minWidth: 60 }}>{s.label}</span>
-                      <span style={{ fontSize: 11, color: '#64748b' }}>— {s.desc}</span>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, display: 'inline-block', flexShrink: 0 }} />
+                      <span style={{ fontSize: 12, fontWeight: 700, minWidth: 60 }}>{s.label}</span>
+                      <span style={{ fontSize: 11, color: '#888' }}>— {s.desc}</span>
                     </div>
                   ))}
                 </div>
@@ -443,11 +442,11 @@ export default function PartyManager({ onBack }: Props) {
 
             {/* Category */}
             <div>
-              <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8, letterSpacing: 1, textTransform: 'uppercase' }}>Category</div>
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 8, letterSpacing: 1, textTransform: 'uppercase' }}>Category</div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {CATEGORIES.map(c => (
                   <button key={c} onClick={() => setForm({ ...form, category: c })}
-                    style={{ background: form.category === c ? 'rgba(124,58,237,0.2)' : 'rgba(255,255,255,0.04)', color: form.category === c ? '#a78bfa' : '#64748b', border: `1px solid ${form.category === c ? '#7c3aed' : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '6px 14px', fontSize: 12, fontWeight: 700 }}>
+                    style={{ background: form.category === c ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.04)', color: form.category === c ? '#fff' : '#888', border: `1px solid ${form.category === c ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 20, padding: '6px 14px', fontSize: 12, fontWeight: 700 }}>
                     {c}
                   </button>
                 ))}
@@ -457,16 +456,16 @@ export default function PartyManager({ onBack }: Props) {
             {/* Under distributor */}
             {form.type === 'retailer' && distributors.length > 0 && (
               <div style={{
-                background: focusParent ? 'rgba(124,58,237,0.08)' : 'rgba(255,255,255,0.02)',
-                border: `1.5px solid ${focusParent ? '#a78bfa' : 'rgba(255,255,255,0.06)'}`,
+                background: focusParent ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)',
+                border: `1.5px solid ${focusParent ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)'}`,
                 borderRadius: 12, padding: 14,
               }}>
                 {focusParent && (
-                  <div style={{ fontSize: 10, color: '#a78bfa', marginBottom: 8, fontWeight: 700, letterSpacing: 1 }}>
-                    🔀 CHANGE PARENT DISTRIBUTOR
+                  <div style={{ fontSize: 10, color: '#a0a0a0', marginBottom: 8, fontWeight: 700, letterSpacing: 1 }}>
+                    CHANGE PARENT DISTRIBUTOR
                   </div>
                 )}
-                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8, letterSpacing: 1, textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 11, color: '#888', marginBottom: 8, letterSpacing: 1, textTransform: 'uppercase' }}>
                   Parent Distributor (optional)
                 </div>
                 <div style={{ fontSize: 11, color: '#475569', marginBottom: 10 }}>
@@ -508,8 +507,8 @@ export default function PartyManager({ onBack }: Props) {
                 <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                   {(['packets', 'cartons'] as const).map(u => (
                     <button key={u} onClick={() => setUnit(u)}
-                      style={{ flex: 1, background: unit === u ? 'rgba(22,163,74,0.15)' : 'rgba(255,255,255,0.04)', color: unit === u ? '#16a34a' : '#64748b', border: `1.5px solid ${unit === u ? '#16a34a' : 'rgba(255,255,255,0.06)'}`, borderRadius: 10, padding: '9px', fontSize: 12, fontWeight: 700 }}>
-                      {u === 'packets' ? '📦 Packets' : `📫 Cartons (1=${config.packetsPerCarton} pkts)`}
+                      style={{ flex: 1, background: unit === u ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.04)', color: unit === u ? '#fff' : '#888', border: `1.5px solid ${unit === u ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 10, padding: '9px', fontSize: 12, fontWeight: 700 }}>
+                      {u === 'packets' ? 'Packets' : `Cartons (1=${config.packetsPerCarton} pkts)`}
                     </button>
                   ))}
                 </div>
@@ -517,7 +516,7 @@ export default function PartyManager({ onBack }: Props) {
                   placeholder={unit === 'cartons' ? 'No. of cartons' : 'No. of packets'}
                   style={inputStyle(!!errors.quantity)} />
                 {form.quantity && parseInt(form.quantity) > 0 && (
-                  <div style={{ marginTop: 8, fontSize: 13, color: '#6ee7b7', fontWeight: 700 }}>
+                  <div style={{ marginTop: 8, fontSize: 13, color: '#22c55e', fontWeight: 700 }}>
                     = {toDisplay(toPackets(form.quantity), config.packetsPerCarton)}
                   </div>
                 )}
@@ -533,12 +532,12 @@ export default function PartyManager({ onBack }: Props) {
 
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => { setTab('list'); setEditingId(null); setForm(emptyForm); setErrors({}); setFocusParent(false) }}
-                style={{ flex: 1, background: 'rgba(255,255,255,0.06)', color: '#64748b', border: 'none', borderRadius: 14, padding: 14, fontSize: 14, fontWeight: 700 }}>
+                style={{ flex: 1, background: 'rgba(255,255,255,0.06)', color: '#888', border: 'none', borderRadius: 14, padding: 14, fontSize: 14, fontWeight: 700 }}>
                 Cancel
               </button>
               <button onClick={handleSave} disabled={saving}
-                style={{ flex: 2, background: saving ? '#475569' : 'linear-gradient(135deg,#0891b2,#0e7490)', color: '#fff', border: 'none', borderRadius: 14, padding: 14, fontSize: 15, fontWeight: 800 }}>
-                {saving ? 'Saving...' : editingId ? 'Save Changes ✅' : `Add ${form.type === 'distributor' ? 'Distributor 🚚' : 'Retailer 🏪'}`}
+                style={{ flex: 2, background: saving ? 'rgba(255,255,255,0.1)' : '#ffffff', color: saving ? '#888' : '#000000', border: 'none', borderRadius: 14, padding: 14, fontSize: 15, fontWeight: 800 }}>
+                {saving ? 'Saving...' : editingId ? 'Save Changes' : `Add ${form.type === 'distributor' ? 'Distributor' : 'Retailer'}`}
               </button>
             </div>
           </div>

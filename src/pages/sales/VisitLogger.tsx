@@ -14,7 +14,7 @@ type Step = 'home' | 'selectShop' | 'addNewShop' | 'markOutcome' | 'revisit'
 
 export default function VisitLogger({ onBack }: Props) {
   const { appUser } = useAuth()
-  const { t } = useTheme()
+  const { t, theme } = useTheme()
   const [parties, setParties] = useState<Party[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [todayLog, setTodayLog] = useState<DailyVisitLog | null>(null)
@@ -95,8 +95,6 @@ export default function VisitLogger({ onBack }: Props) {
     }
     try {
       if (todayLog?.id) {
-        // Use spread instead of arrayUnion — arrayUnion deduplicates identical objects
-        // which would drop a second visit to the same party in the same day
         await updateDoc(doc(db, 'visit_logs', todayLog.id), {
           visits: [...(todayLog.visits || []), entry],
           totalVisited: increment(1), updatedAt: Date.now(),
@@ -139,7 +137,6 @@ export default function VisitLogger({ onBack }: Props) {
       if (outcome === 'interested' && selectedProduct && allocQty) {
         const units = parseInt(allocQty)
         if (selectedParty.underDistributorId) {
-          // Retailer under distributor — create indent, not allocation
           const indent: Omit<RetailerIndent, 'id'> = {
             distributorId: selectedParty.underDistributorId,
             distributorName: selectedParty.underDistributorName || '',
@@ -242,20 +239,20 @@ export default function VisitLogger({ onBack }: Props) {
       const interested = todayLog.totalInterested ?? visits.filter(v => v.outcome === 'interested').length
       await addDoc(collection(db, 'alerts'), {
         type: 'visit_log_submitted',
-        message: `📋 ${appUser!.name} submitted visit log · ${visits.length} visit${visits.length !== 1 ? 's' : ''} · ${interested} interested`,
+        message: `${appUser!.name} submitted visit log · ${visits.length} visit${visits.length !== 1 ? 's' : ''} · ${interested} interested`,
         relatedId: todayLog.id, read: false, createdAt: Date.now(),
       })
     }
     onBack()
   }
 
-  const statusLabel = (s: string) => s === 'active' ? '🟢 Active' : s === 'inactive' ? '⛔ Inactive' : '🟡 Prospect'
+  const statusLabel = (s: string) => s === 'active' ? 'Active' : s === 'inactive' ? 'Inactive' : 'Prospect'
 
   const partyOptions = parties
     .filter(p => visitPartyStatus === 'all' || (p as any).status === visitPartyStatus)
     .map(p => ({
       value: p.id!,
-      label: `${p.type === 'distributor' ? '🚚' : '🏪'} ${p.name}`,
+      label: `${p.type === 'distributor' ? 'Distributor' : 'Retailer'}: ${p.name}`,
       sub: `${statusLabel((p as any).status)} · ${p.place || p.address || ''}`,
       group: p.type === 'distributor' ? 'Distributors' : 'Retailers',
     }))
@@ -281,8 +278,8 @@ export default function VisitLogger({ onBack }: Props) {
             <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
               {[
                 { label: 'Visited', val: visits.length, color: t.text, bg: t.bg3 },
-                { label: 'Interested', val: visits.filter(v => v.outcome === 'interested').length, color: '#16a34a', bg: 'rgba(22,163,74,0.1)' },
-                { label: 'Declined', val: visits.filter(v => v.outcome === 'not_interested').length, color: '#dc2626', bg: 'rgba(220,38,38,0.08)' },
+                { label: 'Interested', val: visits.filter(v => v.outcome === 'interested').length, color: '#22c55e', bg: 'rgba(34,197,94,0.1)' },
+                { label: 'Declined', val: visits.filter(v => v.outcome === 'not_interested').length, color: '#ef4444', bg: 'rgba(239,68,68,0.08)' },
               ].map(s => (
                 <div key={s.label} style={{ flex: 1, background: s.bg, borderRadius: 10, padding: '10px 6px', textAlign: 'center' }}>
                   <div style={{ fontSize: 22, fontWeight: 900, color: s.color }}>{s.val}</div>
@@ -301,34 +298,34 @@ export default function VisitLogger({ onBack }: Props) {
                 Keep Logging
               </button>
               <button onClick={async () => { setShowFinishModal(false); await handleFinishDay() }}
-                style={{ flex: 2, background: 'linear-gradient(135deg,#065f46,#047857)', color: '#fff', border: 'none', borderRadius: 14, padding: '14px', fontSize: 15, fontWeight: 900 }}>
-                Done ✓
+                style={{ flex: 2, background: t.primary, color: t.primaryText, border: 'none', borderRadius: 14, padding: '14px', fontSize: 15, fontWeight: 900 }}>
+                Done
               </button>
             </div>
           </div>
         </div>
       )}
 
-      <div style={{ background: 'linear-gradient(135deg,#0d3d2e,#1a5c42)', padding: '20px 20px 20px' }}>
+      <div style={{ background: '#000000', padding: '20px 20px 20px' }}>
         <div style={{ marginBottom: 14 }}>
-          <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#6ee7b7', padding: '6px 14px', borderRadius: 20, fontSize: 13 }}>← Back</button>
+          <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'rgba(255,255,255,0.7)', padding: '6px 14px', borderRadius: 20, fontSize: 13 }}>← Back</button>
         </div>
-        <div style={{ color: '#6ee7b7', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Visit Log</div>
+        <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Visit Log</div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
           <div style={{ fontSize: 22, fontWeight: 900, color: '#fff' }}>{selectedDate}</div>
           <input type="date" value={selectedDate} onChange={e => { if (e.target.value <= localDateStr()) setSelectedDate(e.target.value) }}
             max={localDateStr()}
-            style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 10, padding: '6px 10px', color: '#fff', fontSize: 13, outline: 'none', colorScheme: 'dark' }} />
+            style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10, padding: '6px 10px', color: '#fff', fontSize: 13, outline: 'none', colorScheme: 'dark' }} />
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
           {[
             { label: 'Visited', val: visits.length, color: '#fff' },
-            { label: 'Interested', val: visits.filter(v => v.outcome === 'interested').length, color: '#86efac' },
-            { label: 'Not Int.', val: visits.filter(v => v.outcome === 'not_interested').length, color: '#fca5a5' },
+            { label: 'Interested', val: visits.filter(v => v.outcome === 'interested').length, color: '#22c55e' },
+            { label: 'Not Int.', val: visits.filter(v => v.outcome === 'not_interested').length, color: '#ef4444' },
           ].map(s => (
-            <div key={s.label} style={{ flex: 1, background: 'rgba(0,0,0,0.2)', borderRadius: 12, padding: '12px 8px', textAlign: 'center' }}>
+            <div key={s.label} style={{ flex: 1, background: 'rgba(255,255,255,0.07)', borderRadius: 12, padding: '12px 8px', textAlign: 'center' }}>
               <div style={{ fontSize: 24, fontWeight: 900, color: s.color }}>{s.val}</div>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>{s.label}</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>{s.label}</div>
             </div>
           ))}
         </div>
@@ -337,11 +334,10 @@ export default function VisitLogger({ onBack }: Props) {
       <div style={{ padding: '16px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
         {/* Log visit button */}
         <button onClick={() => setStep('selectShop')}
-          style={{ background: 'linear-gradient(135deg,#0d3d2e,#1a5c42)', color: '#fff', border: 'none', borderRadius: 16, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 14, boxShadow: '0 8px 24px rgba(13,61,46,0.3)' }}>
-          <span style={{ fontSize: 28 }}>📋</span>
-          <div style={{ textAlign: 'left' }}>
+          style={{ background: t.primary, color: t.primaryText, border: 'none', borderRadius: 16, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ textAlign: 'left', flex: 1 }}>
             <div style={{ fontWeight: 800, fontSize: 17 }}>Log a Visit</div>
-            <div style={{ fontSize: 14, color: '#a7f3d0', marginTop: 2 }}>Distributor or Retailer visit</div>
+            <div style={{ fontSize: 14, color: theme === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.6)', marginTop: 2 }}>Distributor or Retailer visit</div>
           </div>
           <span style={{ marginLeft: 'auto', fontSize: 22 }}>›</span>
         </button>
@@ -360,10 +356,10 @@ export default function VisitLogger({ onBack }: Props) {
               })
               return Array.from(partyGroups.entries()).map(([partyId, entries]) => {
                 const vParty = parties.find(p => p.id === partyId)
-                const typeLabel = vParty?.type === 'distributor' ? '🚚 Distributor' : '🏪 Retailer'
+                const typeLabel = vParty?.type === 'distributor' ? 'Distributor' : 'Retailer'
                 const hasInterested = entries.some(v => v.outcome === 'interested')
                 const allNotInterested = entries.every(v => v.outcome === 'not_interested')
-                const borderColor = hasInterested ? 'rgba(22,163,74,0.25)' : allNotInterested ? 'rgba(220,38,38,0.15)' : 'rgba(217,119,6,0.2)'
+                const borderColor = hasInterested ? 'rgba(34,197,94,0.2)' : allNotInterested ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.2)'
                 return (
                   <div key={partyId} style={{ background: t.card, borderRadius: 14, padding: '14px 16px', border: `1px solid ${borderColor}` }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -382,30 +378,31 @@ export default function VisitLogger({ onBack }: Props) {
                       const timeStr = v.loggedAt
                         ? new Date(v.loggedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
                         : ''
-                      const outcomeEmoji = v.outcome === 'interested' ? '✅' : v.outcome === 'not_interested' ? '❌' : '🔄'
+                      const outcomeColor = v.outcome === 'interested' ? '#22c55e' : v.outcome === 'not_interested' ? '#ef4444' : '#f59e0b'
+                      const outcomeLabel = v.outcome === 'interested' ? 'Interested' : v.outcome === 'not_interested' ? 'Not Interested' : 'Follow Up'
                       return (
                         <div key={vi} style={{ paddingLeft: 10, borderLeft: `2px solid ${t.border}`, marginBottom: vi < entries.length - 1 ? 10 : 0, paddingBottom: vi < entries.length - 1 ? 8 : 0 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                            <span style={{ fontSize: 15 }}>{outcomeEmoji}</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: outcomeColor, background: `${outcomeColor}18`, padding: '2px 8px', borderRadius: 99 }}>{outcomeLabel}</span>
                             {timeStr && <span style={{ fontSize: 11, color: t.text3, fontWeight: 600 }}>{timeStr}</span>}
                           </div>
                           {v.isRevisit && rl?.actions?.map((action: any, ai: number) => {
                             const label =
-                              action.type === 'stock_update' ? `📊 Stock Updated · Balance: ${action.balanceQty} pkts` :
-                              action.type === 'new_order' ? `📦 New Order · ${action.quantity} ${action.productName}` :
-                              action.type === 'payment_collection' ? `💰 Payment ₹${action.amount?.toLocaleString()}` :
-                              action.type === 'relationship_visit' ? `🤝 Relationship Visit${action.notes ? ` · ${action.notes}` : ''}` :
-                              action.type === 'no_longer_active' ? `⛔ No Longer Active · ${action.reason}` : null
+                              action.type === 'stock_update' ? `Stock Updated · Balance: ${action.balanceQty} pkts` :
+                              action.type === 'new_order' ? `New Order · ${action.quantity} ${action.productName}` :
+                              action.type === 'payment_collection' ? `Payment ₹${action.amount?.toLocaleString()}` :
+                              action.type === 'relationship_visit' ? `Relationship Visit${action.notes ? ` · ${action.notes}` : ''}` :
+                              action.type === 'no_longer_active' ? `No Longer Active · ${action.reason}` : null
                             return label ? <div key={ai} style={{ fontSize: 13, color: t.text2, marginBottom: 2 }}>{label}</div> : null
                           })}
                           {!v.isRevisit && v.outcome === 'interested' && v.productName && (
-                            <div style={{ fontSize: 13, color: '#16a34a' }}>{v.productName} — allocation created</div>
+                            <div style={{ fontSize: 13, color: '#22c55e' }}>{v.productName} — allocation created</div>
                           )}
                           {!v.isRevisit && v.outcome === 'not_interested' && (
-                            <div style={{ fontSize: 13, color: '#dc2626' }}>{v.notInterestedReason}</div>
+                            <div style={{ fontSize: 13, color: '#ef4444' }}>{v.notInterestedReason}</div>
                           )}
                           {!v.isRevisit && v.outcome === 'follow_up' && (
-                            <div style={{ fontSize: 13, color: '#d97706' }}>Follow up needed</div>
+                            <div style={{ fontSize: 13, color: '#f59e0b' }}>Follow up needed</div>
                           )}
                         </div>
                       )
@@ -429,12 +426,12 @@ export default function VisitLogger({ onBack }: Props) {
         {/* Submit / update day log */}
         <button
           onClick={() => visits.length > 0 ? setShowFinishModal(true) : handleFinishDay()}
-          style={{ width: '100%', background: visits.length > 0 ? 'linear-gradient(135deg,#065f46,#047857)' : t.bg3, color: visits.length > 0 ? '#fff' : t.text2, border: visits.length > 0 ? 'none' : `1.5px solid ${t.border}`, borderRadius: 16, padding: '18px', fontSize: 17, fontWeight: 900, boxShadow: visits.length > 0 ? '0 8px 24px rgba(4,120,87,0.35)' : 'none' }}>
+          style={{ width: '100%', background: visits.length > 0 ? t.primary : t.bg3, color: visits.length > 0 ? t.primaryText : t.text2, border: visits.length > 0 ? 'none' : `1.5px solid ${t.border}`, borderRadius: 16, padding: '18px', fontSize: 17, fontWeight: 900 }}>
           {visits.length === 0
             ? '← Back to Dashboard'
             : todayLog?.updatedAt && todayLog.updatedAt !== todayLog.createdAt
-              ? `📝 Update Entry — ${visits.length} visit${visits.length > 1 ? 's' : ''}`
-              : `✅ Submit Day Log — ${visits.length} visit${visits.length > 1 ? 's' : ''}`}
+              ? `Update Entry — ${visits.length} visit${visits.length > 1 ? 's' : ''}`
+              : `Submit Day Log — ${visits.length} visit${visits.length > 1 ? 's' : ''}`}
         </button>
       </div>
     </div>
@@ -443,10 +440,10 @@ export default function VisitLogger({ onBack }: Props) {
   // ── SELECT PARTY ─────────────────────────────────────────────────────────
   if (step === 'selectShop') return (
     <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
-      <div style={{ background: 'linear-gradient(135deg,#0d3d2e,#1a5c42)', padding: '20px 20px 20px' }}>
-        <button onClick={() => setStep('home')} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#6ee7b7', padding: '6px 14px', borderRadius: 20, fontSize: 13, marginBottom: 14 }}>← Back</button>
+      <div style={{ background: '#000000', padding: '20px 20px 20px' }}>
+        <button onClick={() => setStep('home')} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'rgba(255,255,255,0.7)', padding: '6px 14px', borderRadius: 20, fontSize: 13, marginBottom: 14 }}>← Back</button>
         <div style={{ fontSize: 20, fontWeight: 900, color: '#fff' }}>Select Party</div>
-        <div style={{ fontSize: 14, color: '#a7f3d0', marginTop: 4 }}>Active → Revisit  ·  Prospect → Mark outcome</div>
+        <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.45)', marginTop: 4 }}>Active → Revisit  ·  Prospect → Mark outcome</div>
       </div>
 
       <div style={{ padding: '16px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -454,19 +451,19 @@ export default function VisitLogger({ onBack }: Props) {
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {([
             { val: 'all',      label: 'All' },
-            { val: 'active',   label: '🟢 Active' },
-            { val: 'prospect', label: '🟡 Prospect' },
-            { val: 'inactive', label: '⛔ Inactive' },
+            { val: 'active',   label: 'Active' },
+            { val: 'prospect', label: 'Prospect' },
+            { val: 'inactive', label: 'Inactive' },
           ] as const).map(s => (
             <button key={s.val} onClick={() => setVisitPartyStatus(s.val)}
               style={{
                 background: visitPartyStatus === s.val
-                  ? s.val === 'active' ? 'rgba(22,163,74,0.15)' : s.val === 'prospect' ? 'rgba(217,119,6,0.15)' : s.val === 'inactive' ? 'rgba(220,38,38,0.12)' : 'rgba(22,163,74,0.15)'
+                  ? s.val === 'active' ? 'rgba(34,197,94,0.12)' : s.val === 'prospect' ? 'rgba(245,158,11,0.12)' : s.val === 'inactive' ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.12)'
                   : t.bg3,
                 color: visitPartyStatus === s.val
-                  ? s.val === 'active' ? '#16a34a' : s.val === 'prospect' ? '#d97706' : s.val === 'inactive' ? '#dc2626' : '#16a34a'
+                  ? s.val === 'active' ? '#22c55e' : s.val === 'prospect' ? '#f59e0b' : s.val === 'inactive' ? '#ef4444' : '#22c55e'
                   : t.text2,
-                border: `1px solid ${visitPartyStatus === s.val ? (s.val === 'active' ? '#16a34a' : s.val === 'prospect' ? '#d97706' : s.val === 'inactive' ? '#dc2626' : '#16a34a') : t.border}`,
+                border: `1px solid ${visitPartyStatus === s.val ? (s.val === 'active' ? 'rgba(34,197,94,0.25)' : s.val === 'prospect' ? 'rgba(245,158,11,0.25)' : s.val === 'inactive' ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.25)') : t.border}`,
                 borderRadius: 20, padding: '6px 14px', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap',
               }}>
               {s.label}
@@ -482,7 +479,7 @@ export default function VisitLogger({ onBack }: Props) {
             setSelectedParty(p)
             setStep((p as any).status === 'active' ? 'revisit' : 'markOutcome')
           }}
-          placeholder="🔍 Search by name, place, area..."
+          placeholder="Search by name, place, area..."
           options={partyOptions}
           searchable />
 
@@ -494,7 +491,6 @@ export default function VisitLogger({ onBack }: Props) {
 
         <button onClick={() => setStep('addNewShop')}
           style={{ background: t.card, border: `1.5px dashed ${t.border2}`, color: t.text, borderRadius: 14, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 26 }}>🆕</span>
           <div>
             <div style={{ fontWeight: 700, fontSize: 16 }}>Add New Party</div>
             <div style={{ fontSize: 13, color: t.text2, marginTop: 2 }}>Not in the list yet</div>
@@ -512,17 +508,17 @@ export default function VisitLogger({ onBack }: Props) {
   // ── ADD NEW PARTY ─────────────────────────────────────────────────────────
   if (step === 'addNewShop') return (
     <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
-      <div style={{ background: 'linear-gradient(135deg,#0d3d2e,#1a5c42)', padding: '20px 20px 20px' }}>
-        <button onClick={() => setStep('selectShop')} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#6ee7b7', padding: '6px 14px', borderRadius: 20, fontSize: 13, marginBottom: 14 }}>← Back</button>
+      <div style={{ background: '#000000', padding: '20px 20px 20px' }}>
+        <button onClick={() => setStep('selectShop')} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'rgba(255,255,255,0.7)', padding: '6px 14px', borderRadius: 20, fontSize: 13, marginBottom: 14 }}>← Back</button>
         <div style={{ fontSize: 20, fontWeight: 900, color: '#fff' }}>New Party</div>
-        <div style={{ fontSize: 13, color: '#a7f3d0', marginTop: 4 }}>Added as Prospect</div>
+        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', marginTop: 4 }}>Added as Prospect</div>
       </div>
       <div style={{ padding: '16px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'flex', gap: 8 }}>
           {(['distributor', 'retailer'] as const).map(tp => (
             <button key={tp} onClick={() => setNewShop({ ...newShop, type: tp })}
-              style={{ flex: 1, background: newShop.type === tp ? 'rgba(8,145,178,0.15)' : t.bg3, color: newShop.type === tp ? '#0891b2' : t.text2, border: `1.5px solid ${newShop.type === tp ? '#0891b2' : t.border2}`, borderRadius: 12, padding: '13px', fontSize: 15, fontWeight: 800 }}>
-              {tp === 'distributor' ? '🚚 Distributor' : '🏪 Retailer'}
+              style={{ flex: 1, background: newShop.type === tp ? 'rgba(34,197,94,0.1)' : t.bg3, color: newShop.type === tp ? '#22c55e' : t.text2, border: `1.5px solid ${newShop.type === tp ? 'rgba(34,197,94,0.25)' : t.border2}`, borderRadius: 12, padding: '13px', fontSize: 15, fontWeight: 800 }}>
+              {tp === 'distributor' ? 'Distributor' : 'Retailer'}
             </button>
           ))}
         </div>
@@ -534,13 +530,13 @@ export default function VisitLogger({ onBack }: Props) {
               onChange={v => setNewShop({ ...newShop, underDistributorId: v })}
               placeholder="Independent — no distributor"
               options={[
-                { value: '', label: '🟢 Independent retailer' },
-                ...parties.filter(p => p.type === 'distributor').map(d => ({ value: d.id!, label: `🚚 ${d.name}` })),
+                { value: '', label: 'Independent retailer' },
+                ...parties.filter(p => p.type === 'distributor').map(d => ({ value: d.id!, label: d.name })),
               ]}
             />
             {newShop.underDistributorId && (
-              <div style={{ fontSize: 11, color: '#d97706', marginTop: 6 }}>
-                ⚠️ Allocation will be blocked — must go through the distributor
+              <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 6 }}>
+                Allocation will be blocked — must go through the distributor
               </div>
             )}
           </div>
@@ -560,7 +556,7 @@ export default function VisitLogger({ onBack }: Props) {
           </div>
         ))}
         <button onClick={handleAddNewShop} disabled={saving || !newShop.name.trim()}
-          style={{ background: !newShop.name.trim() || saving ? '#475569' : 'linear-gradient(135deg,#0d3d2e,#1a5c42)', color: '#fff', border: 'none', borderRadius: 14, padding: 17, fontSize: 16, fontWeight: 800 }}>
+          style={{ background: !newShop.name.trim() || saving ? t.bg3 : t.primary, color: !newShop.name.trim() || saving ? t.text3 : t.primaryText, border: 'none', borderRadius: 14, padding: 17, fontSize: 16, fontWeight: 800, opacity: !newShop.name.trim() || saving ? 0.5 : 1 }}>
           {saving ? 'Saving...' : 'Add & Continue →'}
         </button>
       </div>
@@ -570,24 +566,23 @@ export default function VisitLogger({ onBack }: Props) {
   // ── MARK OUTCOME (prospect / first visit) ─────────────────────────────────
   if (step === 'markOutcome' && selectedParty) return (
     <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
-      <div style={{ background: 'linear-gradient(135deg,#0d3d2e,#1a5c42)', padding: '20px 20px 20px' }}>
-        <button onClick={() => { setStep('selectShop'); resetVisit() }} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#6ee7b7', padding: '6px 14px', borderRadius: 20, fontSize: 13, marginBottom: 14 }}>← Back</button>
-        <div style={{ fontSize: 13, color: '#a7f3d0' }}>Prospect Visit</div>
+      <div style={{ background: '#000000', padding: '20px 20px 20px' }}>
+        <button onClick={() => { setStep('selectShop'); resetVisit() }} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'rgba(255,255,255,0.7)', padding: '6px 14px', borderRadius: 20, fontSize: 13, marginBottom: 14 }}>← Back</button>
+        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)' }}>Prospect Visit</div>
         <div style={{ fontSize: 22, fontWeight: 900, color: '#fff' }}>{selectedParty.name}</div>
-        <div style={{ fontSize: 13, color: '#a7f3d0', marginTop: 2 }}>{selectedParty.place || selectedParty.address}</div>
+        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>{selectedParty.place || selectedParty.address}</div>
       </div>
 
       <div style={{ padding: '16px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ fontSize: 14, color: t.text2, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Visit Outcome</div>
 
         {[
-          { val: 'interested',     emoji: '✅', label: 'Yes, Interested!',    sub: 'Will take our product — create allocation', color: '#16a34a' },
-          { val: 'not_interested', emoji: '❌', label: 'Not Interested',       sub: 'Select reason below', color: '#dc2626' },
-          { val: 'follow_up',      emoji: '🔄', label: 'Follow Up Later',      sub: 'Needs more time to decide', color: '#d97706' },
+          { val: 'interested',     label: 'Yes, Interested!',    sub: 'Will take our product — create allocation', color: '#22c55e' },
+          { val: 'not_interested', label: 'Not Interested',       sub: 'Select reason below', color: '#ef4444' },
+          { val: 'follow_up',      label: 'Follow Up Later',      sub: 'Needs more time to decide', color: '#f59e0b' },
         ].map(o => (
           <button key={o.val} onClick={() => setOutcome(o.val as VisitOutcome)}
-            style={{ background: outcome === o.val ? `${o.color}22` : t.card, border: `2px solid ${outcome === o.val ? o.color : t.border}`, borderRadius: 14, padding: '17px 18px', display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left' }}>
-            <span style={{ fontSize: 28 }}>{o.emoji}</span>
+            style={{ background: outcome === o.val ? `${o.color}15` : t.card, border: `2px solid ${outcome === o.val ? o.color : t.border}`, borderRadius: 14, padding: '17px 18px', display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left' }}>
             <div>
               <div style={{ fontWeight: 800, fontSize: 16, color: outcome === o.val ? o.color : t.text }}>{o.label}</div>
               <div style={{ fontSize: 13, color: t.text2, marginTop: 2 }}>{o.sub}</div>
@@ -600,7 +595,7 @@ export default function VisitLogger({ onBack }: Props) {
             <div style={{ fontSize: 14, color: t.text2, fontWeight: 700 }}>Why not interested?</div>
             {NOT_INTERESTED_REASONS.map(r => (
               <button key={r} onClick={() => setNotInterestedReason(r)}
-                style={{ background: notInterestedReason === r ? 'rgba(220,38,38,0.12)' : t.bg3, color: notInterestedReason === r ? '#dc2626' : t.text2, border: `1.5px solid ${notInterestedReason === r ? '#dc2626' : t.border}`, borderRadius: 10, padding: '12px 14px', fontSize: 14, textAlign: 'left', fontWeight: notInterestedReason === r ? 700 : 400 }}>
+                style={{ background: notInterestedReason === r ? 'rgba(239,68,68,0.1)' : t.bg3, color: notInterestedReason === r ? '#ef4444' : t.text2, border: `1.5px solid ${notInterestedReason === r ? 'rgba(239,68,68,0.2)' : t.border}`, borderRadius: 10, padding: '12px 14px', fontSize: 14, textAlign: 'left', fontWeight: notInterestedReason === r ? 700 : 400 }}>
                 {notInterestedReason === r ? '● ' : '○ '}{r}
               </button>
             ))}
@@ -614,24 +609,23 @@ export default function VisitLogger({ onBack }: Props) {
 
         {outcome === 'interested' && selectedParty.underDistributorId && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.2)', borderRadius: 12, padding: '12px 14px' }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: '#d97706', marginBottom: 4 }}>Indent via {selectedParty.underDistributorName}</div>
-              <div style={{ fontSize: 12, color: '#fbbf24', lineHeight: 1.5 }}>Stock flows through the distributor. An indent will be raised — distributor fulfills it.</div>
+            <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 12, padding: '12px 14px' }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#f59e0b', marginBottom: 4 }}>Indent via {selectedParty.underDistributorName}</div>
+              <div style={{ fontSize: 12, color: t.text2, lineHeight: 1.5 }}>Stock flows through the distributor. An indent will be raised — distributor fulfills it.</div>
             </div>
             <div style={{ fontSize: 14, color: t.text2, fontWeight: 700 }}>Which Product?</div>
             {products.length === 0 ? (
-              <div style={{ background: 'rgba(220,38,38,0.08)', borderRadius: 10, padding: 14, fontSize: 14, color: '#dc2626' }}>
+              <div style={{ background: 'rgba(239,68,68,0.08)', borderRadius: 10, padding: 14, fontSize: 14, color: '#ef4444' }}>
                 No active products. Ask admin to add products first.
               </div>
             ) : products.map(p => (
               <button key={p.id} onClick={() => setSelectedProduct(p)}
-                style={{ background: selectedProduct?.id === p.id ? 'rgba(22,163,74,0.12)' : t.bg3, border: `1.5px solid ${selectedProduct?.id === p.id ? '#16a34a' : t.border}`, borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}>
-                <span style={{ fontSize: 20 }}>📦</span>
+                style={{ background: selectedProduct?.id === p.id ? 'rgba(34,197,94,0.1)' : t.bg3, border: `1.5px solid ${selectedProduct?.id === p.id ? 'rgba(34,197,94,0.25)' : t.border}`, borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: selectedProduct?.id === p.id ? '#16a34a' : t.text }}>{p.name}</div>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: selectedProduct?.id === p.id ? '#22c55e' : t.text }}>{p.name}</div>
                   <div style={{ fontSize: 13, color: t.text2 }}>₹{p.defaultPricePerUnit}/{p.unitLabel}</div>
                 </div>
-                {selectedProduct?.id === p.id && <span style={{ color: '#16a34a', fontSize: 18 }}>✓</span>}
+                {selectedProduct?.id === p.id && <span style={{ color: '#22c55e', fontSize: 18 }}>✓</span>}
               </button>
             ))}
             {selectedProduct && (
@@ -645,18 +639,17 @@ export default function VisitLogger({ onBack }: Props) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ fontSize: 14, color: t.text2, fontWeight: 700 }}>Which Product?</div>
             {products.length === 0 ? (
-              <div style={{ background: 'rgba(220,38,38,0.08)', borderRadius: 10, padding: 14, fontSize: 14, color: '#dc2626' }}>
-                ⚠️ No active products found. Ask admin to add products first.
+              <div style={{ background: 'rgba(239,68,68,0.08)', borderRadius: 10, padding: 14, fontSize: 14, color: '#ef4444' }}>
+                No active products found. Ask admin to add products first.
               </div>
             ) : products.map(p => (
               <button key={p.id} onClick={() => setSelectedProduct(p)}
-                style={{ background: selectedProduct?.id === p.id ? 'rgba(22,163,74,0.12)' : t.bg3, border: `1.5px solid ${selectedProduct?.id === p.id ? '#16a34a' : t.border}`, borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}>
-                <span style={{ fontSize: 22 }}>📦</span>
+                style={{ background: selectedProduct?.id === p.id ? 'rgba(34,197,94,0.1)' : t.bg3, border: `1.5px solid ${selectedProduct?.id === p.id ? 'rgba(34,197,94,0.25)' : t.border}`, borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: selectedProduct?.id === p.id ? '#16a34a' : t.text }}>{p.name}</div>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: selectedProduct?.id === p.id ? '#22c55e' : t.text }}>{p.name}</div>
                   <div style={{ fontSize: 13, color: t.text2 }}>₹{p.defaultPricePerUnit}/{p.unitLabel}</div>
                 </div>
-                {selectedProduct?.id === p.id && <span style={{ color: '#16a34a', fontSize: 20 }}>✓</span>}
+                {selectedProduct?.id === p.id && <span style={{ color: '#22c55e', fontSize: 20 }}>✓</span>}
               </button>
             ))}
             {selectedProduct && (
@@ -666,14 +659,14 @@ export default function VisitLogger({ onBack }: Props) {
                 <input type="number" value={allocPrice} onChange={e => setAllocPrice(e.target.value)}
                   placeholder={`Price per ${selectedProduct.unitLabel} (₹)`} style={inputStyle} />
                 {allocQty && allocPrice && (
-                  <div style={{ fontSize: 14, color: '#6ee7b7', fontWeight: 600 }}>
+                  <div style={{ fontSize: 14, color: '#22c55e', fontWeight: 600 }}>
                     Total: ₹{(parseInt(allocQty) * parseFloat(allocPrice)).toLocaleString()}
                   </div>
                 )}
                 <div style={{ display: 'flex', gap: 8 }}>
-                  {([['cash', '💵 Cash'], ['credit', '📋 Credit']] as const).map(([val, label]) => (
+                  {([['cash', 'Cash'], ['credit', 'Credit']] as const).map(([val, label]) => (
                     <button key={val} onClick={() => setAllocPayment(val)}
-                      style={{ flex: 1, background: allocPayment === val ? (val === 'cash' ? 'rgba(22,163,74,0.15)' : 'rgba(217,119,6,0.15)') : t.bg3, color: allocPayment === val ? (val === 'cash' ? '#16a34a' : '#d97706') : t.text2, border: `1.5px solid ${allocPayment === val ? (val === 'cash' ? '#16a34a' : '#d97706') : t.border}`, borderRadius: 12, padding: '12px', fontSize: 14, fontWeight: 800 }}>
+                      style={{ flex: 1, background: allocPayment === val ? (val === 'cash' ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)') : t.bg3, color: allocPayment === val ? (val === 'cash' ? '#22c55e' : '#f59e0b') : t.text2, border: `1.5px solid ${allocPayment === val ? (val === 'cash' ? 'rgba(34,197,94,0.25)' : 'rgba(245,158,11,0.25)') : t.border}`, borderRadius: 12, padding: '12px', fontSize: 14, fontWeight: 800 }}>
                       {label}
                     </button>
                   ))}
@@ -688,8 +681,8 @@ export default function VisitLogger({ onBack }: Props) {
         )}
 
         {saveError && (
-          <div style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.3)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#dc2626' }}>
-            ⚠️ {saveError}
+          <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#ef4444' }}>
+            {saveError}
           </div>
         )}
 
@@ -699,12 +692,12 @@ export default function VisitLogger({ onBack }: Props) {
             (outcome === 'not_interested' && !notInterestedReason) ||
             (outcome === 'interested' && (!selectedProduct || !allocQty))}
             style={{
-              background: saving ? '#475569' : 'linear-gradient(135deg,#0d3d2e,#1a5c42)',
-              color: '#fff', border: 'none', borderRadius: 14, padding: 18,
+              background: saving ? t.bg3 : t.primary,
+              color: saving ? t.text3 : t.primaryText, border: 'none', borderRadius: 14, padding: 18,
               fontSize: 16, fontWeight: 800, marginTop: 4,
               opacity: (outcome === 'not_interested' && !notInterestedReason) || (outcome === 'interested' && (!selectedProduct || !allocQty)) ? 0.4 : 1
             }}>
-            {saving ? 'Saving...' : 'Save Visit ✅'}
+            {saving ? 'Saving...' : 'Save Visit'}
           </button>
         )}
       </div>

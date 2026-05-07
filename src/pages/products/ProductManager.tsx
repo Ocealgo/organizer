@@ -13,9 +13,9 @@ function Field({ label, hint, error, children }: { label: string; hint?: string;
   return (
     <div>
       <div style={{ fontSize: 11, color: t.text2, marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>{label}</div>
-      {hint && <div style={{ fontSize: 11, color: '#6ee7b7', marginBottom: 6 }}>💡 {hint}</div>}
+      {hint && <div style={{ fontSize: 11, color: t.text2, marginBottom: 6 }}>{hint}</div>}
       {children}
-      {error && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 4 }}>⚠️ {error}</div>}
+      {error && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>{error}</div>}
     </div>
   )
 }
@@ -112,14 +112,14 @@ export default function ProductManager({ onBack }: Props) {
 
   return (
     <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
-      <div style={{ background: 'linear-gradient(135deg,#4c1d95,#7c3aed)', padding: '20px 20px 0' }}>
-        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#ddd6fe', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 14 }}>← Back</button>
-        <div style={{ color: '#ddd6fe', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 2 }}>Catalogue 🛍️</div>
+      <div style={{ background: '#000000', padding: '20px 20px 0' }}>
+        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'rgba(255,255,255,0.7)', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 14 }}>← Back</button>
+        <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 2 }}>Catalogue</div>
         <div style={{ fontSize: 20, fontWeight: 900, color: '#fff', marginBottom: 14 }}>Products</div>
         <div style={{ display: 'flex', gap: 8 }}>
           {([
-            { id: 'list', label: `📋 All (${products.length})` },
-            { id: 'add',  label: editingId ? '✏️ Editing' : '➕ Add New' },
+            { id: 'list', label: `All (${products.length})` },
+            { id: 'add',  label: editingId ? 'Editing' : 'Add New' },
           ] as const).map(tb => (
             <button key={tb.id} onClick={() => { if (tb.id === 'list') cancelEdit(); else setTab('add') }}
               style={{ background: tab === tb.id ? 'rgba(255,255,255,0.2)' : 'transparent', color: tab === tb.id ? '#fff' : 'rgba(255,255,255,0.5)', border: 'none', borderRadius: '12px 12px 0 0', padding: '9px 18px', fontSize: 12, fontWeight: 700 }}>
@@ -134,15 +134,14 @@ export default function ProductManager({ onBack }: Props) {
         {tab === 'list' && (
           products.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 40, color: t.text3 }}>
-              <div style={{ fontSize: 36, marginBottom: 10 }}>🛍️</div>
               <div style={{ fontWeight: 700, fontSize: 16, color: t.text2 }}>No products yet</div>
               <div style={{ fontSize: 14, marginTop: 6 }}>Tap "Add New" to add your first product</div>
             </div>
           ) : products.map(p => (
-            <div key={p.id} style={{ background: t.card, borderRadius: 14, padding: 16, border: `1px solid ${p.active ? 'rgba(124,58,237,0.25)' : t.border}`, opacity: p.active ? 1 : 0.55 }}>
+            <div key={p.id} style={{ background: t.card, borderRadius: 14, padding: 16, border: `1px solid ${p.active ? t.border2 : t.border}`, opacity: p.active ? 1 : 0.55 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 46, height: 46, background: p.active ? 'rgba(124,58,237,0.15)' : t.bg3, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 }}>
-                  📦
+                <div style={{ width: 46, height: 46, background: p.active ? 'rgba(255,255,255,0.08)' : t.bg3, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 800, color: t.text2, flexShrink: 0 }}>
+                  {p.name.charAt(0).toUpperCase()}
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 800, fontSize: 16, color: t.text }}>{p.name}</div>
@@ -153,16 +152,16 @@ export default function ProductManager({ onBack }: Props) {
                 {/* Edit + Toggle + Delete */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <button onClick={() => startEdit(p)}
-                    style={{ background: 'rgba(8,145,178,0.1)', border: '1px solid rgba(8,145,178,0.2)', color: '#0891b2', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 700 }}>
-                    ✏️ Edit
+                    style={{ background: t.bg3, border: `1px solid ${t.border2}`, color: t.text, borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 700 }}>
+                    Edit
                   </button>
                   <button onClick={() => toggleActive(p)}
-                    style={{ background: p.active ? 'rgba(22,163,74,0.1)' : 'rgba(220,38,38,0.08)', border: `1px solid ${p.active ? 'rgba(22,163,74,0.25)' : 'rgba(220,38,38,0.2)'}`, color: p.active ? '#16a34a' : '#dc2626', borderRadius: 8, padding: '6px 10px', fontSize: 11, fontWeight: 700 }}>
-                    {p.active ? '✅ On' : '⏸️ Off'}
+                    style={{ background: p.active ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${p.active ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`, color: p.active ? '#22c55e' : '#ef4444', borderRadius: 8, padding: '6px 10px', fontSize: 11, fontWeight: 700 }}>
+                    {p.active ? 'On' : 'Off'}
                   </button>
                   <button onClick={() => handleDelete(p)}
-                    style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.2)', color: '#dc2626', borderRadius: 8, padding: '6px 10px', fontSize: 11, fontWeight: 700 }}>
-                    🗑️ Del
+                    style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444', borderRadius: 8, padding: '6px 10px', fontSize: 11, fontWeight: 700 }}>
+                    Del
                   </button>
                 </div>
               </div>
@@ -174,8 +173,8 @@ export default function ProductManager({ onBack }: Props) {
         {tab === 'add' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {editingId && (
-              <div style={{ background: 'rgba(8,145,178,0.08)', border: '1px solid rgba(8,145,178,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#7dd3fc' }}>
-                ✏️ Editing existing product — changes save immediately
+              <div style={{ background: t.bg3, border: `1px solid ${t.border2}`, borderRadius: 10, padding: '10px 14px', fontSize: 13, color: t.text2 }}>
+                Editing existing product — changes save immediately
               </div>
             )}
 
@@ -188,7 +187,7 @@ export default function ProductManager({ onBack }: Props) {
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {UNIT_LABELS.map(u => (
                   <button key={u} onClick={() => setForm({ ...form, unitLabel: u })}
-                    style={{ background: form.unitLabel === u ? 'rgba(124,58,237,0.2)' : t.bg3, color: form.unitLabel === u ? '#a78bfa' : t.text2, border: `1.5px solid ${form.unitLabel === u ? '#7c3aed' : t.border2}`, borderRadius: 20, padding: '8px 16px', fontSize: 13, fontWeight: 700 }}>
+                    style={{ background: form.unitLabel === u ? t.primary : t.bg3, color: form.unitLabel === u ? t.primaryText : t.text2, border: `1.5px solid ${form.unitLabel === u ? t.primary : t.border2}`, borderRadius: 20, padding: '8px 16px', fontSize: 13, fontWeight: 700 }}>
                     {u}
                   </button>
                 ))}
@@ -204,7 +203,7 @@ export default function ProductManager({ onBack }: Props) {
               <input type="number" value={form.unitsPerCarton} onChange={e => setForm({ ...form, unitsPerCarton: e.target.value })}
                 placeholder="e.g. 12" style={inputStyle} />
               {form.unitsPerCarton && form.defaultPricePerUnit && (
-                <div style={{ fontSize: 13, color: '#6ee7b7', marginTop: 6, fontWeight: 600 }}>
+                <div style={{ fontSize: 13, color: '#22c55e', marginTop: 6, fontWeight: 600 }}>
                   1 carton = {form.unitsPerCarton} {form.unitLabel} = ₹{(parseInt(form.unitsPerCarton) * parseFloat(form.defaultPricePerUnit)).toLocaleString()}
                 </div>
               )}
@@ -216,8 +215,8 @@ export default function ProductManager({ onBack }: Props) {
                 Cancel
               </button>
               <button onClick={handleSave} disabled={saving}
-                style={{ flex: 2, background: saving ? '#475569' : 'linear-gradient(135deg,#4c1d95,#7c3aed)', color: '#fff', border: 'none', borderRadius: 12, padding: 14, fontSize: 15, fontWeight: 800 }}>
-                {saving ? 'Saving...' : editingId ? 'Save Changes ✅' : 'Add Product 🛍️'}
+                style={{ flex: 2, background: saving ? t.bg3 : t.primary, color: saving ? t.text2 : t.primaryText, border: 'none', borderRadius: 12, padding: 14, fontSize: 15, fontWeight: 800 }}>
+                {saving ? 'Saving...' : editingId ? 'Save Changes' : 'Add Product'}
               </button>
             </div>
           </div>

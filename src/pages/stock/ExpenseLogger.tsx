@@ -64,19 +64,19 @@ export default function ExpenseLogger({ onBack }: Props) {
 
   return (
     <div style={{ minHeight: '100vh', background: '#0d1117', paddingBottom: 40 }}>
-      <div style={{ background: 'linear-gradient(135deg,#dc2626,#b91c1c)', padding: '24px 20px 16px' }}>
-        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fecaca', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 16 }}>← Back</button>
-        <div style={{ color: '#fecaca', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Finance 💸</div>
-        <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Expenses</div>
-        <div style={{ fontSize: 26, fontWeight: 900, color: '#fca5a5', marginBottom: 4 }}>₹{totalFiltered.toLocaleString()}</div>
-        <div style={{ color: '#fecaca', fontSize: 12, marginBottom: 16 }}>
+      <div style={{ background: '#000000', padding: '24px 20px 16px' }}>
+        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'rgba(255,255,255,0.7)', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 16 }}>← Back</button>
+        <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Finance</div>
+        <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', marginBottom: 4 }}>Expenses</div>
+        <div style={{ fontSize: 26, fontWeight: 900, color: '#fff', marginBottom: 4 }}>₹{totalFiltered.toLocaleString()}</div>
+        <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginBottom: 16 }}>
           {dateMode === 'day' ? `on ${dateFilter}` : `in ${dateFilter}`} • {filtered.length} entries
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {(['list', 'add'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               style={{ background: tab === t ? 'rgba(255,255,255,0.2)' : 'transparent', color: tab === t ? '#fff' : 'rgba(255,255,255,0.5)', border: 'none', borderRadius: 20, padding: '7px 18px', fontSize: 12, fontWeight: 700 }}>
-              {t === 'list' ? '📋 History' : '➕ Add Expense'}
+              {t === 'list' ? 'History' : 'Add Expense'}
             </button>
           ))}
         </div>
@@ -94,7 +94,7 @@ export default function ExpenseLogger({ onBack }: Props) {
                     setDateFilter(m === 'month' ? localMonthStr() : localDateStr())
                   }}
                     style={{ flex: 1, background: dateMode === m ? 'rgba(220,38,38,0.2)' : 'rgba(255,255,255,0.04)', color: dateMode === m ? '#fca5a5' : '#64748b', border: `1px solid ${dateMode === m ? 'rgba(220,38,38,0.3)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 10, padding: '8px', fontSize: 12, fontWeight: 700 }}>
-                    {m === 'day' ? '📅 By Day' : '🗓️ By Month'}
+                    {m === 'day' ? 'By Day' : 'By Month'}
                   </button>
                 ))}
               </div>
@@ -107,15 +107,14 @@ export default function ExpenseLogger({ onBack }: Props) {
 
             {filtered.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#475569' }}>
-                <div style={{ fontSize: 36, marginBottom: 12 }}>💸</div>
                 <div style={{ fontWeight: 700 }}>No expenses for this period</div>
               </div>
             ) : filtered.map(e => {
               const cat = CATEGORIES.find(c => c.value === e.category)
               return (
                 <div key={e.id} style={{ background: '#161b22', borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <div style={{ width: 40, height: 40, background: 'rgba(220,38,38,0.15)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
-                    {cat?.emoji}
+                  <div style={{ width: 40, height: 40, background: 'rgba(255,255,255,0.06)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#64748b', flexShrink: 0 }}>
+                    {cat?.label?.[0] || '?'}
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 700, fontSize: 14 }}>{e.note}</div>
@@ -141,8 +140,8 @@ export default function ExpenseLogger({ onBack }: Props) {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 {CATEGORIES.map(c => (
                   <button key={c.value} onClick={() => setForm({ ...form, category: c.value })}
-                    style={{ background: form.category === c.value ? 'rgba(220,38,38,0.15)' : 'rgba(255,255,255,0.04)', color: form.category === c.value ? '#dc2626' : '#64748b', border: `1.5px solid ${form.category === c.value ? 'rgba(220,38,38,0.3)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 12, padding: '12px', fontSize: 13, fontWeight: 700 }}>
-                    {c.emoji} {c.label}
+                    style={{ background: form.category === c.value ? '#fff' : 'rgba(255,255,255,0.04)', color: form.category === c.value ? '#000' : '#64748b', border: `1.5px solid ${form.category === c.value ? '#fff' : 'rgba(255,255,255,0.06)'}`, borderRadius: 12, padding: '12px', fontSize: 13, fontWeight: 700 }}>
+                    {c.label}
                   </button>
                 ))}
               </div>
@@ -154,8 +153,8 @@ export default function ExpenseLogger({ onBack }: Props) {
                 style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '13px 16px', fontSize: 14, color: '#fff', outline: 'none', resize: 'none', boxSizing: 'border-box' }} />
             </div>
             <button onClick={handleAdd} disabled={saving}
-              style={{ background: saving ? '#475569' : 'linear-gradient(135deg,#dc2626,#b91c1c)', color: '#fff', border: 'none', borderRadius: 14, padding: 16, fontSize: 15, fontWeight: 800 }}>
-              {saving ? 'Saving...' : 'Log Expense 💸'}
+              style={{ background: saving ? '#475569' : '#fff', color: saving ? '#aaa' : '#000', border: 'none', borderRadius: 14, padding: 16, fontSize: 15, fontWeight: 800 }}>
+              {saving ? 'Saving...' : 'Log Expense'}
             </button>
           </div>
         )}

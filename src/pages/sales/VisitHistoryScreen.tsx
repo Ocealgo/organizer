@@ -72,7 +72,7 @@ export default function VisitHistoryScreen({ onBack }: Props) {
   const totalInterested = logs.reduce((s, l) => s + l.totalInterested, 0)
 
   const inputStyle: React.CSSProperties = {
-    background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.25)',
+    background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
     borderRadius: 10, padding: '10px 14px', fontSize: 16, color: '#fff',
     outline: 'none', colorScheme: 'dark' as any,
   }
@@ -85,9 +85,9 @@ export default function VisitHistoryScreen({ onBack }: Props) {
   return (
     <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
       {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg,#0d3d2e,#1a5c42)', padding: '20px 20px 16px' }}>
-        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#6ee7b7', padding: '6px 14px', borderRadius: 20, fontSize: 13, marginBottom: 14 }}>← Back</button>
-        <div style={{ color: '#6ee7b7', fontSize: 12, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Visit History</div>
+      <div style={{ background: '#000000', padding: '20px 20px 16px' }}>
+        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'rgba(255,255,255,0.7)', padding: '6px 14px', borderRadius: 20, fontSize: 13, marginBottom: 14 }}>← Back</button>
+        <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Visit History</div>
         <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', marginBottom: 14 }}>My Logs</div>
 
         {/* Mode tabs */}
@@ -132,8 +132,8 @@ export default function VisitHistoryScreen({ onBack }: Props) {
               <div style={{ background: t.card, borderRadius: 14, padding: '14px 16px', border: `1px solid ${t.border}`, display: 'flex', gap: 8, marginBottom: 4 }}>
                 {[
                   { label: 'Days', val: logs.length, color: '#fff' },
-                  { label: 'Visits', val: totalVisits, color: '#0891b2' },
-                  { label: 'Interested', val: totalInterested, color: '#16a34a' },
+                  { label: 'Visits', val: totalVisits, color: t.text },
+                  { label: 'Interested', val: totalInterested, color: '#22c55e' },
                 ].map(s => (
                   <div key={s.label} style={{ flex: 1, textAlign: 'center' }}>
                     <div style={{ fontSize: 22, fontWeight: 900, color: s.color }}>{s.val}</div>
@@ -169,15 +169,15 @@ export default function VisitHistoryScreen({ onBack }: Props) {
                     ) : (
                       <div style={{ fontSize: 13, color: t.text3, marginTop: 2 }}>
                         {log.totalVisited} visited ·{' '}
-                        <span style={{ color: '#16a34a' }}>{log.totalInterested} interested</span> ·{' '}
+                        <span style={{ color: '#22c55e' }}>{log.totalInterested} interested</span> ·{' '}
                         {log.totalNotInterested} declined
                       </div>
                     )}
                   </div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     {log.totalInterested > 0 && (
-                      <span style={{ fontSize: 11, background: 'rgba(22,163,74,0.15)', color: '#16a34a', padding: '3px 10px', borderRadius: 99, fontWeight: 700 }}>
-                        ✅ {log.totalInterested}
+                      <span style={{ fontSize: 11, background: 'rgba(34,197,94,0.12)', color: '#22c55e', padding: '3px 10px', borderRadius: 99, fontWeight: 700 }}>
+                        {log.totalInterested}
                       </span>
                     )}
                     <span style={{ color: t.text3, fontSize: 14 }}>{expandedDay === log.id ? '▲' : '▼'}</span>
@@ -189,19 +189,17 @@ export default function VisitHistoryScreen({ onBack }: Props) {
                   <div style={{ borderTop: `1px solid ${t.border}`, padding: '8px 12px 12px' }}>
                     {log.visits.map((v, i) => (
                       <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 8px', borderRadius: 10, marginBottom: 4, background: 'rgba(255,255,255,0.02)' }}>
-                        <span style={{ fontSize: 18 }}>
-                          {v.outcome === 'interested' ? '✅' : v.outcome === 'follow_up' ? '🔄' : '❌'}
-                        </span>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: v.outcome === 'interested' ? '#22c55e' : v.outcome === 'follow_up' ? '#f59e0b' : '#ef4444', flexShrink: 0, marginTop: 4 }} />
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 700, fontSize: 14, color: t.text }}>{v.partyName}</div>
                           {v.outcome === 'interested' && v.productName && (
-                            <div style={{ fontSize: 13, color: '#16a34a' }}>{v.productName}</div>
+                            <div style={{ fontSize: 13, color: '#22c55e' }}>{v.productName}</div>
                           )}
                           {v.outcome === 'not_interested' && v.notInterestedReason && (
-                            <div style={{ fontSize: 13, color: '#dc2626' }}>{v.notInterestedReason}</div>
+                            <div style={{ fontSize: 13, color: '#ef4444' }}>{v.notInterestedReason}</div>
                           )}
                           {v.outcome === 'follow_up' && (
-                            <div style={{ fontSize: 13, color: '#d97706' }}>Follow up</div>
+                            <div style={{ fontSize: 13, color: '#f59e0b' }}>Follow up</div>
                           )}
                         </div>
                       </div>
