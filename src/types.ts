@@ -128,7 +128,7 @@ export interface Expense {
 
 // ── ALERT ─────────────────────────────────────────────────────────────────────
 export interface Alert {
-  id?: string; type: 'new_party' | 'credit_settlement' | 'low_stock' | 'stock_dispatched'
+  id?: string; type: 'new_party' | 'credit_settlement' | 'low_stock' | 'stock_dispatched' | 'new_allocation' | 'visit_log_submitted'
   message: string; relatedId: string; read: boolean; createdAt: number
 }
 

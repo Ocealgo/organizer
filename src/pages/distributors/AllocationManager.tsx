@@ -54,6 +54,8 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
   const [tab, setTab] = useState<'list' | 'add' | 'network'>('list')
   const [saving, setSaving] = useState(false)
   const [acting, setActing] = useState<string | null>(null)
+  const [dispatchDateAlloc, setDispatchDateAlloc] = useState<UnifiedAllocation | null>(null)
+  const [dispatchDate, setDispatchDate] = useState(localDateStr())
   const [unit, setUnit] = useState<'packets' | 'cartons'>('packets')
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -167,7 +169,7 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
       const price = isCompanyOrigin ? parseFloat(form.pricePerPacket) : 0
       const plannedDate = isCompanyOrigin ? form.plannedDate : today
       const fromDist = !isCompanyOrigin ? parties.find(p => p.id === form.fromId) : null
-      await addDoc(collection(db, 'allocations_v2'), {
+      const allocRef = await addDoc(collection(db, 'allocations_v2'), {
         fromType: form.fromType,
         fromId: isCompanyOrigin ? 'company' : form.fromId,
         fromName: isCompanyOrigin ? 'Ocealgo' : (fromDist?.name || ''),
@@ -179,6 +181,11 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
         createdBy: appUser!.uid, createdByName: appUser!.name,
         createdAt: Date.now(), month: plannedDate.slice(0, 7),
         lockedAtCreation: isCompanyOrigin,
+      })
+      await addDoc(collection(db, 'alerts'), {
+        type: 'new_allocation',
+        message: `📦 New allocation: ${toDisplay(packets, config.packetsPerCarton)} of ${product?.name || 'product'} → ${party.name} (${isCompanyOrigin ? 'Ocealgo' : fromDist?.name || 'distributor'})`,
+        relatedId: allocRef.id, read: false, createdAt: Date.now(),
       })
       await updateDoc(doc(db, 'parties', form.partyId), { status: 'active' })
       if (form.fromType === 'company') {
@@ -267,7 +274,7 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
   }
 
   // Admin dispatches — moves stock via transaction
-  const handleDispatch = async (a: UnifiedAllocation) => {
+  const handleDispatch = async (a: UnifiedAllocation, sentDate: string) => {
     if (!isAdmin) return
     const isCompany = a.fromType === 'company' || !(a as any).fromType
 
@@ -282,7 +289,6 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
       if (a.packets > distStock) { await showAlert('Insufficient Stock', `Distributor only has ${distStock} packets available.`); return }
     }
 
-    if (!await showConfirm(a.fromType === 'distributor' ? 'Confirm Sent?' : 'Dispatch Stock?', `${toDisplay(a.packets, config.packetsPerCarton)} → ${a.partyName}`)) return
     setActing(a.id!)
     try {
       await runTransaction(db, async (tx) => {
@@ -297,6 +303,7 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
           tx.update(allocRef, {
             status: 'sent' as AllocationStatus,
             sentAt: Date.now(), sentBy: appUser!.uid, sentByName: appUser!.name,
+            sentDate,
           })
 
           if (a.productId) {
@@ -327,6 +334,7 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
           tx.update(allocRef, {
             status: 'sent' as AllocationStatus,
             sentAt: Date.now(), sentBy: appUser!.uid, sentByName: appUser!.name,
+            sentDate,
           })
           tx.update(distRef, { [`stock.${a.productId}`]: increment(-a.packets) })
           tx.update(partyRef, { [`stock.${a.productId}`]: increment(a.packets) })
@@ -342,7 +350,7 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
         paymentType: a.paymentType, notes: a.notes || '',
         month: a.month, allocationId: a.id,
         dispatchedBy: appUser!.uid, dispatchedByName: appUser!.name,
-        dispatchedAt: Date.now(), date: today, createdAt: Date.now(),
+        dispatchedAt: Date.now(), date: sentDate, createdAt: Date.now(),
       })
       if (a.paymentType === 'credit') {
         await addDoc(collection(db, 'credits'), {
@@ -383,10 +391,15 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
     return true
   })
 
-  // Summary counts
+  // Summary counts (source-aware for pending badge)
+  const sourceFiltered = allocations.filter(a => {
+    if (filterSource === 'company' && a.fromType === 'distributor') return false
+    if (filterSource === 'distributor' && a.fromType !== 'distributor') return false
+    return true
+  })
   const counts = {
     all: allocations.length,
-    pending: allocations.filter(a => a.status === 'pending').length,
+    pending: sourceFiltered.filter(a => a.status === 'pending').length,
     overdue: allocations.filter(a => a.status === 'overdue').length,
     sent: allocations.filter(a => a.status === 'sent').length,
     paid: allocations.filter(a => a.status === 'paid').length,
@@ -673,7 +686,11 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                 ).map(s => (
                   <button key={s} onClick={() => setFilterStatus(s)}
                     style={{ background: filterStatus === s ? (s === 'all' ? '#1a5c42' : STATUS_STYLE[s as AllocationStatus]?.bg || '#1a5c42') : 'rgba(255,255,255,0.04)', color: filterStatus === s ? (s === 'all' ? '#6ee7b7' : STATUS_STYLE[s as AllocationStatus]?.color || '#6ee7b7') : '#64748b', border: `1px solid ${filterStatus === s ? (s === 'all' ? '#16a34a' : STATUS_STYLE[s as AllocationStatus]?.color || '#16a34a') : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', textTransform: 'capitalize' }}>
-                    {s === 'all' ? `All (${counts.all})` : `${STATUS_STYLE[s]?.emoji} ${s}`}
+                    {s === 'all'
+                      ? `All (${counts.all})`
+                      : s === 'pending' && counts.pending > 0
+                        ? `${STATUS_STYLE[s]?.emoji} pending (${counts.pending})`
+                        : `${STATUS_STYLE[s]?.emoji} ${s}`}
                   </button>
                 ))}
               </div>
@@ -753,7 +770,7 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       {(a.status === 'pending' || a.status === 'overdue') && (
                         <>
-                          <button onClick={() => handleDispatch(a)} disabled={acting === a.id}
+                          <button onClick={() => { setDispatchDateAlloc(a); setDispatchDate(localDateStr()) }} disabled={acting === a.id}
                             style={{ flex: 1, background: a.fromType === 'distributor' ? 'linear-gradient(135deg,#0e4f7a,#0891b2)' : 'linear-gradient(135deg,#1a5c42,#16a34a)', color: '#fff', border: 'none', borderRadius: 10, padding: '10px', fontSize: 12, fontWeight: 800, opacity: acting === a.id ? 0.5 : 1 }}>
                             {acting === a.id ? 'Processing...' : a.fromType === 'distributor' ? '✅ Confirm Sent' : '📦 Dispatch Now'}
                           </button>
@@ -1395,6 +1412,41 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
         })()}
       </div>
       {modal}
+
+      {/* Dispatch date confirmation modal */}
+      {dispatchDateAlloc && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+            onClick={() => setDispatchDateAlloc(null)} />
+          <div style={{ position: 'relative', zIndex: 1, background: t.card, borderRadius: 20, padding: '24px 20px', maxWidth: 360, width: '100%', border: `1.5px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`, boxShadow: '0 24px 64px rgba(0,0,0,0.45)' }}>
+            <div style={{ fontSize: 13, color: t.text3, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700 }}>
+              {dispatchDateAlloc.fromType === 'distributor' ? '✅ Confirm Sent' : '📦 Dispatch Now'}
+            </div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: t.text, marginBottom: 4 }}>{dispatchDateAlloc.partyName}</div>
+            <div style={{ fontSize: 13, color: t.text3, marginBottom: 20 }}>
+              {toDisplay(dispatchDateAlloc.packets, config.packetsPerCarton)} · {dispatchDateAlloc.productName}
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 11, color: t.text3, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700 }}>Sent Date</div>
+              <DateInput type="date" value={dispatchDate} onChange={setDispatchDate}
+                style={{ width: '100%', background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', border: `1.5px solid ${isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)'}`, borderRadius: 12, padding: '12px 16px', fontSize: 15, color: t.text, outline: 'none', boxSizing: 'border-box' }} />
+              <div style={{ fontSize: 11, color: t.text3, marginTop: 6 }}>Default is today — change if recording a past dispatch</div>
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setDispatchDateAlloc(null)}
+                style={{ flex: 1, background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)', border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`, borderRadius: 12, padding: '13px', fontSize: 14, fontWeight: 700, color: t.text2, cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button
+                onClick={async () => { const a = dispatchDateAlloc; setDispatchDateAlloc(null); await handleDispatch(a, dispatchDate) }}
+                disabled={acting === dispatchDateAlloc.id}
+                style={{ flex: 2, background: dispatchDateAlloc.fromType === 'distributor' ? 'linear-gradient(135deg,#0e4f7a,#0891b2)' : 'linear-gradient(135deg,#1a5c42,#16a34a)', color: '#fff', border: 'none', borderRadius: 12, padding: '13px', fontSize: 14, fontWeight: 800, cursor: 'pointer' }}>
+                {dispatchDateAlloc.fromType === 'distributor' ? 'Confirm Sent' : 'Dispatch'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

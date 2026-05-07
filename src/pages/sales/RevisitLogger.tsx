@@ -400,6 +400,17 @@ export default function RevisitLogger({ party, onBack, onDone }: Props) {
                                 <div style={{ fontSize: 12, color: t.text3, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Planned Delivery Date</div>
                                 <input type="date" value={orderDate} onChange={e => setOrderDate(e.target.value)} style={inputStyle} />
                               </div>
+                              {orderQty && parseInt(orderQty) > 0 && orderPrice && (
+                                <>
+                                  <div style={{ background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#6ee7b7', fontWeight: 600 }}>
+                                    📦 {parseInt(orderQty)} {orderProduct.unitLabel} of {orderProduct.name} · ₹{(parseInt(orderQty) * parseFloat(orderPrice)).toLocaleString()} · {orderDate}
+                                  </div>
+                                  <button onClick={handleSave} disabled={saving}
+                                    style={{ background: saving ? '#475569' : 'linear-gradient(135deg,#0d3d2e,#1a5c42)', color: '#fff', border: 'none', borderRadius: 12, padding: '14px', fontSize: 15, fontWeight: 800 }}>
+                                    {saving ? 'Placing...' : '📦 Place Order'}
+                                  </button>
+                                </>
+                              )}
                             </>
                           )}
                         </>

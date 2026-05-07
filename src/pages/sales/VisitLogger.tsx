@@ -234,8 +234,16 @@ export default function VisitLogger({ onBack }: Props) {
   }
 
   const handleFinishDay = async () => {
-    if (todayLog?.id && endNote.trim()) {
-      await updateDoc(doc(db, 'visit_logs', todayLog.id), { endOfDayNote: endNote })
+    if (todayLog?.id) {
+      if (endNote.trim()) {
+        await updateDoc(doc(db, 'visit_logs', todayLog.id), { endOfDayNote: endNote })
+      }
+      const interested = todayLog.totalInterested ?? visits.filter(v => v.outcome === 'interested').length
+      await addDoc(collection(db, 'alerts'), {
+        type: 'visit_log_submitted',
+        message: `📋 ${appUser!.name} submitted visit log · ${visits.length} visit${visits.length !== 1 ? 's' : ''} · ${interested} interested`,
+        relatedId: todayLog.id, read: false, createdAt: Date.now(),
+      })
     }
     onBack()
   }
