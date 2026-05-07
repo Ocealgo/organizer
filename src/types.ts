@@ -34,6 +34,10 @@ export interface Party {
   pricePerPacket: number; packetsAllocated: number; cartonsAllocated: number
   lowStockThreshold: number
   underDistributorId?: string; underDistributorName?: string
+  district?: string
+  state?: string
+  pincode?: string
+  email?: string
   addedBy: string; addedByName: string; createdAt: number
   stock?: Record<string, number>   // productId → packets currently held
 }

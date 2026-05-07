@@ -7,6 +7,7 @@ import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
 import RevisitLogger from './RevisitLogger'
 import { localDateStr, localDateOffset } from '../../utils/date'
+import { INDIAN_STATES } from '../../data'
 
 interface Props { onBack: () => void }
 
@@ -32,7 +33,8 @@ export default function VisitLogger({ onBack }: Props) {
   const [allocPayment, setAllocPayment] = useState<'cash' | 'credit'>('cash')
   const [allocDate, setAllocDate] = useState(localDateOffset(2))
   const [endNote, setEndNote] = useState('')
-  const [newShop, setNewShop] = useState({ name: '', phone: '', address: '', place: '', type: 'retailer' as 'distributor' | 'retailer', underDistributorId: '' })
+  const [newShop, setNewShop] = useState({ name: '', phone: '', address: '', place: '', district: '', state: '', pincode: '', type: 'retailer' as 'distributor' | 'retailer', underDistributorId: '', email: '' })
+  const [showNewShopEmail, setShowNewShopEmail] = useState(false)
   const [showFinishModal, setShowFinishModal] = useState(false)
   const [visitPartyStatus, setVisitPartyStatus] = useState<'all' | 'active' | 'prospect' | 'inactive'>('all')
   const [selectedDate, setSelectedDate] = useState(localDateStr())
@@ -129,7 +131,7 @@ export default function VisitLogger({ onBack }: Props) {
     try {
       const entry: VisitEntry = {
         partyId: selectedParty.id!, partyName: selectedParty.name,
-        isNew: false, outcome,
+        isNew: false, outcome, loggedAt: Date.now(),
         ...(outcome === 'not_interested' && {
           notInterestedReason: notInterestedReason as NotInterestedReason,
           ...(notInterestedReason === 'Other' && { otherReason }),
@@ -208,6 +210,28 @@ export default function VisitLogger({ onBack }: Props) {
 
   const handleAddNewShop = async () => {
     if (!newShop.name.trim()) return
+
+    // Phone duplicate
+    const phoneDup = parties.find(p => p.phone.trim() === newShop.phone.trim() && newShop.phone.trim() !== '')
+    if (phoneDup) {
+      alert(`Phone already registered to "${phoneDup.name}"`)
+      return
+    }
+
+    // Name + location duplicate
+    if (newShop.pincode.trim()) {
+      const locDup = parties.find(p =>
+        p.name.trim().toLowerCase() === newShop.name.trim().toLowerCase() &&
+        (p.place || '').toLowerCase() === newShop.place.trim().toLowerCase() &&
+        (p.district || '').toLowerCase() === newShop.district.trim().toLowerCase() &&
+        (p.pincode || '') === newShop.pincode.trim()
+      )
+      if (locDup) {
+        alert(`A ${locDup.type} named "${locDup.name}" already exists at this location`)
+        return
+      }
+    }
+
     setSaving(true)
     try {
       const underDist = parties.find(p => p.id === newShop.underDistributorId)
@@ -217,9 +241,11 @@ export default function VisitLogger({ onBack }: Props) {
       const ref = await addDoc(collection(db, 'parties'), {
         name: newShop.name.trim(), type: newShop.type,
         phone: newShop.phone, address: newShop.address, place: newShop.place,
+        district: newShop.district.trim(), state: newShop.state.trim(), pincode: newShop.pincode.trim(),
         category: 'General Store', pricePerPacket: 0,
         packetsAllocated: 0, cartonsAllocated: 0, lowStockThreshold: 0,
         status: 'prospect', ...distLink,
+        ...(newShop.email.trim() ? { email: newShop.email.trim() } : {}),
         addedBy: appUser!.uid, addedByName: appUser!.name, createdAt: Date.now(),
       })
       setSelectedParty({
@@ -229,7 +255,8 @@ export default function VisitLogger({ onBack }: Props) {
         cartonsAllocated: 0, lowStockThreshold: 0, ...distLink,
         addedBy: appUser!.uid, addedByName: appUser!.name, createdAt: Date.now(),
       })
-      setNewShop({ name: '', phone: '', address: '', place: '', type: 'retailer', underDistributorId: '' })
+      setNewShop({ name: '', phone: '', address: '', place: '', district: '', state: '', pincode: '', type: 'retailer', underDistributorId: '', email: '' })
+      setShowNewShopEmail(false)
       setStep('markOutcome')
     } finally { setSaving(false) }
   }
@@ -395,7 +422,8 @@ export default function VisitLogger({ onBack }: Props) {
                               action.type === 'new_order' ? `📦 New Order · ${action.quantity} ${action.productName}` :
                               action.type === 'payment_collection' ? `💰 Payment ₹${action.amount?.toLocaleString()}` :
                               action.type === 'relationship_visit' ? `🤝 Relationship Visit${action.notes ? ` · ${action.notes}` : ''}` :
-                              action.type === 'no_longer_active' ? `⛔ No Longer Active · ${action.reason}` : null
+                              action.type === 'no_longer_active' ? `⛔ No Longer Active · ${action.reason}` :
+                              action.type === 'distribute_to_retailers' ? `📋 Distributed to Retailers` : null
                             return label ? <div key={ai} style={{ fontSize: 13, color: t.text2, marginBottom: 2 }}>{label}</div> : null
                           })}
                           {!v.isRevisit && v.outcome === 'interested' && v.productName && (
@@ -410,6 +438,13 @@ export default function VisitLogger({ onBack }: Props) {
                         </div>
                       )
                     })}
+                    {vParty && (vParty as any).status === 'active' && (
+                      <button
+                        onClick={() => { setSelectedParty(vParty); setStep('revisit') }}
+                        style={{ marginTop: 10, width: '100%', background: 'rgba(22,163,74,0.07)', border: `1px dashed rgba(22,163,74,0.35)`, borderRadius: 10, padding: '9px 14px', fontSize: 13, fontWeight: 700, color: '#16a34a', cursor: 'pointer' }}>
+                        + Add More Log
+                      </button>
+                    )}
                   </div>
                 )
               })
@@ -551,14 +586,46 @@ export default function VisitLogger({ onBack }: Props) {
           { label: 'Phone Number', key: 'phone', placeholder: '10-digit number', type: 'tel' },
           { label: 'Address', key: 'address', placeholder: 'Full address', type: 'text' },
           { label: 'Area / Place', key: 'place', placeholder: 'e.g. Ernakulam', type: 'text' },
+          { label: 'District', key: 'district', placeholder: 'e.g. Ernakulam', type: 'text' },
+          { label: 'Pincode', key: 'pincode', placeholder: '6-digit pincode', type: 'tel' },
         ].map(f => (
           <div key={f.key}>
             <div style={{ fontSize: 12, color: t.text2, marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>{f.label}</div>
             <input type={f.type} value={(newShop as any)[f.key]}
-              onChange={e => setNewShop({ ...newShop, [f.key]: e.target.value })}
+              onChange={e => {
+                const val = f.key === 'pincode' ? e.target.value.replace(/\D/g, '').slice(0, 6) : e.target.value
+                setNewShop({ ...newShop, [f.key]: val })
+              }}
               placeholder={f.placeholder} style={inputStyle} />
           </div>
         ))}
+        <div>
+          <div style={{ fontSize: 12, color: t.text2, marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>State</div>
+          <CustomSelect
+            value={newShop.state}
+            onChange={v => setNewShop({ ...newShop, state: v })}
+            placeholder="Select state"
+            options={INDIAN_STATES.map(s => ({ value: s, label: s }))}
+            searchable
+          />
+        </div>
+        {!showNewShopEmail ? (
+          <button onClick={() => setShowNewShopEmail(true)}
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1.5px dashed rgba(255,255,255,0.12)', borderRadius: 12, padding: '12px 16px', fontSize: 13, color: t.text3, fontWeight: 700, textAlign: 'left', width: '100%' }}>
+            + Add Email Address <span style={{ fontSize: 11, color: t.text3, fontWeight: 400 }}>(optional)</span>
+          </button>
+        ) : (
+          <div style={{ background: t.bg3, border: `1.5px solid ${t.border2}`, borderRadius: 12, padding: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ fontSize: 12, color: t.text2, letterSpacing: 1, textTransform: 'uppercase' }}>Email Address</div>
+              <button onClick={() => { setShowNewShopEmail(false); setNewShop({ ...newShop, email: '' }) }}
+                style={{ background: 'none', border: 'none', color: t.text3, fontSize: 18, cursor: 'pointer', lineHeight: 1, padding: '0 2px' }}>×</button>
+            </div>
+            <input type="email" value={newShop.email} onChange={e => setNewShop({ ...newShop, email: e.target.value })}
+              placeholder="e.g. rajan@example.com" style={inputStyle} />
+          </div>
+        )}
+
         <button onClick={handleAddNewShop} disabled={saving || !newShop.name.trim()}
           style={{ background: !newShop.name.trim() || saving ? '#475569' : 'linear-gradient(135deg,#0d3d2e,#1a5c42)', color: '#fff', border: 'none', borderRadius: 14, padding: 17, fontSize: 16, fontWeight: 800 }}>
           {saving ? 'Saving...' : 'Add & Continue →'}

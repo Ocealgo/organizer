@@ -8,6 +8,7 @@ import CustomSelect from '../../components/CustomSelect'
 import AllocationManager from './AllocationManager'
 import CSVImporter from './CSVImporter'
 import { useConfirm } from '../../hooks/useConfirm'
+import { INDIAN_STATES } from '../../data'
 
 interface Props { onBack: () => void }
 
@@ -40,8 +41,9 @@ function inputStyle(hasError?: boolean): React.CSSProperties {
 
 const emptyForm = {
   name: '', type: 'distributor' as PartyType, category: 'FMCG' as PartyCategory,
-  phone: '', address: '', place: '', quantity: '',
-  lowStockThreshold: '', underDistributorId: '',
+  phone: '', address: '', place: '', district: '', state: '', pincode: '', quantity: '',
+  lowStockThreshold: '', underDistributorId: '', email: '',
+  productId: '', productName: '',
 }
 
 export default function PartyManager({ onBack }: Props) {
@@ -59,6 +61,7 @@ export default function PartyManager({ onBack }: Props) {
   const [categoryFilter, setCategoryFilter] = useState<'all' | PartyCategory>('all')
   const [distributorFilter, setDistributorFilter] = useState<'all' | 'independent' | string>('all')
   const [placeSearch, setPlaceSearch] = useState('')
+  const [districtFilter, setDistrictFilter] = useState<string>('all')
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -66,6 +69,8 @@ export default function PartyManager({ onBack }: Props) {
   const [form, setForm] = useState(emptyForm)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [focusParent, setFocusParent] = useState(false)
+  const [showEmail, setShowEmail] = useState(false)
+  const [showAllocation, setShowAllocation] = useState(false)
 
   const isAdmin = appUser?.role === 'super_admin' || appUser?.role === 'admin'
   const distributors = parties.filter(p => p.type === 'distributor')
@@ -102,6 +107,7 @@ export default function PartyManager({ onBack }: Props) {
         !(p.place || '').toLowerCase().includes(s)
       ) return false
     }
+    if (districtFilter !== 'all' && (p as any).district !== districtFilter) return false
     return true
   })
 
@@ -116,6 +122,22 @@ export default function PartyManager({ onBack }: Props) {
     if (!validatePhone(form.phone)) e.phone = 'Enter valid 10-digit Indian mobile number'
     if (!form.address.trim()) e.address = 'Address is required'
     if (!form.place.trim()) e.place = 'Place / area is required'
+    if (!form.district.trim()) e.district = 'District is required'
+    if (!form.state.trim()) e.state = 'State is required'
+    if (!/^\d{6}$/.test(form.pincode.trim())) e.pincode = 'Enter valid 6-digit pincode'
+
+    const phoneDup = parties.find(p => p.id !== editingId && p.phone.trim() === form.phone.trim())
+    if (phoneDup) e.phone = `Phone already registered to "${phoneDup.name}"`
+
+    const locDup = parties.find(p =>
+      p.id !== editingId &&
+      p.name.trim().toLowerCase() === form.name.trim().toLowerCase() &&
+      (p.place || '').toLowerCase() === form.place.trim().toLowerCase() &&
+      (p.district || '').toLowerCase() === form.district.trim().toLowerCase() &&
+      (p.pincode || '') === form.pincode.trim()
+    )
+    if (locDup) e.name = `A ${locDup.type} named "${locDup.name}" already exists at this location (${locDup.place}, ${locDup.district}, ${locDup.pincode})`
+
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -125,13 +147,21 @@ export default function PartyManager({ onBack }: Props) {
     setForm({
       name: p.name, type: p.type, category: p.category || 'FMCG',
       phone: p.phone, address: p.address, place: p.place || '',
+      district: p.district || '',
+      state: p.state || '',
+      pincode: p.pincode || '',
       quantity: String(packets),
       lowStockThreshold: String(p.lowStockThreshold || 0),
       underDistributorId: p.underDistributorId || '',
+      email: p.email || '',
+      productId: (p as any).productId || '',
+      productName: (p as any).productName || '',
     })
     setUnit('packets')
     setEditingId(p.id!)
     setFocusParent(false)
+    setShowEmail(!!p.email)
+    setShowAllocation(packets > 0)
     setTab('add')
   }
 
@@ -150,6 +180,11 @@ export default function PartyManager({ onBack }: Props) {
       const data: any = {
         name: form.name.trim(), type: form.type, category: form.category,
         phone: form.phone.trim(), address: form.address.trim(), place: form.place.trim(),
+        district: form.district.trim(),
+        state: form.state.trim(),
+        pincode: form.pincode.trim(),
+        ...(form.email.trim() ? { email: form.email.trim() } : {}),
+        ...(form.productId ? { productId: form.productId, productName: form.productName } : {}),
         packetsAllocated: packets, cartonsAllocated: cartons,
         lowStockThreshold: parseInt(form.lowStockThreshold) || 0,
       }
@@ -184,6 +219,8 @@ export default function PartyManager({ onBack }: Props) {
       setForm(emptyForm)
       setErrors({})
       setFocusParent(false)
+      setShowEmail(false)
+      setShowAllocation(false)
       setTab('list')
     } finally {
       setSaving(false)
@@ -289,6 +326,26 @@ export default function PartyManager({ onBack }: Props) {
                   </button>
                 ))}
               </div>
+
+              {/* District filter */}
+              {(() => {
+                const uniqueDistricts = [...new Set(parties.map(p => p.district).filter(Boolean))].sort() as string[]
+                if (uniqueDistricts.length === 0) return null
+                return (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <button onClick={() => setDistrictFilter('all')}
+                      style={{ background: districtFilter === 'all' ? '#0891b2' : 'rgba(255,255,255,0.04)', color: districtFilter === 'all' ? '#fff' : '#64748b', border: `1px solid ${districtFilter === 'all' ? '#0891b2' : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 14px', fontSize: 12, fontWeight: 700 }}>
+                      All Districts
+                    </button>
+                    {uniqueDistricts.map(d => (
+                      <button key={d} onClick={() => setDistrictFilter(d)}
+                        style={{ background: districtFilter === d ? '#0891b2' : 'rgba(255,255,255,0.04)', color: districtFilter === d ? '#fff' : '#64748b', border: `1px solid ${districtFilter === d ? '#0891b2' : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 14px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                )
+              })()}
             </div>
 
             <div style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>Showing {filtered.length} of {parties.length} entries</div>
@@ -312,8 +369,14 @@ export default function PartyManager({ onBack }: Props) {
                         <span style={{ fontSize: 10, background: 'rgba(124,58,237,0.15)', color: '#a78bfa', padding: '2px 8px', borderRadius: 99 }}>{p.category}</span>
                       </div>
                       <div style={{ fontSize: 12, color: '#64748b' }}>📞 {p.phone}</div>
+                      {p.email && <div style={{ fontSize: 12, color: '#64748b' }}>✉️ {p.email}</div>}
                       <div style={{ fontSize: 12, color: '#64748b' }}>📍 {p.address}</div>
                       {p.place && <div style={{ fontSize: 11, color: '#475569' }}>🏘️ {p.place}</div>}
+                      {(p.district || p.state || p.pincode) && (
+                        <div style={{ fontSize: 11, color: '#475569' }}>
+                          📌 {[p.district, p.state, p.pincode].filter(Boolean).join(', ')}
+                        </div>
+                      )}
                       {p.underDistributorName && <div style={{ fontSize: 11, color: '#0891b2', marginTop: 2 }}>Under: {p.underDistributorName}</div>}
                       {p.type === 'retailer' && (
                         <button onClick={() => startChangeParent(p)}
@@ -492,6 +555,24 @@ export default function PartyManager({ onBack }: Props) {
                 placeholder="10-digit mobile number" style={inputStyle(!!errors.phone)} />
             </Field>
 
+            {/* Optional email section */}
+            {!showEmail ? (
+              <button onClick={() => setShowEmail(true)}
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1.5px dashed rgba(255,255,255,0.12)', borderRadius: 12, padding: '12px 16px', fontSize: 13, color: '#64748b', fontWeight: 700, textAlign: 'left', width: '100%' }}>
+                + Add Email Address <span style={{ fontSize: 11, color: '#475569', fontWeight: 400 }}>(optional)</span>
+              </button>
+            ) : (
+              <div style={{ background: 'rgba(255,255,255,0.03)', border: '1.5px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, color: '#64748b', letterSpacing: 1, textTransform: 'uppercase' }}>Email Address</div>
+                  <button onClick={() => { setShowEmail(false); setForm({ ...form, email: '' }) }}
+                    style={{ background: 'none', border: 'none', color: '#475569', fontSize: 18, cursor: 'pointer', lineHeight: 1, padding: '0 2px' }}>×</button>
+                </div>
+                <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
+                  placeholder="e.g. rajan@example.com" style={inputStyle()} />
+              </div>
+            )}
+
             <Field label="Full Address" error={errors.address}>
               <input type="text" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })}
                 placeholder="e.g. 12/A, MG Road, Koramangala" style={inputStyle(!!errors.address)} />
@@ -502,37 +583,91 @@ export default function PartyManager({ onBack }: Props) {
                 placeholder="e.g. Koramangala" style={inputStyle(!!errors.place)} />
             </Field>
 
-            {/* Quantity — hidden for retailers under a distributor (stock managed by distributor) */}
-            {!(form.type === 'retailer' && form.underDistributorId) && (
-              <Field label="Quantity to Allocate" error={errors.quantity}>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                  {(['packets', 'cartons'] as const).map(u => (
-                    <button key={u} onClick={() => setUnit(u)}
-                      style={{ flex: 1, background: unit === u ? 'rgba(22,163,74,0.15)' : 'rgba(255,255,255,0.04)', color: unit === u ? '#16a34a' : '#64748b', border: `1.5px solid ${unit === u ? '#16a34a' : 'rgba(255,255,255,0.06)'}`, borderRadius: 10, padding: '9px', fontSize: 12, fontWeight: 700 }}>
-                      {u === 'packets' ? '📦 Packets' : `📫 Cartons (1=${config.packetsPerCarton} pkts)`}
-                    </button>
-                  ))}
-                </div>
-                <input type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })}
-                  placeholder={unit === 'cartons' ? 'No. of cartons' : 'No. of packets'}
-                  style={inputStyle(!!errors.quantity)} />
-                {form.quantity && parseInt(form.quantity) > 0 && (
-                  <div style={{ marginTop: 8, fontSize: 13, color: '#6ee7b7', fontWeight: 700 }}>
-                    = {toDisplay(toPackets(form.quantity), config.packetsPerCarton)}
-                  </div>
-                )}
-              </Field>
-            )}
+            <Field label="District" error={errors.district}>
+              <input type="text" value={form.district} onChange={e => setForm({ ...form, district: e.target.value })}
+                placeholder="e.g. Ernakulam" style={inputStyle(!!errors.district)} />
+            </Field>
 
-            {isAdmin && !(form.type === 'retailer' && form.underDistributorId) && (
-              <Field label="Low Stock Alert Threshold (packets)" hint="Admin alerted when remaining falls below this">
-                <input type="number" value={form.lowStockThreshold} onChange={e => setForm({ ...form, lowStockThreshold: e.target.value })}
-                  placeholder="e.g. 50" style={inputStyle()} />
-              </Field>
+            <Field label="State" error={errors.state}>
+              <CustomSelect
+                value={form.state}
+                onChange={v => setForm({ ...form, state: v })}
+                placeholder="Select state"
+                options={INDIAN_STATES.map(s => ({ value: s, label: s }))}
+                searchable
+              />
+              {errors.state && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 4 }}>⚠️ {errors.state}</div>}
+            </Field>
+
+            <Field label="Pincode" error={errors.pincode}>
+              <input type="text" inputMode="numeric" value={form.pincode}
+                onChange={e => setForm({ ...form, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                placeholder="6-digit pincode" style={inputStyle(!!errors.pincode)} />
+            </Field>
+
+            {/* Optional allocation section — hidden for retailers under a distributor */}
+            {!(form.type === 'retailer' && form.underDistributorId) && (
+              !showAllocation ? (
+                <button onClick={() => setShowAllocation(true)}
+                  style={{ background: 'rgba(255,255,255,0.04)', border: '1.5px dashed rgba(255,255,255,0.12)', borderRadius: 12, padding: '12px 16px', fontSize: 13, color: '#64748b', fontWeight: 700, textAlign: 'left', width: '100%' }}>
+                  + Add Allocation <span style={{ fontSize: 11, color: '#475569', fontWeight: 400 }}>(optional)</span>
+                </button>
+              ) : (
+                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1.5px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontSize: 11, color: '#64748b', letterSpacing: 1, textTransform: 'uppercase' }}>Allocation</div>
+                    <button onClick={() => { setShowAllocation(false); setForm({ ...form, quantity: '', lowStockThreshold: '', productId: '', productName: '' }) }}
+                      style={{ background: 'none', border: 'none', color: '#475569', fontSize: 18, cursor: 'pointer', lineHeight: 1, padding: '0 2px' }}>×</button>
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8, letterSpacing: 1, textTransform: 'uppercase' }}>Product</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {products.length === 0 ? (
+                        <div style={{ fontSize: 13, color: '#475569', padding: '10px 0' }}>No products added yet</div>
+                      ) : products.map(pr => (
+                        <button key={pr.id} onClick={() => setForm({ ...form, productId: pr.id!, productName: pr.name })}
+                          style={{ background: form.productId === pr.id ? 'rgba(8,145,178,0.15)' : 'rgba(255,255,255,0.04)', border: `1.5px solid ${form.productId === pr.id ? '#0891b2' : 'rgba(255,255,255,0.06)'}`, borderRadius: 10, padding: '10px 14px', fontSize: 13, color: form.productId === pr.id ? '#0891b2' : '#94a3b8', fontWeight: form.productId === pr.id ? 700 : 400, textAlign: 'left' }}>
+                          {pr.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                      {(['packets', 'cartons'] as const).map(u => (
+                        <button key={u} onClick={() => setUnit(u)}
+                          style={{ flex: 1, background: unit === u ? 'rgba(22,163,74,0.15)' : 'rgba(255,255,255,0.04)', color: unit === u ? '#16a34a' : '#64748b', border: `1.5px solid ${unit === u ? '#16a34a' : 'rgba(255,255,255,0.06)'}`, borderRadius: 10, padding: '9px', fontSize: 12, fontWeight: 700 }}>
+                          {u === 'packets' ? '📦 Packets' : `📫 Cartons (1=${config.packetsPerCarton} pkts)`}
+                        </button>
+                      ))}
+                    </div>
+                    <input type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })}
+                      placeholder={unit === 'cartons' ? 'No. of cartons' : 'No. of packets'}
+                      style={inputStyle(!!errors.quantity)} />
+                    {errors.quantity && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 4 }}>⚠️ {errors.quantity}</div>}
+                    {form.quantity && parseInt(form.quantity) > 0 && (
+                      <div style={{ marginTop: 8, fontSize: 13, color: '#6ee7b7', fontWeight: 700 }}>
+                        = {toDisplay(toPackets(form.quantity), config.packetsPerCarton)}
+                      </div>
+                    )}
+                  </div>
+
+                  {isAdmin && (
+                    <div>
+                      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>Low Stock Alert Threshold</div>
+                      <div style={{ fontSize: 11, color: '#6ee7b7', marginBottom: 6 }}>💡 Admin alerted when remaining falls below this</div>
+                      <input type="number" value={form.lowStockThreshold} onChange={e => setForm({ ...form, lowStockThreshold: e.target.value })}
+                        placeholder="e.g. 50 packets" style={inputStyle()} />
+                    </div>
+                  )}
+                </div>
+              )
             )}
 
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => { setTab('list'); setEditingId(null); setForm(emptyForm); setErrors({}); setFocusParent(false) }}
+              <button onClick={() => { setTab('list'); setEditingId(null); setForm(emptyForm); setErrors({}); setFocusParent(false); setShowEmail(false); setShowAllocation(false) }}
                 style={{ flex: 1, background: 'rgba(255,255,255,0.06)', color: '#64748b', border: 'none', borderRadius: 14, padding: 14, fontSize: 14, fontWeight: 700 }}>
                 Cancel
               </button>
