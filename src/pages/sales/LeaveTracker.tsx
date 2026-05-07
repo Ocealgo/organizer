@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { collection, onSnapshot, updateDoc, doc } from 'firebase/firestore'
+import { collection, onSnapshot, updateDoc, doc, addDoc } from 'firebase/firestore'
 import { db } from '../../firebase'
 import { LeaveRecord, AppUser } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
@@ -53,6 +53,12 @@ export default function LeaveTracker({ onBack }: Props) {
       auditLog: [...(leave.auditLog || []), {
         action: 'leave_approved', by: 'admin', byName: 'Admin', at: Date.now()
       }],
+    })
+    await addDoc(collection(db, 'alerts'), {
+      type: 'leave_approved',
+      message: `✅ Your ${leave.leaveType === 'full_day' ? 'Full Day' : 'Half Day'} leave on ${leave.date} has been approved`,
+      relatedId: leave.id!, read: false, createdAt: Date.now(),
+      toUid: leave.uid,
     })
   }
 

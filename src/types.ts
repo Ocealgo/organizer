@@ -128,8 +128,10 @@ export interface Expense {
 
 // ── ALERT ─────────────────────────────────────────────────────────────────────
 export interface Alert {
-  id?: string; type: 'new_party' | 'credit_settlement' | 'low_stock' | 'stock_dispatched' | 'new_allocation' | 'visit_log_submitted'
+  id?: string; type: 'new_party' | 'credit_settlement' | 'low_stock' | 'stock_dispatched' | 'new_allocation' | 'visit_log_submitted' | 'leave_requested' | 'leave_approved'
   message: string; relatedId: string; read: boolean; createdAt: number
+  toUid?: string        // only that user sees it
+  toRole?: 'admin_group' // only admin/super_admin see it
 }
 
 // ── ALLOCATION ────────────────────────────────────────────────────────────────

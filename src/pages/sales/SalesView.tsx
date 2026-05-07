@@ -11,6 +11,7 @@ import CreditBook from '../credit/CreditBook'
 import AllocationManager from '../distributors/AllocationManager'
 import VisitLogger from './VisitLogger'
 import VisitHistoryScreen from './VisitHistoryScreen'
+import LeaveHistory from './LeaveHistory'
 import { CheckIn, Party, DailyVisitLog, LeaveRecord, LeaveReason, LEAVE_REASONS } from '../../types'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr, localMonthStr } from '../../utils/date'
@@ -21,7 +22,7 @@ const todayStr = () => localDateStr()
 const currentMonth = () => localMonthStr()
 const isLocked = (createdAt: number) => Date.now() - createdAt > 24 * 60 * 60 * 1000
 
-type SubScreen = 'home' | 'visits' | 'parties' | 'stock' | 'expenses' | 'credits' | 'allocations' | 'history'
+type SubScreen = 'home' | 'visits' | 'parties' | 'stock' | 'expenses' | 'credits' | 'allocations' | 'history' | 'leaves'
 
 export default function SalesView({ name }: Props) {
   const { appUser } = useAuth()
@@ -32,6 +33,8 @@ export default function SalesView({ name }: Props) {
   const [parties, setParties] = useState<Party[]>([])
   const [todayVisitLog, setTodayVisitLog] = useState<DailyVisitLog | null>(null)
   const [todayLeave, setTodayLeave] = useState<LeaveRecord | null>(null)
+  const [allLeaveRecords, setAllLeaveRecords] = useState<LeaveRecord[]>([])
+  const [leaveDate, setLeaveDate] = useState(localDateStr())
   const [markingLeave, setMarkingLeave] = useState(false)
   const [pendingLeaveType, setPendingLeaveType] = useState<'full_day' | 'half_day' | null>(null)
   const [leaveReason, setLeaveReason] = useState<LeaveReason | ''>('')
@@ -72,10 +75,10 @@ export default function SalesView({ name }: Props) {
     if (!appUser) return
     const q = query(collection(db, 'leave_records'), where('uid', '==', appUser.uid))
     return onSnapshot(q, snap => {
+      const records = snap.docs.map(d => ({ id: d.id, ...d.data() } as LeaveRecord))
+      setAllLeaveRecords(records)
       const today = todayStr()
-      const rec = snap.docs
-        .map(d => ({ id: d.id, ...d.data() } as LeaveRecord))
-        .find(l => l.date === today && l.status !== 'removed' && l.status !== 'rejected')
+      const rec = records.find(l => l.date === today && l.status !== 'removed' && l.status !== 'rejected')
       setTodayLeave(rec ?? null)
     })
   }, [appUser])
@@ -108,19 +111,25 @@ export default function SalesView({ name }: Props) {
     if (!appUser || markingLeave) return
     const confirmed = await showLeaveConfirm(
       `Request ${type === 'full_day' ? 'Full Day' : 'Half Day'} Leave?`,
-      `Reason: ${reason} · ${todayStr()} · Admin will approve before it takes effect.`
+      `Reason: ${reason} · ${leaveDate} · Admin will approve before it takes effect.`
     )
     if (!confirmed) return
     setMarkingLeave(true)
     setPendingLeaveType(null)
     setLeaveReason('')
     try {
-      await addDoc(collection(db, 'leave_records'), {
+      const leaveRef = await addDoc(collection(db, 'leave_records'), {
         uid: appUser.uid, name: appUser.name, role: appUser.role,
-        date: todayStr(), leaveType: type, reason,
+        date: leaveDate, leaveType: type, reason,
         markedAt: Date.now(), markedBy: appUser.uid, markedByName: appUser.name,
         status: 'pending_approval',
         auditLog: [{ action: 'leave_requested', by: appUser.uid, byName: appUser.name, at: Date.now() }],
+      })
+      await addDoc(collection(db, 'alerts'), {
+        type: 'leave_requested',
+        message: `🏖️ ${appUser.name} requested ${type === 'full_day' ? 'Full Day' : 'Half Day'} leave · ${leaveDate} · ${reason}`,
+        relatedId: leaveRef.id, read: false, createdAt: Date.now(),
+        toRole: 'admin_group',
       })
     } catch (e) {
       console.error('Leave request failed:', e)
@@ -152,6 +161,7 @@ export default function SalesView({ name }: Props) {
   if (screen === 'credits')     return <CreditBook onBack={() => setScreen('home')} />
   if (screen === 'allocations') return <AllocationManager onBack={() => setScreen('home')} parties={parties} isAdmin={false} />
   if (screen === 'history')     return <VisitHistoryScreen onBack={() => setScreen('home')} />
+  if (screen === 'leaves')      return <LeaveHistory leaveRecords={allLeaveRecords} onBack={() => setScreen('home')} />
 
   // Online Sales — disabled
   if (isOnline) return (
@@ -182,6 +192,7 @@ export default function SalesView({ name }: Props) {
     { emoji: '🤝', label: 'Network', sub: 'Distributors & retailers', action: () => setScreen('parties'), primary: false, disabled: false },
     { emoji: '📦', label: 'Allocations', sub: 'View & create stock requests', action: () => setScreen('allocations'), primary: false, disabled: false },
     { emoji: '📅', label: 'Visit History', sub: 'Past logs by day & month', action: () => setScreen('history'), primary: false, disabled: false },
+    { emoji: '🏖️', label: 'My Leaves', sub: allLeaveRecords.filter(l => l.status === 'pending_approval').length > 0 ? `${allLeaveRecords.filter(l => l.status === 'pending_approval').length} pending approval` : 'View & manage leave requests', action: () => setScreen('leaves'), primary: false, disabled: false },
     { emoji: '📊', label: 'Stock', sub: 'Available inventory', action: () => setScreen('stock'), primary: false, disabled: false },
     { emoji: '💜', label: 'Credit Book', sub: 'Outstanding & settlements', action: () => setScreen('credits'), primary: false, disabled: false },
     { emoji: '💸', label: 'Expenses', sub: 'Travel, food, misc', action: () => setScreen('expenses'), primary: false, disabled: false },
@@ -296,6 +307,16 @@ export default function SalesView({ name }: Props) {
                 <div style={{ fontSize: 14, fontWeight: 700, color: theme === 'dark' ? '#fff' : t.text, marginBottom: 10 }}>
                   {pendingLeaveType === 'full_day' ? 'Full Day' : 'Half Day'} Leave Request · <span style={{ color: theme === 'dark' ? 'rgba(255,255,255,0.55)' : t.text3, fontWeight: 400 }}>Select a reason</span>
                 </div>
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, color: theme === 'dark' ? 'rgba(255,255,255,0.55)' : t.text3, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>Leave Date</div>
+                  <input type="date" value={leaveDate} onChange={e => setLeaveDate(e.target.value)}
+                    style={{ width: '100%', background: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)', border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.12)'}`, borderRadius: 10, padding: '9px 12px', color: theme === 'dark' ? '#fff' : '#374151', fontSize: 14, outline: 'none', boxSizing: 'border-box', colorScheme: theme === 'dark' ? 'dark' : 'light' }} />
+                  {allLeaveRecords.some(l => l.date === leaveDate && l.status !== 'removed' && l.status !== 'rejected') && (
+                    <div style={{ fontSize: 12, color: '#dc2626', marginTop: 5, fontWeight: 600 }}>
+                      ⚠️ Leave already submitted for this date
+                    </div>
+                  )}
+                </div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
                   {LEAVE_REASONS.map(r => (
                     <button key={r} onClick={() => setLeaveReason(r)}
@@ -310,8 +331,8 @@ export default function SalesView({ name }: Props) {
                     Cancel
                   </button>
                   <button onClick={() => leaveReason && handleMarkLeave(pendingLeaveType, leaveReason as LeaveReason)}
-                    disabled={!leaveReason || markingLeave}
-                    style={{ flex: 2, background: leaveReason ? 'rgba(99,102,241,0.2)' : (theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'transparent'), border: `1px solid ${leaveReason ? '#818cf8' : (theme === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)')}`, color: leaveReason ? (theme === 'dark' ? '#fff' : '#4f46e5') : (theme === 'dark' ? 'rgba(255,255,255,0.35)' : t.text3), borderRadius: 10, padding: '11px', fontSize: 14, fontWeight: 700, opacity: (!leaveReason || markingLeave) ? 0.5 : 1 }}>
+                    disabled={!leaveReason || markingLeave || allLeaveRecords.some(l => l.date === leaveDate && l.status !== 'removed' && l.status !== 'rejected')}
+                    style={{ flex: 2, background: leaveReason ? 'rgba(99,102,241,0.2)' : (theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'transparent'), border: `1px solid ${leaveReason ? '#818cf8' : (theme === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)')}`, color: leaveReason ? (theme === 'dark' ? '#fff' : '#4f46e5') : (theme === 'dark' ? 'rgba(255,255,255,0.35)' : t.text3), borderRadius: 10, padding: '11px', fontSize: 14, fontWeight: 700, opacity: (!leaveReason || markingLeave || allLeaveRecords.some(l => l.date === leaveDate && l.status !== 'removed' && l.status !== 'rejected')) ? 0.5 : 1 }}>
                     {markingLeave ? 'Sending…' : 'Send Request'}
                   </button>
                 </div>

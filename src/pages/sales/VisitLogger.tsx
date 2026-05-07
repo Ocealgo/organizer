@@ -10,7 +10,6 @@ import { localDateStr, localDateOffset } from '../../utils/date'
 
 interface Props { onBack: () => void }
 
-const todayStr = () => localDateStr()
 type Step = 'home' | 'selectShop' | 'addNewShop' | 'markOutcome' | 'revisit'
 
 export default function VisitLogger({ onBack }: Props) {
@@ -36,6 +35,7 @@ export default function VisitLogger({ onBack }: Props) {
   const [newShop, setNewShop] = useState({ name: '', phone: '', address: '', place: '', type: 'retailer' as 'distributor' | 'retailer', underDistributorId: '' })
   const [showFinishModal, setShowFinishModal] = useState(false)
   const [visitPartyStatus, setVisitPartyStatus] = useState<'all' | 'active' | 'prospect' | 'inactive'>('all')
+  const [selectedDate, setSelectedDate] = useState(localDateStr())
 
   // ── ALL hooks first ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -50,24 +50,24 @@ export default function VisitLogger({ onBack }: Props) {
     if (!appUser) return
     const q = query(collection(db, 'visit_logs'),
       where('salesPersonId', '==', appUser.uid),
-      where('date', '==', todayStr()))
+      where('date', '==', selectedDate))
     return onSnapshot(q, snap => {
       if (!snap.empty) {
         setTodayLog({ id: snap.docs[0].id, ...snap.docs[0].data() } as DailyVisitLog)
         setEndNote(snap.docs[0].data().endOfDayNote || '')
-      } else { setTodayLog(null) }
+      } else { setTodayLog(null); setEndNote('') }
     })
-  }, [appUser])
+  }, [appUser, selectedDate])
 
   useEffect(() => {
     if (!appUser) return
     const q = query(collection(db, 'revisit_logs'),
       where('salesPersonId', '==', appUser.uid),
-      where('date', '==', todayStr()))
+      where('date', '==', selectedDate))
     return onSnapshot(q, snap => {
       setTodayRevisitLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })))
     })
-  }, [appUser])
+  }, [appUser, selectedDate])
 
   useEffect(() => {
     if (selectedProduct) setAllocPrice(String(selectedProduct.defaultPricePerUnit))
@@ -104,7 +104,7 @@ export default function VisitLogger({ onBack }: Props) {
       } else {
         await addDoc(collection(db, 'visit_logs'), {
           salesPersonId: appUser.uid, salesPersonName: appUser.name,
-          date: todayStr(), endOfDayNote: '', createdAt: Date.now(),
+          date: selectedDate, endOfDayNote: '', createdAt: Date.now(),
           visits: [entry], totalVisited: 1, totalInterested: 0, totalNotInterested: 0,
           updatedAt: Date.now(),
         })
@@ -116,6 +116,7 @@ export default function VisitLogger({ onBack }: Props) {
   if (step === 'revisit' && selectedParty) {
     return <RevisitLogger
       party={selectedParty}
+      logDate={selectedDate}
       onBack={() => { resetVisit(); setStep('home') }}
       onDone={handleRevisitDone} />
   }
@@ -175,7 +176,7 @@ export default function VisitLogger({ onBack }: Props) {
 
       if (outcome === 'not_interested') {
         await updateDoc(doc(db, 'parties', selectedParty.id!), {
-          status: 'prospect', lastVisited: todayStr(),
+          status: 'prospect', lastVisited: selectedDate,
           lastVisitedBy: appUser!.name, notInterestedReason,
         })
       }
@@ -191,7 +192,7 @@ export default function VisitLogger({ onBack }: Props) {
       } else {
         await addDoc(collection(db, 'visit_logs'), {
           salesPersonId: appUser!.uid, salesPersonName: appUser!.name,
-          date: todayStr(), endOfDayNote: '', createdAt: Date.now(),
+          date: selectedDate, endOfDayNote: '', createdAt: Date.now(),
           visits: [entry],
           totalVisited: 1,
           totalInterested: entry.outcome === 'interested' ? 1 : 0,
@@ -272,10 +273,10 @@ export default function VisitLogger({ onBack }: Props) {
       {showFinishModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px 16px' }}>
           <div style={{ background: t.card, borderRadius: 20, padding: '28px 20px', width: '100%', maxWidth: 420, boxShadow: '0 24px 64px rgba(0,0,0,0.4)', border: `1px solid ${t.border2}` }}>
-            <div style={{ fontSize: 20, fontWeight: 900, color: t.text, marginBottom: 6 }}>Submit Today's Log?</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: t.text, marginBottom: 6 }}>Submit Log for {selectedDate}?</div>
             <div style={{ fontSize: 14, color: t.text2, marginBottom: 18, lineHeight: 1.6 }}>
-              {visits.length} visit{visits.length !== 1 ? 's' : ''} recorded for <strong style={{ color: t.text }}>{todayStr()}</strong>.
-              You can still add more visits today.
+              {visits.length} visit{visits.length !== 1 ? 's' : ''} recorded for <strong style={{ color: t.text }}>{selectedDate}</strong>.
+              {selectedDate === localDateStr() ? ' You can still add more visits today.' : ''}
             </div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
               {[
@@ -313,7 +314,12 @@ export default function VisitLogger({ onBack }: Props) {
           <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#6ee7b7', padding: '6px 14px', borderRadius: 20, fontSize: 13 }}>← Back</button>
         </div>
         <div style={{ color: '#6ee7b7', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Visit Log</div>
-        <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', marginBottom: 4 }}>{todayStr()}</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+          <div style={{ fontSize: 22, fontWeight: 900, color: '#fff' }}>{selectedDate}</div>
+          <input type="date" value={selectedDate} onChange={e => { if (e.target.value <= localDateStr()) setSelectedDate(e.target.value) }}
+            max={localDateStr()}
+            style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 10, padding: '6px 10px', color: '#fff', fontSize: 13, outline: 'none', colorScheme: 'dark' }} />
+        </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
           {[
             { label: 'Visited', val: visits.length, color: '#fff' },
@@ -344,7 +350,7 @@ export default function VisitLogger({ onBack }: Props) {
         {visits.length > 0 && (
           <>
             <div style={{ fontSize: 13, color: t.text2, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginTop: 4 }}>
-              Visits Today ({visits.length})
+              {selectedDate === localDateStr() ? `Visits Today (${visits.length})` : `Visits — ${selectedDate} (${visits.length})`}
             </div>
             {(() => {
               const partyGroups = new Map<string, VisitEntry[]>()

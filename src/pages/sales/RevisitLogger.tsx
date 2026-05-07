@@ -6,7 +6,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { localDateStr, localDateOffset } from '../../utils/date'
 
-interface Props { party: Party; onBack: () => void; onDone: (revisitLogId: string, outcome: VisitOutcome) => void }
+interface Props { party: Party; onBack: () => void; onDone: (revisitLogId: string, outcome: VisitOutcome) => void; logDate?: string }
 
 type ActionKey = 'stock_update' | 'new_order' | 'payment_collection' | 'relationship_visit' | 'no_longer_active' | 'distribute_to_retailers'
 
@@ -20,7 +20,7 @@ const BASE_ACTIONS: { key: ActionKey; emoji: string; label: string; sub: string 
   { key: 'no_longer_active',    emoji: '❌', label: 'No Longer Active',    sub: 'Stopped selling / changed supplier' },
 ]
 
-export default function RevisitLogger({ party, onBack, onDone }: Props) {
+export default function RevisitLogger({ party, onBack, onDone, logDate }: Props) {
   const { appUser } = useAuth()
   const { t } = useTheme()
   const [products, setProducts] = useState<Product[]>([])
@@ -120,7 +120,7 @@ export default function RevisitLogger({ party, onBack, onDone }: Props) {
 
       if (selectedActions.has('new_order') && orderProduct && orderQty) {
         const qty = parseInt(orderQty)
-        const todayDate = localDateStr()
+        const todayDate = logDate || localDateStr()
         let allocRef: any
         if (isUnderDistributor) {
           allocRef = await addDoc(collection(db, 'allocations_v2'), {
@@ -186,7 +186,7 @@ export default function RevisitLogger({ party, onBack, onDone }: Props) {
       }
 
       if (selectedActions.has('distribute_to_retailers')) {
-        const todayDate = localDateStr()
+        const todayDate = logDate || localDateStr()
         for (const [retailerId, data] of Object.entries(distributions)) {
           const qty = parseInt(data.qty) || 0
           if (qty <= 0) continue
@@ -210,7 +210,7 @@ export default function RevisitLogger({ party, onBack, onDone }: Props) {
       const revisitRef = await addDoc(collection(db, 'revisit_logs'), {
         partyId: party.id!, partyName: party.name, partyType: party.type,
         salesPersonId: appUser!.uid, salesPersonName: appUser!.name,
-        date: localDateStr(),
+        date: logDate || localDateStr(),
         actions, notes: visitNote, createdAt: Date.now(),
       })
 

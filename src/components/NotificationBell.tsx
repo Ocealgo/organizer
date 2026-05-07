@@ -2,22 +2,31 @@ import { useState, useEffect, useRef } from 'react'
 import { collection, onSnapshot, updateDoc, doc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { Alert } from '../types'
+import { useAuth } from '../context/AuthContext'
 
 export default function NotificationBell() {
+  const { appUser } = useAuth()
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+
+  const isAdmin = appUser?.role === 'admin' || appUser?.role === 'super_admin'
 
   useEffect(() => {
     // No orderBy — sort client-side to avoid index requirement
     return onSnapshot(collection(db, 'alerts'), snap => {
       const all = snap.docs
         .map(d => ({ id: d.id, ...d.data() } as Alert))
+        .filter(a => {
+          if (a.toUid) return a.toUid === appUser?.uid
+          if (a.toRole === 'admin_group') return isAdmin
+          return true
+        })
         .sort((a, b) => b.createdAt - a.createdAt)
         .slice(0, 20)
       setAlerts(all)
     })
-  }, [])
+  }, [appUser?.uid, isAdmin])
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
