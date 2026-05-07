@@ -258,6 +258,7 @@ export interface VisitEntry {
   isNew: boolean
   outcome: VisitOutcome
   isRevisit?: boolean
+  revisitLogId?: string          // points to revisit_logs doc — set on save
   notInterestedReason?: NotInterestedReason
   otherReason?: string
   productId?: string
@@ -265,6 +266,7 @@ export interface VisitEntry {
   allocationId?: string
   indentId?: string
   notes?: string
+  loggedAt?: number              // unique per entry — prevents arrayUnion dedup
 }
 
 // ── RETAILER INDENT (Retailer → Distributor stock requisition) ────────────────

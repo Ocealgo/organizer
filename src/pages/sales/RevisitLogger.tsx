@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import { collection, addDoc, onSnapshot, updateDoc, doc, query, where, increment } from 'firebase/firestore'
 import { db } from '../../firebase'
-import { Party, Product, RevisitAction, StockUpdateAction, NewOrderAction, PaymentCollectionAction, StockMovement } from '../../types'
+import { Party, Product, RevisitAction, StockUpdateAction, NewOrderAction, PaymentCollectionAction, StockMovement, VisitOutcome } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { localDateStr, localDateOffset } from '../../utils/date'
 
-interface Props { party: Party; onBack: () => void; onDone: () => void }
+interface Props { party: Party; onBack: () => void; onDone: (revisitLogId: string, outcome: VisitOutcome) => void }
 
 type ActionKey = 'stock_update' | 'new_order' | 'payment_collection' | 'relationship_visit' | 'no_longer_active' | 'distribute_to_retailers'
 
@@ -207,14 +207,22 @@ export default function RevisitLogger({ party, onBack, onDone }: Props) {
         }
       }
 
-      await addDoc(collection(db, 'revisit_logs'), {
+      const revisitRef = await addDoc(collection(db, 'revisit_logs'), {
         partyId: party.id!, partyName: party.name, partyType: party.type,
         salesPersonId: appUser!.uid, salesPersonName: appUser!.name,
         date: localDateStr(),
         actions, notes: visitNote, createdAt: Date.now(),
       })
 
-      onDone()
+      // Derive VisitOutcome from actions: no_longer_active → not_interested,
+      // new_order → interested, everything else → follow_up
+      const outcome: VisitOutcome = actions.some(a => a.type === 'no_longer_active')
+        ? 'not_interested'
+        : actions.some(a => a.type === 'new_order')
+          ? 'interested'
+          : 'follow_up'
+
+      onDone(revisitRef.id, outcome)
     } finally { setSaving(false) }
   }
 

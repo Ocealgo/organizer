@@ -665,16 +665,19 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
             )}
 
             {/* Allocation filters */}
-            {filterSource !== 'distributor' && (
-              <div style={{ background: t.card, borderRadius: 14, padding: 14, border: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {(['all', 'overdue', 'pending', 'sent', 'paid', 'cancelled'] as const).map(s => (
-                    <button key={s} onClick={() => setFilterStatus(s)}
-                      style={{ background: filterStatus === s ? (s === 'all' ? '#1a5c42' : STATUS_STYLE[s as AllocationStatus]?.bg || '#1a5c42') : 'rgba(255,255,255,0.04)', color: filterStatus === s ? (s === 'all' ? '#6ee7b7' : STATUS_STYLE[s as AllocationStatus]?.color || '#6ee7b7') : '#64748b', border: `1px solid ${filterStatus === s ? (s === 'all' ? '#16a34a' : STATUS_STYLE[s as AllocationStatus]?.color || '#16a34a') : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', textTransform: 'capitalize' }}>
-                      {s === 'all' ? `All (${counts.all})` : `${STATUS_STYLE[s]?.emoji} ${s}`}
-                    </button>
-                  ))}
-                </div>
+            <div style={{ background: t.card, borderRadius: 14, padding: 14, border: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {(filterSource === 'distributor'
+                  ? ['all', 'pending', 'sent', 'cancelled'] as const
+                  : ['all', 'overdue', 'pending', 'sent', 'paid', 'cancelled'] as const
+                ).map(s => (
+                  <button key={s} onClick={() => setFilterStatus(s)}
+                    style={{ background: filterStatus === s ? (s === 'all' ? '#1a5c42' : STATUS_STYLE[s as AllocationStatus]?.bg || '#1a5c42') : 'rgba(255,255,255,0.04)', color: filterStatus === s ? (s === 'all' ? '#6ee7b7' : STATUS_STYLE[s as AllocationStatus]?.color || '#6ee7b7') : '#64748b', border: `1px solid ${filterStatus === s ? (s === 'all' ? '#16a34a' : STATUS_STYLE[s as AllocationStatus]?.color || '#16a34a') : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', textTransform: 'capitalize' }}>
+                    {s === 'all' ? `All (${counts.all})` : `${STATUS_STYLE[s]?.emoji} ${s}`}
+                  </button>
+                ))}
+              </div>
+              {filterSource !== 'distributor' && (
                 <div style={{ display: 'flex', gap: 6 }}>
                   {(['all', 'cash', 'credit'] as const).map(p => (
                     <button key={p} onClick={() => setFilterPayment(p)}
@@ -683,10 +686,10 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                     </button>
                   ))}
                 </div>
-                <CustomSelect value={filterParty} onChange={setFilterParty} placeholder="All parties"
-                  options={[{ value: 'all', label: 'All parties' }, ...partyOptions]} />
-              </div>
-            )}
+              )}
+              <CustomSelect value={filterParty} onChange={setFilterParty} placeholder="All parties"
+                options={[{ value: 'all', label: 'All parties' }, ...partyOptions]} />
+            </div>
 
             {/* Results count */}
             <div style={{ fontSize: 12, color: '#64748b' }}>

@@ -19,6 +19,7 @@ export default function VisitLogger({ onBack }: Props) {
   const [parties, setParties] = useState<Party[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [todayLog, setTodayLog] = useState<DailyVisitLog | null>(null)
+  const [todayRevisitLogs, setTodayRevisitLogs] = useState<any[]>([])
   const [step, setStep] = useState<Step>('home')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
@@ -59,6 +60,16 @@ export default function VisitLogger({ onBack }: Props) {
   }, [appUser])
 
   useEffect(() => {
+    if (!appUser) return
+    const q = query(collection(db, 'revisit_logs'),
+      where('salesPersonId', '==', appUser.uid),
+      where('date', '==', todayStr()))
+    return onSnapshot(q, snap => {
+      setTodayRevisitLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    })
+  }, [appUser])
+
+  useEffect(() => {
     if (selectedProduct) setAllocPrice(String(selectedProduct.defaultPricePerUnit))
   }, [selectedProduct])
 
@@ -74,16 +85,21 @@ export default function VisitLogger({ onBack }: Props) {
   }
 
   // ── REVISIT screen ────────────────────────────────────────────────────────
-  const handleRevisitDone = async () => {
+  const handleRevisitDone = async (revisitLogId: string, outcome: VisitOutcome) => {
     if (!selectedParty || !appUser) { resetVisit(); setStep('home'); return }
     const entry: VisitEntry = {
       partyId: selectedParty.id!, partyName: selectedParty.name,
-      isNew: false, outcome: 'follow_up', isRevisit: true,
+      isNew: false, outcome, isRevisit: true,
+      revisitLogId,
+      loggedAt: Date.now(),
     }
     try {
       if (todayLog?.id) {
+        // Use spread instead of arrayUnion — arrayUnion deduplicates identical objects
+        // which would drop a second visit to the same party in the same day
         await updateDoc(doc(db, 'visit_logs', todayLog.id), {
-          visits: arrayUnion(entry), totalVisited: increment(1), updatedAt: Date.now(),
+          visits: [...(todayLog.visits || []), entry],
+          totalVisited: increment(1), updatedAt: Date.now(),
         })
       } else {
         await addDoc(collection(db, 'visit_logs'), {
@@ -322,29 +338,68 @@ export default function VisitLogger({ onBack }: Props) {
             <div style={{ fontSize: 13, color: t.text2, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginTop: 4 }}>
               Visits Today ({visits.length})
             </div>
-            {visits.map((v, i) => {
-              const vParty = parties.find(p => p.id === v.partyId)
-              const typeLabel = vParty?.type === 'distributor' ? '🚚 Distributor' : '🏪 Retailer'
-              return (
-              <div key={i} style={{ background: t.card, borderRadius: 14, padding: '14px 16px', border: `1px solid ${v.outcome === 'interested' ? 'rgba(22,163,74,0.25)' : v.outcome === 'follow_up' ? 'rgba(217,119,6,0.2)' : 'rgba(220,38,38,0.15)'}` }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 22 }}>{v.outcome === 'interested' ? '✅' : v.outcome === 'follow_up' ? '🔄' : '❌'}</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 15, color: t.text }}>{v.partyName}</div>
-                    <div style={{ fontSize: 11, color: t.text3, marginTop: 1 }}>{typeLabel}</div>
-                    {v.outcome === 'interested' && v.productName && (
-                      <div style={{ fontSize: 13, color: '#16a34a', marginTop: 2 }}>{v.productName} — allocation created</div>
-                    )}
-                    {v.outcome === 'not_interested' && (
-                      <div style={{ fontSize: 13, color: '#dc2626', marginTop: 2 }}>{v.notInterestedReason}</div>
-                    )}
-                    {v.outcome === 'follow_up' && (
-                      <div style={{ fontSize: 13, color: '#d97706', marginTop: 2 }}>Follow up needed</div>
-                    )}
+            {(() => {
+              const partyGroups = new Map<string, VisitEntry[]>()
+              visits.forEach(v => {
+                const grp = partyGroups.get(v.partyId) || []
+                partyGroups.set(v.partyId, [...grp, v])
+              })
+              return Array.from(partyGroups.entries()).map(([partyId, entries]) => {
+                const vParty = parties.find(p => p.id === partyId)
+                const typeLabel = vParty?.type === 'distributor' ? '🚚 Distributor' : '🏪 Retailer'
+                const hasInterested = entries.some(v => v.outcome === 'interested')
+                const allNotInterested = entries.every(v => v.outcome === 'not_interested')
+                const borderColor = hasInterested ? 'rgba(22,163,74,0.25)' : allNotInterested ? 'rgba(220,38,38,0.15)' : 'rgba(217,119,6,0.2)'
+                return (
+                  <div key={partyId} style={{ background: t.card, borderRadius: 14, padding: '14px 16px', border: `1px solid ${borderColor}` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 15, color: t.text }}>{entries[0].partyName}</div>
+                        <div style={{ fontSize: 11, color: t.text3, marginTop: 1 }}>{typeLabel}</div>
+                      </div>
+                      {entries.length > 1 && (
+                        <span style={{ fontSize: 11, color: t.text3, fontWeight: 700 }}>{entries.length} visits</span>
+                      )}
+                    </div>
+                    {entries.map((v, vi) => {
+                      const rl = v.revisitLogId
+                        ? todayRevisitLogs.find(r => r.id === v.revisitLogId)
+                        : todayRevisitLogs.find(r => r.partyId === v.partyId)
+                      const timeStr = v.loggedAt
+                        ? new Date(v.loggedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+                        : ''
+                      const outcomeEmoji = v.outcome === 'interested' ? '✅' : v.outcome === 'not_interested' ? '❌' : '🔄'
+                      return (
+                        <div key={vi} style={{ paddingLeft: 10, borderLeft: `2px solid ${t.border}`, marginBottom: vi < entries.length - 1 ? 10 : 0, paddingBottom: vi < entries.length - 1 ? 8 : 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                            <span style={{ fontSize: 15 }}>{outcomeEmoji}</span>
+                            {timeStr && <span style={{ fontSize: 11, color: t.text3, fontWeight: 600 }}>{timeStr}</span>}
+                          </div>
+                          {v.isRevisit && rl?.actions?.map((action: any, ai: number) => {
+                            const label =
+                              action.type === 'stock_update' ? `📊 Stock Updated · Balance: ${action.balanceQty} pkts` :
+                              action.type === 'new_order' ? `📦 New Order · ${action.quantity} ${action.productName}` :
+                              action.type === 'payment_collection' ? `💰 Payment ₹${action.amount?.toLocaleString()}` :
+                              action.type === 'relationship_visit' ? `🤝 Relationship Visit${action.notes ? ` · ${action.notes}` : ''}` :
+                              action.type === 'no_longer_active' ? `⛔ No Longer Active · ${action.reason}` : null
+                            return label ? <div key={ai} style={{ fontSize: 13, color: t.text2, marginBottom: 2 }}>{label}</div> : null
+                          })}
+                          {!v.isRevisit && v.outcome === 'interested' && v.productName && (
+                            <div style={{ fontSize: 13, color: '#16a34a' }}>{v.productName} — allocation created</div>
+                          )}
+                          {!v.isRevisit && v.outcome === 'not_interested' && (
+                            <div style={{ fontSize: 13, color: '#dc2626' }}>{v.notInterestedReason}</div>
+                          )}
+                          {!v.isRevisit && v.outcome === 'follow_up' && (
+                            <div style={{ fontSize: 13, color: '#d97706' }}>Follow up needed</div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
-                </div>
-              </div>
-            )})}
+                )
+              })
+            })()}
 
           </>
         )}
