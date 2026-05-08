@@ -721,6 +721,8 @@ export default function VisitLogger({ onBack }: Props) {
   };
 
   // ── HOME ──────────────────────────────────────────────────────────────────
+  const isSundaySelected = new Date(selectedDate + 'T00:00:00').getDay() === 0
+
   if (step === "home")
     return (
       <div style={{ minHeight: "100vh", background: t.bg, paddingBottom: 40 }}>
@@ -933,6 +935,13 @@ export default function VisitLogger({ onBack }: Props) {
               }}
             />
           </div>
+          {new Date(selectedDate + 'T00:00:00').getDay() === 0 && (
+            <div style={{ marginBottom: 8 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.12)', padding: '3px 10px', borderRadius: 99 }}>
+                🔴 Sunday · Off Day
+              </span>
+            </div>
+          )}
           <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
             {[
               { label: "Visited", val: visits.length, color: "#fff" },
@@ -984,24 +993,27 @@ export default function VisitLogger({ onBack }: Props) {
           }}
         >
           <button
-            onClick={() => setStep("selectShop")}
+            onClick={() => !isSundaySelected && setStep("selectShop")}
+            disabled={isSundaySelected}
             style={{
-              background: "linear-gradient(135deg,#0d3d2e,#1a5c42)",
-              color: "#fff",
-              border: "none",
+              background: isSundaySelected ? 'rgba(255,255,255,0.05)' : "linear-gradient(135deg,#0d3d2e,#1a5c42)",
+              color: isSundaySelected ? 'rgba(255,255,255,0.3)' : "#fff",
+              border: isSundaySelected ? '1px solid rgba(255,255,255,0.08)' : "none",
               borderRadius: 16,
               padding: "18px 20px",
               display: "flex",
               alignItems: "center",
               gap: 14,
-              boxShadow: "0 8px 24px rgba(13,61,46,0.3)",
+              boxShadow: isSundaySelected ? 'none' : "0 8px 24px rgba(13,61,46,0.3)",
+              cursor: isSundaySelected ? 'not-allowed' : 'pointer',
+              opacity: isSundaySelected ? 0.5 : 1,
             }}
           >
             <span style={{ fontSize: 28 }}>📋</span>
             <div style={{ textAlign: "left" }}>
               <div style={{ fontWeight: 800, fontSize: 17 }}>Log a Visit</div>
-              <div style={{ fontSize: 14, color: "#a7f3d0", marginTop: 2 }}>
-                Distributor or Retailer visit
+              <div style={{ fontSize: 14, color: isSundaySelected ? 'rgba(255,255,255,0.3)' : "#a7f3d0", marginTop: 2 }}>
+                {isSundaySelected ? 'Disabled on Sundays' : 'Distributor or Retailer visit'}
               </div>
             </div>
             <span style={{ marginLeft: "auto", fontSize: 22 }}>›</span>
@@ -1429,6 +1441,7 @@ export default function VisitLogger({ onBack }: Props) {
               onChange={(e) => setEndNote(e.target.value)}
               placeholder="Anything to note for today? (optional)"
               rows={3}
+              disabled={isSundaySelected}
               style={{
                 width: "100%",
                 background: t.bg3,
@@ -1436,33 +1449,38 @@ export default function VisitLogger({ onBack }: Props) {
                 borderRadius: 10,
                 padding: "12px 14px",
                 fontSize: 14,
-                color: t.text,
+                color: isSundaySelected ? t.text3 : t.text,
                 outline: "none",
                 resize: "none",
                 boxSizing: "border-box",
+                cursor: isSundaySelected ? 'not-allowed' : 'auto',
+                opacity: isSundaySelected ? 0.5 : 1,
               }}
             />
           </div>
 
           {/* Submit / update day log */}
           <button
+            disabled={isSundaySelected && visits.length > 0}
             onClick={() =>
-              visits.length > 0 ? setShowFinishModal(true) : handleFinishDay()
+              !isSundaySelected && (visits.length > 0 ? setShowFinishModal(true) : handleFinishDay())
             }
             style={{
               width: "100%",
-              background:
-                visits.length > 0
+              background: isSundaySelected
+                ? t.bg3
+                : visits.length > 0
                   ? "linear-gradient(135deg,#065f46,#047857)"
                   : t.bg3,
-              color: visits.length > 0 ? "#fff" : t.text2,
-              border: visits.length > 0 ? "none" : `1.5px solid ${t.border}`,
+              color: isSundaySelected ? t.text3 : visits.length > 0 ? "#fff" : t.text2,
+              border: isSundaySelected || visits.length === 0 ? `1.5px solid ${t.border}` : "none",
               borderRadius: 16,
               padding: "18px",
               fontSize: 17,
               fontWeight: 900,
-              boxShadow:
-                visits.length > 0 ? "0 8px 24px rgba(4,120,87,0.35)" : "none",
+              cursor: isSundaySelected && visits.length > 0 ? 'not-allowed' : 'pointer',
+              opacity: isSundaySelected && visits.length > 0 ? 0.5 : 1,
+              boxShadow: !isSundaySelected && visits.length > 0 ? "0 8px 24px rgba(4,120,87,0.35)" : "none",
             }}
           >
             {visits.length === 0

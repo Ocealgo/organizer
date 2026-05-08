@@ -1046,11 +1046,46 @@ export default function AdminDashboard() {
                     </div>
 
                     {dateMode === "day" && (
-                      <DateInput
-                        type="date"
-                        value={dateDay}
-                        onChange={setDateDay}
-                      />
+                      <>
+                        {/* Last 7 days quick strip */}
+                        <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+                          {Array.from({ length: 7 }, (_, i) => {
+                            const offset = 6 - i
+                            const d = new Date()
+                            d.setDate(d.getDate() - offset)
+                            const dateStr = localDateStr(d)
+                            const dayName = d.toLocaleDateString('en-IN', { weekday: 'short' })
+                            const isSunday = d.getDay() === 0
+                            const isSelected = dateDay === dateStr
+                            const label = `${d.getDate()} ${d.toLocaleDateString('en-IN', { month: 'short' })}`
+                            return (
+                              <button key={dateStr} onClick={() => setDateDay(dateStr)} style={{
+                                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+                                padding: '6px 2px', cursor: 'pointer',
+                                background: isSelected ? 'rgba(217,119,6,0.2)' : theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+                                border: `1px solid ${isSelected ? 'rgba(217,119,6,0.3)' : isSunday ? 'rgba(239,68,68,0.2)' : t.border}`,
+                                borderRadius: 8,
+                              }}>
+                                <span style={{ fontSize: 11, fontWeight: 800, color: isSunday ? '#ef4444' : isSelected ? '#d97706' : t.text }}>
+                                  {offset === 0 ? 'Today' : dayName}
+                                </span>
+                                <span style={{ fontSize: 10, marginTop: 1, color: isSunday ? '#ef4444' : isSelected ? '#d97706' : t.text3 }}>
+                                  {isSunday ? 'Off' : label}
+                                </span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                        {/* Sunday indicator */}
+                        {new Date(dateDay + 'T00:00:00').getDay() === 0 && (
+                          <div style={{ marginBottom: 8 }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.1)', padding: '3px 10px', borderRadius: 99 }}>
+                              🔴 Sunday · Off Day
+                            </span>
+                          </div>
+                        )}
+                        <DateInput type="date" value={dateDay} onChange={setDateDay} />
+                      </>
                     )}
                     {dateMode === "month" && (
                       <DateInput
