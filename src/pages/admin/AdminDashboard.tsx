@@ -1934,87 +1934,117 @@ export default function AdminDashboard() {
                                       <span style={{ fontSize: 11, color: t.text3, marginLeft: 'auto', fontWeight: 700 }}>{entries.length} visits</span>
                                     )}
                                   </div>
-                                  {/* Each visit entry with timestamp */}
-                                  {entries.map((v: any, vi: number) => {
-                                    const revisitLog = v.isRevisit
-                                      ? (v.revisitLogId
-                                          ? revisitLogs.find((rl: any) => rl.id === v.revisitLogId)
-                                          : revisitLogs.find((rl: any) => rl.partyId === v.partyId && rl.salesPersonId === log.salesPersonId && rl.date === log.date))
-                                      : null
-                                    const outcomeEmoji = v.outcome === 'interested' ? '✅' : v.outcome === 'not_interested' ? '❌' : '🔄'
-                                    const timeStr = v.loggedAt
-                                      ? new Date(v.loggedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-                                      : ''
-                                    return (
-                                      <div key={vi} style={{ paddingLeft: 10, borderLeft: `2px solid ${theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`, marginBottom: vi < entries.length - 1 ? 10 : 0, paddingBottom: vi < entries.length - 1 ? 8 : 0 }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                                          <span style={{ fontSize: 14 }}>{outcomeEmoji}</span>
-                                          {timeStr && <span style={{ fontSize: 11, color: t.text3, fontWeight: 600 }}>{timeStr}</span>}
-                                        </div>
-                                        {/* Revisit action details */}
-                                        {revisitLog?.actions?.map((action: any, ai: number) => {
-                                          if (action.type === 'stock_update') return (
-                                            <div key={ai} style={{ fontSize: 12, color: t.text2, marginBottom: 3 }}>
-                                              📊 <span style={{ fontWeight: 700 }}>Stock Updated</span>
-                                              {' · '}Opening: {action.openingQty} · Sold: {action.soldQty}
-                                              {' · '}<span style={{ fontWeight: 700, color: '#0891b2' }}>Balance: {action.balanceQty} pkts</span>
-                                              {action.balanceValue > 0 && <span style={{ color: t.text3 }}> (₹{action.balanceValue.toLocaleString()})</span>}
-                                            </div>
-                                          )
-                                          if (action.type === 'new_order') return (
-                                            <div key={ai} style={{ fontSize: 12, color: t.text2, marginBottom: 3 }}>
-                                              📦 <span style={{ fontWeight: 700 }}>New Order</span>
-                                              {' · '}{action.quantity} {action.productName}
-                                              {action.totalAmount > 0 && <span> · <span style={{ fontWeight: 700, color: '#16a34a' }}>₹{action.totalAmount?.toLocaleString()}</span></span>}
-                                              {' · '}<span style={{ color: action.paymentType === 'credit' ? '#f59e0b' : t.text3 }}>{action.paymentType}</span>
-                                              {action.plannedDate && <span style={{ color: t.text3 }}> · dispatch {action.plannedDate}</span>}
-                                            </div>
-                                          )
-                                          if (action.type === 'payment_collection') return (
-                                            <div key={ai} style={{ fontSize: 12, color: t.text2, marginBottom: 3 }}>
-                                              💰 <span style={{ fontWeight: 700 }}>Payment Collected</span>
-                                              {' · '}<span style={{ fontWeight: 700, color: '#16a34a' }}>₹{action.amount?.toLocaleString()}</span>
-                                              {' · '}<span style={{ color: action.status === 'pending_approval' ? '#f59e0b' : t.text3 }}>
-                                                {action.status === 'pending_approval' ? '⏳ Pending approval' : '✅ Approved'}
-                                              </span>
-                                              {action.notes && <span style={{ color: t.text3 }}> · {action.notes}</span>}
-                                            </div>
-                                          )
-                                          if (action.type === 'relationship_visit') return (
-                                            <div key={ai} style={{ fontSize: 12, color: t.text2, marginBottom: 3 }}>
-                                              🤝 <span style={{ fontWeight: 700 }}>Relationship Visit</span>
-                                              {action.notes && <span style={{ color: t.text3 }}> · {action.notes}</span>}
-                                            </div>
-                                          )
-                                          if (action.type === 'no_longer_active') return (
-                                            <div key={ai} style={{ fontSize: 12, color: '#dc2626', marginBottom: 3 }}>
-                                              ⛔ <span style={{ fontWeight: 700 }}>No Longer Active</span>
-                                              {action.reason && <span> · {action.reason}</span>}
-                                            </div>
-                                          )
-                                          return null
-                                        })}
-                                        {revisitLog?.notes && (
-                                          <div style={{ fontSize: 12, color: t.text3, marginTop: 2 }}>📝 {revisitLog.notes}</div>
-                                        )}
-                                        {/* Non-revisit outcomes */}
-                                        {!v.isRevisit && v.outcome === 'interested' && (
-                                          <div style={{ fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
-                                            Interested{v.productName ? ` · ${v.productName}` : ''}
-                                          </div>
-                                        )}
-                                        {!v.isRevisit && v.outcome === 'not_interested' && (
-                                          <div style={{ fontSize: 12, color: '#dc2626' }}>
-                                            Not Interested · {v.notInterestedReason === 'Other' && v.otherReason ? v.otherReason : v.notInterestedReason}
-                                          </div>
-                                        )}
-                                        {!v.isRevisit && v.outcome === 'follow_up' && (
-                                          <div style={{ fontSize: 12, color: '#f59e0b', fontWeight: 600 }}>Follow up needed</div>
-                                        )}
-                                        {v.notes && <div style={{ fontSize: 12, color: t.text3, marginTop: 2 }}>📝 {v.notes}</div>}
-                                      </div>
+                                  {/* Split entries into own and shared sections */}
+                                  {(() => {
+                                    const ownEntries = entries.filter((v: any) =>
+                                      !(v.sharedWith || []).some((id: string) => id !== log.salesPersonId)
                                     )
-                                  })}
+                                    const sharedEntries = entries.filter((v: any) =>
+                                      (v.sharedWith || []).some((id: string) => id !== log.salesPersonId)
+                                    )
+                                    const sharedWithNames = Array.from(new Set(
+                                      sharedEntries.flatMap((v: any) =>
+                                        (v.sharedWith || []).filter((id: string) => id !== log.salesPersonId)
+                                      )
+                                    )).map((id: any) => salesUsers.find((u: any) => u.uid === id)?.name || id)
+
+                                    const renderEntry = (v: any, vi: number, list: any[]) => {
+                                      const revisitLog = v.isRevisit
+                                        ? (v.revisitLogId
+                                            ? revisitLogs.find((rl: any) => rl.id === v.revisitLogId)
+                                            : revisitLogs.find((rl: any) => rl.partyId === v.partyId && rl.salesPersonId === log.salesPersonId && rl.date === log.date))
+                                        : null
+                                      const outcomeEmoji = v.outcome === 'interested' ? '✅' : v.outcome === 'not_interested' ? '❌' : '🔄'
+                                      const timeStr = v.loggedAt
+                                        ? new Date(v.loggedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+                                        : ''
+                                      return (
+                                        <div key={vi} style={{ paddingLeft: 10, borderLeft: `2px solid ${theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`, marginBottom: vi < list.length - 1 ? 10 : 0, paddingBottom: vi < list.length - 1 ? 8 : 0 }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                                            <span style={{ fontSize: 14 }}>{outcomeEmoji}</span>
+                                            {timeStr && <span style={{ fontSize: 11, color: t.text3, fontWeight: 600 }}>{timeStr}</span>}
+                                          </div>
+                                          {revisitLog?.actions?.map((action: any, ai: number) => {
+                                            if (action.type === 'stock_update') return (
+                                              <div key={ai} style={{ fontSize: 12, color: t.text2, marginBottom: 3 }}>
+                                                📊 <span style={{ fontWeight: 700 }}>Stock Updated</span>
+                                                {' · '}Opening: {action.openingQty} · Sold: {action.soldQty}
+                                                {' · '}<span style={{ fontWeight: 700, color: '#0891b2' }}>Balance: {action.balanceQty} pkts</span>
+                                                {action.balanceValue > 0 && <span style={{ color: t.text3 }}> (₹{action.balanceValue.toLocaleString()})</span>}
+                                              </div>
+                                            )
+                                            if (action.type === 'new_order') return (
+                                              <div key={ai} style={{ fontSize: 12, color: t.text2, marginBottom: 3 }}>
+                                                📦 <span style={{ fontWeight: 700 }}>New Order</span>
+                                                {' · '}{action.quantity} {action.productName}
+                                                {action.totalAmount > 0 && <span> · <span style={{ fontWeight: 700, color: '#16a34a' }}>₹{action.totalAmount?.toLocaleString()}</span></span>}
+                                                {' · '}<span style={{ color: action.paymentType === 'credit' ? '#f59e0b' : t.text3 }}>{action.paymentType}</span>
+                                                {action.plannedDate && <span style={{ color: t.text3 }}> · dispatch {action.plannedDate}</span>}
+                                              </div>
+                                            )
+                                            if (action.type === 'payment_collection') return (
+                                              <div key={ai} style={{ fontSize: 12, color: t.text2, marginBottom: 3 }}>
+                                                💰 <span style={{ fontWeight: 700 }}>Payment Collected</span>
+                                                {' · '}<span style={{ fontWeight: 700, color: '#16a34a' }}>₹{action.amount?.toLocaleString()}</span>
+                                                {' · '}<span style={{ color: action.status === 'pending_approval' ? '#f59e0b' : t.text3 }}>
+                                                  {action.status === 'pending_approval' ? '⏳ Pending approval' : '✅ Approved'}
+                                                </span>
+                                                {action.notes && <span style={{ color: t.text3 }}> · {action.notes}</span>}
+                                              </div>
+                                            )
+                                            if (action.type === 'relationship_visit') return (
+                                              <div key={ai} style={{ fontSize: 12, color: t.text2, marginBottom: 3 }}>
+                                                🤝 <span style={{ fontWeight: 700 }}>Relationship Visit</span>
+                                                {action.notes && <span style={{ color: t.text3 }}> · {action.notes}</span>}
+                                              </div>
+                                            )
+                                            if (action.type === 'no_longer_active') return (
+                                              <div key={ai} style={{ fontSize: 12, color: '#dc2626', marginBottom: 3 }}>
+                                                ⛔ <span style={{ fontWeight: 700 }}>No Longer Active</span>
+                                                {action.reason && <span> · {action.reason}</span>}
+                                              </div>
+                                            )
+                                            return null
+                                          })}
+                                          {revisitLog?.notes && (
+                                            <div style={{ fontSize: 12, color: t.text3, marginTop: 2 }}>📝 {revisitLog.notes}</div>
+                                          )}
+                                          {!v.isRevisit && v.outcome === 'interested' && (
+                                            <div style={{ fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
+                                              Interested{v.productName ? ` · ${v.productName}` : ''}
+                                            </div>
+                                          )}
+                                          {!v.isRevisit && v.outcome === 'not_interested' && (
+                                            <div style={{ fontSize: 12, color: '#dc2626' }}>
+                                              Not Interested · {v.notInterestedReason === 'Other' && v.otherReason ? v.otherReason : v.notInterestedReason}
+                                            </div>
+                                          )}
+                                          {!v.isRevisit && v.outcome === 'follow_up' && (
+                                            <div style={{ fontSize: 12, color: '#f59e0b', fontWeight: 600 }}>Follow up needed</div>
+                                          )}
+                                          {v.notes && <div style={{ fontSize: 12, color: t.text3, marginTop: 2 }}>📝 {v.notes}</div>}
+                                        </div>
+                                      )
+                                    }
+
+                                    return (
+                                      <>
+                                        {ownEntries.map((v: any, vi: number) => renderEntry(v, vi, ownEntries))}
+                                        {sharedEntries.length > 0 && (
+                                          <>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 0 8px' }}>
+                                              <div style={{ flex: 1, height: 1, background: theme === 'dark' ? 'rgba(14,165,233,0.2)' : 'rgba(14,165,233,0.15)' }} />
+                                              <span style={{ fontSize: 11, color: '#0ea5e9', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                                Shared with {sharedWithNames.join(', ')}
+                                              </span>
+                                              <div style={{ flex: 1, height: 1, background: theme === 'dark' ? 'rgba(14,165,233,0.2)' : 'rgba(14,165,233,0.15)' }} />
+                                            </div>
+                                            {sharedEntries.map((v: any, vi: number) => renderEntry(v, vi, sharedEntries))}
+                                          </>
+                                        )}
+                                      </>
+                                    )
+                                  })()}
                                 </div>
                               )
                             })

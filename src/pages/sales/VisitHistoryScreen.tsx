@@ -53,19 +53,26 @@ export default function VisitHistoryScreen({ onBack }: Props) {
       end = periodTo
     }
 
-    const q = query(
+    const ownQuery = query(
       collection(db, 'visit_logs'),
       where('salesPersonId', '==', appUser.uid),
       where('date', '>=', start),
       where('date', '<=', end)
     )
-    return onSnapshot(q, snap => {
+
+    const unsubOwn = onSnapshot(ownQuery, snap => {
+      const logs = snap.docs.map(d => ({ id: d.id, ...d.data() } as DailyVisitLog))
       setLogs(
-        snap.docs.map(d => ({ id: d.id, ...d.data() } as DailyVisitLog))
+        logs
+          .filter(log => log.visits.length > 0)
           .sort((a, b) => b.date.localeCompare(a.date))
       )
       setLoading(false)
     })
+
+    return () => {
+      unsubOwn();
+    }
   }, [appUser, filterMode, selectedDay, selectedMonth, periodFrom, periodTo])
 
   const totalVisits = logs.reduce((s, l) => s + l.totalVisited, 0)

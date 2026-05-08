@@ -49,15 +49,20 @@ export default function SalesView({ name }: Props) {
 
   useEffect(() => {
     if (!appUser) return
-    const q = query(collection(db, 'visit_logs'), where('salesPersonId', '==', appUser.uid))
-    return onSnapshot(q, snap => {
+
+    const ownQuery = query(collection(db, 'visit_logs'), where('salesPersonId', '==', appUser.uid))
+
+    const unsubOwn = onSnapshot(ownQuery, snap => {
+      const logs = snap.docs.map(d => ({ id: d.id, ...d.data() } as DailyVisitLog))
       const today = todayStr()
-      const rec = snap.docs
-        .map(d => ({ id: d.id, ...d.data() } as DailyVisitLog))
-        .find(l => l.date === today)
-      setTodayVisitLog(rec ?? null)
+      const record = logs.find(l => l.date === today && l.salesPersonId === appUser.uid) || null
+      setTodayVisitLog(record)
       setVisitLogLoaded(true)
     })
+
+    return () => {
+      unsubOwn();
+    }
   }, [appUser])
 
   useEffect(() => {

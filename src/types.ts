@@ -163,7 +163,7 @@ export interface Expense {
 
 // ── ALERT ─────────────────────────────────────────────────────────────────────
 export interface Alert {
-  id?: string; type: 'new_party' | 'credit_settlement' | 'low_stock' | 'stock_dispatched' | 'new_allocation' | 'visit_log_submitted' | 'leave_requested' | 'leave_approved'
+  id?: string; type: 'new_party' | 'credit_settlement' | 'low_stock' | 'stock_dispatched' | 'new_allocation' | 'visit_log_submitted' | 'leave_requested' | 'leave_approved' | 'visit_share_requested'
   message: string; relatedId: string; read: boolean; createdAt: number
   toUid?: string        // only that user sees it
   toRole?: 'admin_group' // only admin/super_admin see it
@@ -305,6 +305,7 @@ export interface VisitEntry {
   allocationId?: string
   indentId?: string
   notes?: string
+  sharedWith?: string[]
   loggedAt?: number              // unique per entry — prevents arrayUnion dedup
 }
 
@@ -333,6 +334,10 @@ export interface DailyVisitLog {
   id?: string
   salesPersonId: string
   salesPersonName: string
+  sharedWith?: string[]
+  // uid → { parties: { partyId → acceptedAt timestamp } }
+  // used to scope revisit log visibility to only parties shared before/at accept time
+  sharedPartnerMeta?: Record<string, { parties: Record<string, number> }>
   date: string
   visits: VisitEntry[]
   endOfDayNote: string
@@ -342,6 +347,23 @@ export interface DailyVisitLog {
   createdAt: number
   updatedAt: number
   isNoEntry?: boolean
+}
+
+export interface VisitShareRequest {
+  id?: string
+  fromUid: string
+  fromName: string
+  toUid: string
+  toName: string
+  date: string
+  partyId: string
+  partyName: string
+  entries: VisitEntry[]
+  originalLogId: string
+  status: 'pending' | 'accepted' | 'rejected'
+  createdAt: number
+  acceptedAt?: number
+  rejectedAt?: number
 }
 
 // ── LEAVE RECORD ─────────────────────────────────────────────────────────────
