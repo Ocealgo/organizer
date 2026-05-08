@@ -58,7 +58,7 @@ export default function CreditBook({ onBack }: Props) {
   // Record payment form state
   const [showPayForm, setShowPayForm] = useState(false);
   const [payAmount, setPayAmount] = useState("");
-  const [payMethod, setPayMethod] = useState<PaymentMethod>("cash");
+  const [payMethod, setPayMethod] = useState<PaymentMethod>("cheque");
   const [payCollectionType, setPayCollectionType] =
     useState<CollectionType>("direct_to_company");
   const [payDate, setPayDate] = useState(localDateStr());
@@ -137,8 +137,8 @@ export default function CreditBook({ onBack }: Props) {
 
   const handleConfirmPayment = async (p: PaymentTransaction) => {
     const ok = await showConfirm(
-      "Confirm Payment?",
-      `Confirm ₹${p.amount.toLocaleString()} from ${p.partyName}? The amount will be marked as paid.`,
+      "Confirm Receipt?",
+      `Confirm only if ₹${p.amount.toLocaleString()} from ${p.partyName} has been credited to the company's account.\n\nThis cannot be undone.`,
     );
     if (!ok) return;
     await updateDoc(doc(db, "payment_transactions", p.id!), {
@@ -181,8 +181,8 @@ export default function CreditBook({ onBack }: Props) {
 
   const handleMarkAllocPaid = async (a: UnifiedAllocation) => {
     const ok = await showConfirm(
-      "Mark Allocation Paid?",
-      `Mark ₹${a.totalAmount.toLocaleString()} allocation to ${a.partyName} as fully paid?`,
+      "Mark as Paid?",
+      `Confirm only if ₹${a.totalAmount.toLocaleString()} from ${a.partyName} has been credited to the company's account.\n\nThis cannot be undone.`,
     );
     if (!ok) return;
     await updateDoc(doc(db, "allocations_v2", a.id!), {
@@ -770,22 +770,30 @@ export default function CreditBook({ onBack }: Props) {
                       </div>
                     )}
                     {isAdmin && (
-                      <button
-                        onClick={() => handleMarkAllocPaid(a)}
-                        style={{
-                          width: "100%",
-                          background: "rgba(22,163,74,0.1)",
-                          color: "#16a34a",
-                          border: "1px solid rgba(22,163,74,0.25)",
-                          borderRadius: 10,
-                          padding: "9px",
-                          fontSize: 12,
-                          fontWeight: 700,
-                          marginTop: 4,
-                        }}
-                      >
-                        ✅ Mark as Paid
-                      </button>
+                      <>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.2)", borderRadius: 8, padding: "7px 10px" }}>
+                          <span style={{ fontSize: 13 }}>⚠️</span>
+                          <span style={{ fontSize: 11, color: "#d97706", lineHeight: 1.4 }}>
+                            Only mark as paid once the amount is credited to the company's account. <strong>Cannot be undone.</strong>
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => handleMarkAllocPaid(a)}
+                          style={{
+                            width: "100%",
+                            background: "rgba(22,163,74,0.1)",
+                            color: "#16a34a",
+                            border: "1px solid rgba(22,163,74,0.25)",
+                            borderRadius: 10,
+                            padding: "9px",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            marginTop: 6,
+                          }}
+                        >
+                          ✅ Mark as Paid
+                        </button>
+                      </>
                     )}
                   </div>
                 );
@@ -904,8 +912,16 @@ export default function CreditBook({ onBack }: Props) {
                             : "⏳ Pending Confirmation"}
                       </span>
                     </div>
+                    {isAdmin && p.status !== "rejected" && !confirmed && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.2)", borderRadius: 8, padding: "7px 10px" }}>
+                        <span style={{ fontSize: 13 }}>⚠️</span>
+                        <span style={{ fontSize: 11, color: "#d97706", lineHeight: 1.4 }}>
+                          Only confirm once the amount is credited to the company's account. <strong>Cannot be undone.</strong>
+                        </span>
+                      </div>
+                    )}
                     {isAdmin && p.status !== "rejected" && (
-                      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
                         {!confirmed && (
                           <button
                             onClick={() => handleConfirmPayment(p)}

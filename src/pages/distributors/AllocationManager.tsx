@@ -67,6 +67,7 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
   const [filterDistributor, setFilterDistributor] = useState<string>('all')
   // Network tab party status filter
   const [networkStatusFilter, setNetworkStatusFilter] = useState<'all' | 'active' | 'prospect' | 'inactive'>('all')
+  const [networkPartyFilter, setNetworkPartyFilter] = useState<string>('')
   const [historyPartyId, setHistoryPartyId] = useState<string | null>(null)
 
   // Indent send state
@@ -78,7 +79,7 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
     fromType: 'company' as 'company' | 'distributor',
     fromId: '',   // distributorId when fromType='distributor'
     partyId: '', productId: '', packets: '', pricePerPacket: '',
-    paymentType: 'cash' as PaymentType,
+    paymentType: 'credit' as PaymentType,
     plannedDate: localDateOffset(1),
     creditDueDate: localDateOffset(30),
     notes: '',
@@ -784,7 +785,7 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                         <>
                           <button onClick={() => { setDispatchDateAlloc(a); setDispatchDate(localDateStr()) }} disabled={acting === a.id}
                             style={{ flex: 1, background: a.fromType === 'distributor' ? 'linear-gradient(135deg,#0e4f7a,#0891b2)' : 'linear-gradient(135deg,#1a5c42,#16a34a)', color: '#fff', border: 'none', borderRadius: 10, padding: '10px', fontSize: 12, fontWeight: 800, opacity: acting === a.id ? 0.5 : 1 }}>
-                            {acting === a.id ? 'Processing...' : a.fromType === 'distributor' ? '✅ Confirm Sent' : '📦 Dispatch Now'}
+                            {acting === a.id ? 'Processing...' : a.fromType === 'distributor' ? '✅ Confirm Sent' : '📦 Dispatch'}
                           </button>
                           <button onClick={() => handleCancelAllocation(a)} disabled={acting === a.id}
                             style={{ background: 'rgba(220,38,38,0.1)', color: '#dc2626', border: '1px solid rgba(220,38,38,0.25)', borderRadius: 10, padding: '10px 14px', fontSize: 12, fontWeight: 700, opacity: acting === a.id ? 0.5 : 1 }}>
@@ -1124,8 +1125,13 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
         {/* ── NETWORK TAB ──────────────────────────────────────────────── */}
         {tab === 'network' && (() => {
           const statusMatch = (p: Party) => networkStatusFilter === 'all' || (p as any).status === networkStatusFilter
-          const distributors = parties.filter(p => p.type === 'distributor' && statusMatch(p))
-          const independents = parties.filter(p => p.type === 'retailer' && !(p as any).underDistributorId && statusMatch(p))
+          const partyMatch = (p: Party) => !networkPartyFilter || p.id === networkPartyFilter
+          const distributors = parties.filter(p => p.type === 'distributor' && statusMatch(p) && partyMatch(p))
+          const independents = parties.filter(p => p.type === 'retailer' && !(p as any).underDistributorId && statusMatch(p) && partyMatch(p))
+          const networkPartyOptions = [
+            ...parties.filter(p => p.type === 'distributor').map(p => ({ value: p.id!, label: `🚚 ${p.name}`, group: 'Distributors' })),
+            ...parties.filter(p => p.type === 'retailer' && !(p as any).underDistributorId).map(p => ({ value: p.id!, label: `🏪 ${p.name}`, group: 'Independent Retailers' })),
+          ]
 
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -1152,6 +1158,13 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                   </button>
                 ))}
               </div>
+
+              <CustomSelect
+                value={networkPartyFilter}
+                onChange={setNetworkPartyFilter}
+                placeholder="All distributors & retailers"
+                options={networkPartyOptions}
+              />
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ fontSize: 11, color: '#64748b' }}>
@@ -1438,7 +1451,7 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
             onClick={() => setDispatchDateAlloc(null)} />
           <div style={{ position: 'relative', zIndex: 1, background: t.card, borderRadius: 20, padding: '24px 20px', maxWidth: 360, width: '100%', border: `1.5px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`, boxShadow: '0 24px 64px rgba(0,0,0,0.45)' }}>
             <div style={{ fontSize: 13, color: t.text3, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700 }}>
-              {dispatchDateAlloc.fromType === 'distributor' ? '✅ Confirm Sent' : '📦 Dispatch Now'}
+              {dispatchDateAlloc.fromType === 'distributor' ? '✅ Confirm Sent' : '📦 Dispatch'}
             </div>
             <div style={{ fontSize: 17, fontWeight: 800, color: t.text, marginBottom: 4 }}>{dispatchDateAlloc.partyName}</div>
             <div style={{ fontSize: 13, color: t.text3, marginBottom: 20 }}>
@@ -1449,6 +1462,14 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
               <DateInput type="date" value={dispatchDate} onChange={setDispatchDate}
                 style={{ width: '100%', background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', border: `1.5px solid ${isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)'}`, borderRadius: 12, padding: '12px 16px', fontSize: 15, color: t.text, outline: 'none', boxSizing: 'border-box' }} />
               <div style={{ fontSize: 11, color: t.text3, marginTop: 6 }}>Default is today — change if recording a past dispatch</div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.2)', borderRadius: 10, padding: '9px 12px', marginBottom: 14 }}>
+              <span style={{ fontSize: 14, flexShrink: 0 }}>⚠️</span>
+              <span style={{ fontSize: 11, color: '#d97706', lineHeight: 1.5 }}>
+                {dispatchDateAlloc.fromType === 'distributor'
+                  ? 'Only confirm once the stock has been physically sent by the distributor to the party.'
+                  : 'Only dispatch once the stock has been physically sent from the company to the party.'}
+              </span>
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => setDispatchDateAlloc(null)}

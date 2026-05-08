@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from 'react'
-import { collection, addDoc, onSnapshot, doc, updateDoc, query, where } from 'firebase/firestore'
+import { collection, onSnapshot } from 'firebase/firestore'
 import { db } from '../../firebase'
-import { Party, Dispatch, MonthlyRequest, PaymentType, Product } from '../../types'
+import { Party, Dispatch, MonthlyRequest, Product } from '../../types'
 import DateInput from '../../components/DateInput'
 import { useAuth } from '../../context/AuthContext'
 import { useStockConfig, updateStockConfig, toDisplay, setProductStock } from '../../hooks/useFirebase'
-import CustomSelect from '../../components/CustomSelect'
-import { useConfirm } from '../../hooks/useConfirm'
-import { localDateStr, localMonthStr } from '../../utils/date'
+import { localMonthStr } from '../../utils/date'
 
 interface Props { onBack: () => void }
 
@@ -64,32 +62,27 @@ function DefaultPriceEditor() {
 
 export default function StockManager({ onBack }: Props) {
   const { appUser } = useAuth()
-  const { modal, showAlert } = useConfirm()
   const { config } = useStockConfig()
   const [parties, setParties] = useState<Party[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [dispatches, setDispatches] = useState<Dispatch[]>([])
   const [requests, setRequests] = useState<MonthlyRequest[]>([])
-  const [tab, setTab] = useState<'overview' | 'dispatch' | 'history' | 'monthly'>('overview')
-  const [unit, setUnit] = useState<'packets' | 'cartons'>('packets')
+  const [tab, setTab] = useState<'overview' | 'history' | 'monthly'>('overview')
   const [selectedMonth, setSelectedMonth] = useState(localMonthStr())
-  const [saving, setSaving] = useState(false)
   const [editCarton, setEditCarton] = useState(false)
   const [newCarton, setNewCarton] = useState('')
   const [editingProductActive, setEditingProductActive] = useState<string | null>(null)
   const [editingProductStock, setEditingProductStock] = useState<Record<string, string>>({})
-  const [form, setForm] = useState({ partyId: '', quantity: '', paymentType: 'cash' as PaymentType, notes: '' })
-  const [errors, setErrors] = useState<Record<string, string>>({})
   const [partyStatusFilter, setPartyStatusFilter] = useState<'all' | 'active' | 'prospect' | 'inactive'>('all')
 
   const isAdmin = appUser?.role === 'super_admin' || appUser?.role === 'admin'
-  const available = config.total - config.locked
 
   // Aggregate display values from per-product stock
   const hasProductStock = config.productStock && Object.keys(config.productStock).length > 0
   const displayTotal = hasProductStock ? Object.values(config.productStock!).reduce((s, p) => s + p.total, 0) : config.total
   const displayLocked = hasProductStock ? Object.values(config.productStock!).reduce((s, p) => s + p.locked, 0) : config.locked
   const displayAvailable = displayTotal - displayLocked
+  const totalDispatched = dispatches.filter(d => !d.fromType || d.fromType === 'company').reduce((s, d) => s + (d.packets || 0), 0)
 
   useEffect(() => {
     const u1 = onSnapshot(collection(db, 'parties'), s => setParties(s.docs.map(d => ({ id: d.id, ...d.data() } as Party))))
@@ -98,11 +91,6 @@ export default function StockManager({ onBack }: Props) {
     const u4 = onSnapshot(collection(db, 'products'), s => setProducts(s.docs.map(d => ({ id: d.id, ...d.data() } as Product)).filter(p => p.active)))
     return () => { u1(); u2(); u3(); u4() }
   }, [])
-
-  const toPackets = (qty: string) => {
-    const n = parseInt(qty) || 0
-    return unit === 'cartons' ? n * config.packetsPerCarton : n
-  }
 
   const handleSaveProductStock = async (productId: string) => {
     const val = parseInt(editingProductStock[productId] || '')
@@ -118,108 +106,9 @@ export default function StockManager({ onBack }: Props) {
     setEditCarton(false); setNewCarton('')
   }
 
-  const validate = () => {
-    const e: Record<string, string> = {}
-    if (!form.partyId) e.partyId = 'Select a distributor or retailer'
-    if (!form.quantity || parseInt(form.quantity) <= 0) e.quantity = 'Enter quantity'
-    setErrors(e)
-    return Object.keys(e).length === 0
-  }
-
-  const handleDispatch = async () => {
-    if (!validate()) return
-    const packets = toPackets(form.quantity)
-    const cartons = unit === 'cartons' ? parseInt(form.quantity) : Math.floor(packets / config.packetsPerCarton)
-    if (packets > available) { await showAlert('Insufficient Stock', `Only ${toDisplay(available, config.packetsPerCarton)} available.`); return }
-    const party = parties.find(p => p.id === form.partyId)!
-    setSaving(true)
-    try {
-      const now = Date.now()
-      const dispatchData: any = {
-        partyId: form.partyId, partyName: party.name, partyType: party.type,
-        packets, cartons, pricePerPacket: party.pricePerPacket,
-        totalAmount: packets * party.pricePerPacket,
-        paymentType: form.paymentType, notes: form.notes,
-        month: selectedMonth,
-        dispatchedBy: appUser!.uid, dispatchedByName: appUser!.name,
-        dispatchedAt: now, date: localDateStr(),
-        createdAt: now,
-      }
-
-      // Link to monthly request if exists
-      const linkedReq = requests.find(r => r.partyId === form.partyId && r.month === selectedMonth)
-      if (linkedReq) {
-        dispatchData.requestId = linkedReq.id
-        const newFulfilled = linkedReq.fulfilledPackets + packets
-        const newStatus = newFulfilled >= linkedReq.requestedPackets ? 'fulfilled' : 'partial'
-        await updateDoc(doc(db, 'monthly_requests', linkedReq.id!), {
-          fulfilledPackets: newFulfilled, status: newStatus, updatedAt: now,
-        })
-      }
-
-      await addDoc(collection(db, 'dispatches'), dispatchData)
-      await updateStockConfig({ locked: config.locked + packets })
-
-      if (form.paymentType === 'credit') {
-        await addDoc(collection(db, 'credits'), {
-          partyId: form.partyId, partyName: party.name, partyType: party.type,
-          deliveryId: 'dispatch', packets, amount: packets * party.pricePerPacket,
-          status: 'outstanding', createdAt: now,
-        })
-      }
-
-      // Low stock alert + auto-reminder
-      const remaining = available - packets
-      if (party.lowStockThreshold && remaining <= party.lowStockThreshold) {
-        await addDoc(collection(db, 'alerts'), {
-          type: 'low_stock',
-          message: `⚠️ ${party.name} low — only ${toDisplay(remaining, config.packetsPerCarton)} remaining`,
-          relatedId: form.partyId, read: false, createdAt: now,
-        })
-        // Auto-create workspace reminder
-        await addDoc(collection(db, 'reminders'), {
-          title: `⚠️ Restock: ${party.name} — only ${toDisplay(remaining, config.packetsPerCarton)} remaining`,
-          date: localDateStr(),
-          category: 'Operations',
-          type: 'low_stock',
-          linkedId: form.partyId,
-          linkedType: 'party',
-          createdBy: appUser!.uid,
-          createdByName: appUser!.name,
-          done: false,
-          createdAt: now,
-        })
-      }
-
-      // Dispatched alert for sales
-      await addDoc(collection(db, 'alerts'), {
-        type: 'stock_dispatched',
-        message: `✅ ${toDisplay(packets, config.packetsPerCarton)} dispatched to ${party.name} on ${new Date().toLocaleString('en-IN')}`,
-        relatedId: form.partyId, read: false, createdAt: now,
-      })
-
-      setForm({ partyId: '', quantity: '', paymentType: 'cash', notes: '' })
-      setErrors({})
-      setTab('history')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const confirmDelivery = async (d: Dispatch) => {
-    await updateStockConfig({ total: config.total - d.packets, locked: Math.max(0, config.locked - d.packets) })
-    await updateDoc(doc(db, 'dispatches', d.id!), { confirmed: true })
-  }
-
   const filteredParties = partyStatusFilter === 'all'
     ? parties
     : parties.filter(p => (p as any).status === partyStatusFilter)
-
-  const partyOptions = filteredParties.map(p => ({
-    value: p.id!, label: `${p.type === 'distributor' ? '🚚' : '🏪'} ${p.name}`,
-    sub: `₹${p.pricePerPacket}/pkt · ${p.place || p.address}`,
-    group: p.type === 'distributor' ? 'Distributors' : 'Retailers',
-  }))
 
   const monthlyDispatches = dispatches.filter(d => d.month === selectedMonth)
   const monthlyTotal = monthlyDispatches.reduce((s, d) => s + d.packets, 0)
@@ -244,10 +133,10 @@ export default function StockManager({ onBack }: Props) {
           ))}
         </div>
         <div style={{ display: 'flex', gap: 4, overflowX: 'auto' }}>
-          {(['overview', 'dispatch', 'history', 'monthly'] as const).map(t => (
+          {(['overview', 'history', 'monthly'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               style={{ flex: 1, background: tab === t ? 'rgba(255,255,255,0.2)' : 'transparent', color: tab === t ? '#fff' : 'rgba(255,255,255,0.5)', border: 'none', borderRadius: '10px 10px 0 0', padding: '9px 4px', fontSize: 10, fontWeight: 800, whiteSpace: 'nowrap' }}>
-              {t === 'overview' ? '📊 Overview' : t === 'dispatch' ? '📦 Dispatch' : t === 'history' ? '📋 History' : '📅 Monthly'}
+              {t === 'overview' ? '📊 Overview' : t === 'history' ? '📋 History' : '📅 Monthly'}
             </button>
           ))}
         </div>
@@ -327,10 +216,10 @@ export default function StockManager({ onBack }: Props) {
             <div style={{ background: '#161b22', borderRadius: 14, padding: 16, border: '1px solid rgba(255,255,255,0.06)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
                 <span style={{ fontSize: 13, fontWeight: 700 }}>Stock Utilisation</span>
-                <span style={{ fontSize: 13, color: '#16a34a', fontWeight: 800 }}>{displayTotal > 0 ? Math.round(((displayTotal - displayAvailable) / displayTotal) * 100) : 0}%</span>
+                <span style={{ fontSize: 13, color: '#16a34a', fontWeight: 800 }}>{(totalDispatched + displayTotal) > 0 ? Math.round((totalDispatched / (totalDispatched + displayTotal)) * 100) : 0}%</span>
               </div>
               <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 99, height: 10, overflow: 'hidden' }}>
-                <div style={{ height: '100%', background: 'linear-gradient(90deg,#16a34a,#22c55e)', width: `${displayTotal > 0 ? ((displayTotal - displayAvailable) / displayTotal) * 100 : 0}%`, borderRadius: 99, transition: 'width 0.5s' }} />
+                <div style={{ height: '100%', background: 'linear-gradient(90deg,#16a34a,#22c55e)', width: `${(totalDispatched + displayTotal) > 0 ? (totalDispatched / (totalDispatched + displayTotal)) * 100 : 0}%`, borderRadius: 99, transition: 'width 0.5s' }} />
               </div>
             </div>
             <div style={{ fontSize: 12, color: '#64748b', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Recent Dispatches</div>
@@ -346,102 +235,6 @@ export default function StockManager({ onBack }: Props) {
                 </span>
               </div>
             ))}
-          </div>
-        )}
-
-        {/* DISPATCH */}
-        {tab === 'dispatch' && isAdmin && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(22,163,74,0.2)', borderRadius: 12, padding: '12px 14px', fontSize: 13, color: '#86efac' }}>
-              📦 Available: <strong>{toDisplay(available, config.packetsPerCarton)}</strong>
-            </div>
-
-            <div>
-              <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>Month</div>
-              <DateInput type="month" value={selectedMonth} onChange={v => setSelectedMonth(v)} />
-            </div>
-
-            <div>
-              <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8, letterSpacing: 1, textTransform: 'uppercase' }}>Dispatch To</div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-                {([
-                  { val: 'all',      label: 'All' },
-                  { val: 'active',   label: '🟢 Active' },
-                  { val: 'prospect', label: '🟡 Prospect' },
-                  { val: 'inactive', label: '⛔ Inactive' },
-                ] as const).map(s => (
-                  <button key={s.val} onClick={() => setPartyStatusFilter(s.val)}
-                    style={{ background: partyStatusFilter === s.val ? (s.val === 'active' ? 'rgba(22,163,74,0.15)' : s.val === 'prospect' ? 'rgba(217,119,6,0.15)' : s.val === 'inactive' ? 'rgba(220,38,38,0.12)' : 'rgba(22,163,74,0.15)') : 'rgba(255,255,255,0.04)', color: partyStatusFilter === s.val ? (s.val === 'active' ? '#16a34a' : s.val === 'prospect' ? '#d97706' : s.val === 'inactive' ? '#dc2626' : '#16a34a') : '#64748b', border: `1px solid ${partyStatusFilter === s.val ? (s.val === 'active' ? '#16a34a' : s.val === 'prospect' ? '#d97706' : s.val === 'inactive' ? '#dc2626' : '#16a34a') : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-              {errors.partyId && <div style={{ fontSize: 11, color: '#dc2626', marginBottom: 6 }}>⚠️ {errors.partyId}</div>}
-              <CustomSelect value={form.partyId} onChange={v => setForm({ ...form, partyId: v })}
-                placeholder="Select distributor or retailer..." options={partyOptions} error={!!errors.partyId} />
-            </div>
-
-            {form.partyId && (() => {
-              const req = requests.find(r => r.partyId === form.partyId && r.month === selectedMonth)
-              if (!req) return null
-              return (
-                <div style={{ background: 'rgba(8,145,178,0.1)', border: '1px solid rgba(8,145,178,0.2)', borderRadius: 12, padding: '12px 14px' }}>
-                  <div style={{ fontSize: 12, color: '#0891b2', fontWeight: 700, marginBottom: 4 }}>📅 Monthly Request Linked</div>
-                  <div style={{ fontSize: 12, color: '#7dd3fc' }}>
-                    Requested: {toDisplay(req.requestedPackets, config.packetsPerCarton)} •
-                    Fulfilled: {toDisplay(req.fulfilledPackets, config.packetsPerCarton)} •
-                    Remaining: {toDisplay(Math.max(0, req.requestedPackets - req.fulfilledPackets), config.packetsPerCarton)}
-                  </div>
-                </div>
-              )
-            })()}
-
-            <div>
-              <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>Quantity</div>
-              {errors.quantity && <div style={{ fontSize: 11, color: '#dc2626', marginBottom: 6 }}>⚠️ {errors.quantity}</div>}
-              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                {(['packets', 'cartons'] as const).map(u => (
-                  <button key={u} onClick={() => setUnit(u)}
-                    style={{ flex: 1, background: unit === u ? 'rgba(22,163,74,0.15)' : 'rgba(255,255,255,0.04)', color: unit === u ? '#16a34a' : '#64748b', border: `1.5px solid ${unit === u ? '#16a34a' : 'rgba(255,255,255,0.06)'}`, borderRadius: 10, padding: '9px', fontSize: 12, fontWeight: 700 }}>
-                    {u === 'packets' ? '📦 Packets' : `📫 Cartons (1=${config.packetsPerCarton})`}
-                  </button>
-                ))}
-              </div>
-              <input type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })}
-                placeholder={unit === 'cartons' ? 'No. of cartons' : 'No. of packets'}
-                style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: `1.5px solid ${errors.quantity ? '#dc2626' : 'rgba(255,255,255,0.1)'}`, borderRadius: 12, padding: '13px 16px', fontSize: 22, fontWeight: 800, color: '#fff', outline: 'none', boxSizing: 'border-box' }} />
-              {form.quantity && parseInt(form.quantity) > 0 && (() => {
-                const p = parties.find(pp => pp.id === form.partyId)
-                return <div style={{ marginTop: 8, fontSize: 13, color: '#6ee7b7', fontWeight: 700 }}>
-                  = {toDisplay(toPackets(form.quantity), config.packetsPerCarton)}
-                  {p && ` • ₹${(toPackets(form.quantity) * p.pricePerPacket).toLocaleString()}`}
-                </div>
-              })()}
-            </div>
-
-            <div>
-              <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8, letterSpacing: 1, textTransform: 'uppercase' }}>Payment Type</div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {([['cash', '💵 Cash'], ['credit', '📋 Credit']] as [PaymentType, string][]).map(([val, label]) => (
-                  <button key={val} onClick={() => setForm({ ...form, paymentType: val })}
-                    style={{ flex: 1, background: form.paymentType === val ? (val === 'cash' ? 'rgba(22,163,74,0.15)' : 'rgba(217,119,6,0.15)') : 'rgba(255,255,255,0.04)', color: form.paymentType === val ? (val === 'cash' ? '#16a34a' : '#d97706') : '#64748b', border: `1.5px solid ${form.paymentType === val ? (val === 'cash' ? '#16a34a' : '#d97706') : 'rgba(255,255,255,0.06)'}`, borderRadius: 12, padding: '12px', fontSize: 14, fontWeight: 800 }}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8, letterSpacing: 1, textTransform: 'uppercase' }}>Notes</div>
-              <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}
-                placeholder="Any notes..." rows={2}
-                style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '13px 16px', fontSize: 14, color: '#fff', outline: 'none', resize: 'none', boxSizing: 'border-box' }} />
-            </div>
-
-            <button onClick={handleDispatch} disabled={saving}
-              style={{ background: saving ? '#475569' : 'linear-gradient(135deg,#1a5c42,#16a34a)', color: '#fff', border: 'none', borderRadius: 14, padding: 16, fontSize: 15, fontWeight: 800 }}>
-              {saving ? 'Processing...' : 'Dispatch Stock 📦'}
-            </button>
           </div>
         )}
 
@@ -572,7 +365,6 @@ export default function StockManager({ onBack }: Props) {
           </div>
         )}
       </div>
-      {modal}
     </div>
   )
 }

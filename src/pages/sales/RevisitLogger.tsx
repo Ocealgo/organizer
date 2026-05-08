@@ -8,6 +8,9 @@ import {
   query,
   where,
   increment,
+  getDoc,
+  deleteDoc,
+  getDocs,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import {
@@ -25,11 +28,18 @@ import { useTheme } from "../../context/ThemeContext";
 import { useConfirm } from "../../hooks/useConfirm";
 import { localDateStr, localDateOffset } from "../../utils/date";
 
+interface EditMode {
+  revisitLogId: string;
+  existingActions: RevisitAction[];
+  existingNotes: string;
+}
+
 interface Props {
   party: Party;
   onBack: () => void;
   onDone: (revisitLogId: string, outcome: VisitOutcome) => void;
   logDate?: string;
+  editMode?: EditMode;
 }
 
 type ActionKey =
@@ -47,39 +57,87 @@ export default function RevisitLogger({
   onBack,
   onDone,
   logDate,
+  editMode,
 }: Props) {
   const { appUser } = useAuth();
   const { t } = useTheme();
   const { modal, showConfirm } = useConfirm();
   const [products, setProducts] = useState<Product[]>([]);
   const [saving, setSaving] = useState(false);
+  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
+  const [orderDispatched, setOrderDispatched] = useState(false);
 
   const [expandedAction, setExpandedAction] = useState<ActionKey | null>(null);
-  const [doneKeys, setDoneKeys] = useState<Set<ActionKey>>(new Set());
-  const [confirmedActions, setConfirmedActions] = useState<RevisitAction[]>([]);
+  const [doneKeys, setDoneKeys] = useState<Set<ActionKey>>(() => {
+    if (!editMode) return new Set();
+    return new Set(editMode.existingActions.map((a) => a.type) as ActionKey[]);
+  });
+  const [confirmedActions, setConfirmedActions] = useState<RevisitAction[]>(
+    () => editMode?.existingActions ?? [],
+  );
 
   // Stock update
-  const [stockProductId, setStockProductId] = useState("");
-  const [soldQtyInput, setSoldQtyInput] = useState("");
-  const [manualBalance, setManualBalance] = useState("");
+  const [stockProductId, setStockProductId] = useState(() => {
+    if (!editMode) return "";
+    const a = editMode.existingActions.find((a) => a.type === 'stock_update') as any;
+    return a?.productId ?? "";
+  });
+  const [soldQtyInput, setSoldQtyInput] = useState(() => {
+    if (!editMode) return "";
+    const a = editMode.existingActions.find((a) => a.type === 'stock_update') as any;
+    return a?.soldQty ? String(a.soldQty) : "";
+  });
+  const [manualBalance, setManualBalance] = useState(() => {
+    if (!editMode) return "";
+    const a = editMode.existingActions.find((a) => a.type === 'stock_update') as any;
+    return a?.openingQty === 0 ? String(a.balanceQty ?? "") : "";
+  });
 
   // New order
   const [orderProduct, setOrderProduct] = useState<Product | null>(null);
-  const [orderQty, setOrderQty] = useState("");
-  const [orderPrice, setOrderPrice] = useState("");
-  const [orderPayment, setOrderPayment] = useState<"cash" | "credit">("cash");
-  const [orderDate, setOrderDate] = useState(today2());
+  const [orderQty, setOrderQty] = useState(() => {
+    if (!editMode) return "";
+    const a = editMode.existingActions.find((a) => a.type === 'new_order') as any;
+    return a?.quantity ? String(a.quantity) : "";
+  });
+  const [orderPrice, setOrderPrice] = useState(() => {
+    if (!editMode) return "";
+    const a = editMode.existingActions.find((a) => a.type === 'new_order') as any;
+    return a?.pricePerUnit ? String(a.pricePerUnit) : "";
+  });
+  const [orderPayment, setOrderPayment] = useState<"cash" | "credit">(() => {
+    if (!editMode) return "credit";
+    const a = editMode.existingActions.find((a) => a.type === 'new_order') as any;
+    return a?.paymentType ?? "cash";
+  });
+  const [orderDate, setOrderDate] = useState(() => {
+    if (!editMode) return today2();
+    const a = editMode.existingActions.find((a) => a.type === 'new_order') as any;
+    return a?.plannedDate ?? today2();
+  });
 
   // Payment
-  const [paymentAmount, setPaymentAmount] = useState("");
-  const [paymentNote, setPaymentNote] = useState("");
+  const [paymentAmount, setPaymentAmount] = useState(() => {
+    if (!editMode) return "";
+    const a = editMode.existingActions.find((a) => a.type === 'payment_collection') as any;
+    return a?.amount ? String(a.amount) : "";
+  });
+  const [paymentNote, setPaymentNote] = useState(() => {
+    if (!editMode) return "";
+    const a = editMode.existingActions.find((a) => a.type === 'payment_collection') as any;
+    return a?.notes ?? "";
+  });
   const [paymentMethod, setPaymentMethod] = useState<
     "cash" | "cheque" | "bank_transfer" | "upi"
-  >("cash");
+  >("cheque");
 
   // Relationship / inactive
-  const [visitNote, setVisitNote] = useState("");
-  const [inactiveReason, setInactiveReason] = useState("");
+  const [visitNote, setVisitNote] = useState(() => editMode?.existingNotes ?? "");
+  const [inactiveReason, setInactiveReason] = useState(() => {
+    if (!editMode) return "";
+    const a = editMode.existingActions.find((a) => a.type === 'no_longer_active') as any;
+    return a?.reason ?? "";
+  });
 
   const [allocations, setAllocations] = useState<any[]>([]);
   const [subRetailers, setSubRetailers] = useState<Party[]>([]);
@@ -163,6 +221,23 @@ export default function RevisitLogger({
   ];
 
   useEffect(() => {
+    if (!editMode) return;
+    const payAction = editMode.existingActions.find((a) => a.type === 'payment_collection') as any;
+    if (payAction?.transactionId) {
+      getDoc(doc(db, 'payment_transactions', payAction.transactionId)).then((snap) => {
+        if (snap.exists() && snap.data()?.confirmedAt) setPaymentConfirmed(true);
+      });
+    }
+    const orderAction = editMode.existingActions.find((a) => a.type === 'new_order') as any;
+    if (orderAction?.allocationId) {
+      getDoc(doc(db, 'allocations_v2', orderAction.allocationId)).then((snap) => {
+        const status = snap.data()?.status;
+        if (status && status !== 'pending') setOrderDispatched(true);
+      });
+    }
+  }, []);
+
+  useEffect(() => {
     return onSnapshot(collection(db, "products"), (snap) =>
       setProducts(
         snap.docs
@@ -220,18 +295,36 @@ export default function RevisitLogger({
     const productName =
       products.find((p) => p.id === stockProductId)?.name || "";
     const confirmed = await showConfirm(
-      "Confirm Stock Update",
+      editMode ? "Update Stock Entry" : "Confirm Stock Update",
       stockOpening === 0
         ? `Set balance for ${productName} to ${bal} packets`
         : `${productName} · Sold: ${stockSold} packets · Balance: ${bal} packets`,
     );
     if (!confirmed) return;
+
+    // In edit mode: reverse old stock update first, then apply new
+    if (editMode) {
+      const oldAction = editMode.existingActions.find((a) => a.type === 'stock_update') as StockUpdateAction | undefined;
+      if (oldAction && oldAction.productId) {
+        if (oldAction.openingQty === 0) {
+          // Was a manual set — just overwrite below (no reversal needed)
+        } else {
+          // Reverse the sold qty
+          await updateDoc(doc(db, "parties", party.id!), {
+            [`stock.${oldAction.productId}`]: increment(oldAction.soldQty),
+          });
+        }
+      }
+    }
+
     if (stockOpening === 0) {
       await updateDoc(doc(db, "parties", party.id!), {
         [`stock.${stockProductId}`]: bal,
       });
       markDone("stock_update", {
         type: "stock_update",
+        productId: stockProductId,
+        productName,
         openingQty: 0,
         purchasedQty: 0,
         soldQty: 0,
@@ -245,6 +338,8 @@ export default function RevisitLogger({
       });
       markDone("stock_update", {
         type: "stock_update",
+        productId: stockProductId,
+        productName,
         openingQty: stockOpening,
         purchasedQty: 0,
         soldQty: stockSold,
@@ -260,63 +355,69 @@ export default function RevisitLogger({
     const qty = parseInt(orderQty);
     const price = parseFloat(orderPrice) || orderProduct.defaultPricePerUnit;
     const total = qty * price;
+
+    // In edit mode: check if existing allocation is still pending
+    const existingOrderAction = editMode?.existingActions.find((a) => a.type === 'new_order') as NewOrderAction | undefined;
+    if (editMode && existingOrderAction?.allocationId) {
+      const snap = await getDoc(doc(db, 'allocations_v2', existingOrderAction.allocationId!));
+      const allocStatus = snap.data()?.status;
+      if (allocStatus && allocStatus !== 'pending') {
+        await showConfirm('Cannot Edit', `Allocation is already "${allocStatus}" and cannot be modified.`);
+        return;
+      }
+    }
+
     const confirmed = await showConfirm(
-      "Confirm Order",
+      editMode ? "Update Order" : "Confirm Order",
       isUnderDistributor
         ? `${qty} ${orderProduct.unitLabel} of ${orderProduct.name} → ${(party as any).underDistributorName}`
         : `${qty} ${orderProduct.unitLabel} of ${orderProduct.name} · ₹${total.toLocaleString()} · ${orderPayment}`,
     );
     if (!confirmed) return;
     const todayDate = logDate || localDateStr();
-    let allocRef: any;
-    if (isUnderDistributor) {
-      allocRef = await addDoc(collection(db, "allocations_v2"), {
+    let allocId: string;
+
+    // Edit mode: update existing allocation in-place
+    if (editMode && existingOrderAction?.allocationId) {
+      allocId = existingOrderAction.allocationId;
+      await updateDoc(doc(db, "allocations_v2", allocId), {
+        productId: orderProduct.id!,
+        productName: orderProduct.name,
+        packets: qty,
+        cartons: Math.floor(qty / (orderProduct.unitsPerCarton || 1)),
+        pricePerPacket: isUnderDistributor ? 0 : price,
+        totalAmount: isUnderDistributor ? 0 : total,
+        paymentType: isUnderDistributor ? "cash" : orderPayment,
+        plannedDate: isUnderDistributor ? todayDate : orderDate,
+        month: (isUnderDistributor ? todayDate : orderDate).slice(0, 7),
+        updatedAt: Date.now(),
+      });
+    } else if (isUnderDistributor) {
+      const allocRef = await addDoc(collection(db, "allocations_v2"), {
         fromType: "distributor",
         fromId: (party as any).underDistributorId,
         fromName: (party as any).underDistributorName || "",
-        partyId: party.id!,
-        partyName: party.name,
-        partyType: party.type,
-        productId: orderProduct.id!,
-        productName: orderProduct.name,
-        packets: qty,
-        cartons: Math.floor(qty / orderProduct.unitsPerCarton),
-        pricePerPacket: 0,
-        totalAmount: 0,
-        paymentType: "cash",
-        plannedDate: todayDate,
-        status: "pending",
-        notes: "",
-        createdBy: appUser!.uid,
-        createdByName: appUser!.name,
-        createdAt: Date.now(),
-        month: todayDate.slice(0, 7),
-        lockedAtCreation: false,
+        partyId: party.id!, partyName: party.name, partyType: party.type,
+        productId: orderProduct.id!, productName: orderProduct.name,
+        packets: qty, cartons: Math.floor(qty / orderProduct.unitsPerCarton),
+        pricePerPacket: 0, totalAmount: 0, paymentType: "cash",
+        plannedDate: todayDate, status: "pending", notes: "",
+        createdBy: appUser!.uid, createdByName: appUser!.name,
+        createdAt: Date.now(), month: todayDate.slice(0, 7), lockedAtCreation: false,
       });
+      allocId = allocRef.id;
     } else {
-      allocRef = await addDoc(collection(db, "allocations_v2"), {
-        fromType: "company",
-        fromId: "company",
-        fromName: "Ocealgo",
-        partyId: party.id!,
-        partyName: party.name,
-        partyType: party.type,
-        productId: orderProduct.id!,
-        productName: orderProduct.name,
-        packets: qty,
-        cartons: Math.floor(qty / orderProduct.unitsPerCarton),
-        pricePerPacket: price,
-        totalAmount: total,
-        paymentType: orderPayment,
-        plannedDate: orderDate,
-        status: "pending",
-        notes: "",
-        createdBy: appUser!.uid,
-        createdByName: appUser!.name,
-        createdAt: Date.now(),
-        month: orderDate.slice(0, 7),
-        lockedAtCreation: true,
+      const allocRef = await addDoc(collection(db, "allocations_v2"), {
+        fromType: "company", fromId: "company", fromName: "Ocealgo",
+        partyId: party.id!, partyName: party.name, partyType: party.type,
+        productId: orderProduct.id!, productName: orderProduct.name,
+        packets: qty, cartons: Math.floor(qty / orderProduct.unitsPerCarton),
+        pricePerPacket: price, totalAmount: total, paymentType: orderPayment,
+        plannedDate: orderDate, status: "pending", notes: "",
+        createdBy: appUser!.uid, createdByName: appUser!.name,
+        createdAt: Date.now(), month: orderDate.slice(0, 7), lockedAtCreation: true,
       });
+      allocId = allocRef.id;
     }
     await updateDoc(doc(db, "parties", party.id!), { status: "active" });
     markDone("new_order", {
@@ -324,11 +425,11 @@ export default function RevisitLogger({
       productId: orderProduct.id!,
       productName: orderProduct.name,
       quantity: qty,
-      pricePerUnit: price,
-      totalAmount: total,
-      paymentType: orderPayment,
-      plannedDate: orderDate,
-      allocationId: allocRef.id,
+      pricePerUnit: isUnderDistributor ? 0 : price,
+      totalAmount: isUnderDistributor ? 0 : total,
+      paymentType: isUnderDistributor ? "cash" : orderPayment,
+      plannedDate: isUnderDistributor ? todayDate : orderDate,
+      allocationId: allocId,
     } as NewOrderAction);
   };
 
@@ -336,21 +437,53 @@ export default function RevisitLogger({
     if (!paymentAmount) return;
     const amount = parseFloat(paymentAmount);
     if (amount <= 0) return;
-    if (outstandingAmount > 0 && amount > outstandingAmount) return;
     const methodLabel: Record<string, string> = {
       cash: "Cash",
       cheque: "Cheque",
       bank_transfer: "Bank Transfer",
       upi: "UPI",
     };
+
+    // In edit mode: check if old transaction is admin-confirmed (block)
+    const existingPayAction = editMode?.existingActions.find((a) => a.type === 'payment_collection') as any;
+    if (editMode && existingPayAction?.transactionId) {
+      const snap = await getDoc(doc(db, 'payment_transactions', existingPayAction.transactionId));
+      if (snap.data()?.confirmedAt) {
+        await showConfirm('Cannot Edit', 'Payment has been confirmed by admin and cannot be modified.');
+        return;
+      }
+    }
+
     const confirmed = await showConfirm(
-      "Confirm Payment",
+      editMode ? "Update Payment" : "Confirm Payment",
       `Log ₹${amount.toLocaleString()} (${methodLabel[paymentMethod]}) collected from ${party.name}?`,
     );
     if (!confirmed) return;
 
+    // In edit mode: reverse old transaction's appliedTo before re-applying
+    if (editMode && existingPayAction?.transactionId) {
+      const txnSnap = await getDoc(doc(db, 'payment_transactions', existingPayAction.transactionId));
+      if (txnSnap.exists()) {
+        for (const applied of (txnSnap.data()?.appliedTo || [])) {
+          const aSnap = await getDoc(doc(db, 'allocations_v2', applied.allocId));
+          if (aSnap.exists()) {
+            const aData = aSnap.data()!;
+            const newPaid = Math.max(0, (aData.paidAmount || 0) - applied.amount);
+            await updateDoc(doc(db, 'allocations_v2', applied.allocId), {
+              paidAmount: newPaid,
+              ...(aData.status === 'paid' && { status: 'sent', paidAt: null }),
+            });
+          }
+        }
+        await deleteDoc(doc(db, 'payment_transactions', existingPayAction.transactionId));
+      }
+    }
+
+    const freshSnap = await getDocs(query(collection(db, 'allocations_v2'), where('partyId', '==', party.id!)));
+    const freshAllocs = freshSnap.docs.map((d) => ({ id: d.id, ...d.data() } as any));
+
     // Apply payment FIFO to active credit allocs — directly update paidAmount on each alloc
-    const activeAllocs = allocations
+    const activeAllocs = freshAllocs
       .filter(
         (a: any) =>
           a.paymentType === "credit" &&
@@ -378,7 +511,7 @@ export default function RevisitLogger({
       remaining -= toApply;
     }
 
-    await addDoc(collection(db, "payment_transactions"), {
+    const txnRef = await addDoc(collection(db, "payment_transactions"), {
       partyId: party.id!,
       partyName: party.name,
       partyType: party.type,
@@ -396,19 +529,22 @@ export default function RevisitLogger({
       createdAt: Date.now(),
       appliedTo,
     });
-    await addDoc(collection(db, "alerts"), {
-      type: "credit_settlement",
-      message: `₹${amount.toLocaleString()} cash collected from ${party.name} by ${appUser!.name} (${methodLabel[paymentMethod]})`,
-      relatedId: party.id!,
-      read: false,
-      createdAt: Date.now(),
-      toRole: "admin_group",
-    });
+    if (!editMode) {
+      await addDoc(collection(db, "alerts"), {
+        type: "credit_settlement",
+        message: `₹${amount.toLocaleString()} cash collected from ${party.name} by ${appUser!.name} (${methodLabel[paymentMethod]})`,
+        relatedId: party.id!,
+        read: false,
+        createdAt: Date.now(),
+        toRole: "admin_group",
+      });
+    }
     markDone("payment_collection", {
       type: "payment_collection",
       amount,
       notes: paymentNote,
-      status: "pending_approval",
+      status: "approved",
+      transactionId: txnRef.id,
     } as PaymentCollectionAction);
   };
 
@@ -494,25 +630,33 @@ export default function RevisitLogger({
     }
     setSaving(true);
     try {
-      const revisitRef = await addDoc(collection(db, "revisit_logs"), {
-        partyId: party.id!,
-        partyName: party.name,
-        partyType: party.type,
-        salesPersonId: appUser!.uid,
-        salesPersonName: appUser!.name,
-        date: logDate || localDateStr(),
-        actions: confirmedActions,
-        notes: visitNote,
-        createdAt: Date.now(),
-      });
-      const outcome: VisitOutcome = confirmedActions.some(
-        (a) => a.type === "no_longer_active",
-      )
+      const outcome: VisitOutcome = confirmedActions.some((a) => a.type === "no_longer_active")
         ? "not_interested"
         : confirmedActions.some((a) => a.type === "new_order")
           ? "interested"
           : "follow_up";
-      onDone(revisitRef.id, outcome);
+
+      if (editMode) {
+        await updateDoc(doc(db, "revisit_logs", editMode.revisitLogId), {
+          actions: confirmedActions,
+          notes: visitNote,
+          updatedAt: Date.now(),
+        });
+        onDone(editMode.revisitLogId, outcome);
+      } else {
+        const revisitRef = await addDoc(collection(db, "revisit_logs"), {
+          partyId: party.id!,
+          partyName: party.name,
+          partyType: party.type,
+          salesPersonId: appUser!.uid,
+          salesPersonName: appUser!.name,
+          date: logDate || localDateStr(),
+          actions: confirmedActions,
+          notes: visitNote,
+          createdAt: Date.now(),
+        });
+        onDone(revisitRef.id, outcome);
+      }
     } finally {
       setSaving(false);
     }
@@ -710,7 +854,16 @@ export default function RevisitLogger({
             <div key={opt.key}>
               <button
                 onClick={() => {
-                  if (isDone) return;
+                  if (isDone) {
+                    if (editMode) {
+                      if (opt.key === 'payment_collection' && paymentConfirmed) return;
+                      if (opt.key === 'new_order' && orderDispatched) return;
+                      setDoneKeys((prev) => { const s = new Set(prev); s.delete(opt.key); return s; });
+                      setConfirmedActions((prev) => prev.filter((a) => a.type !== opt.key));
+                      setExpandedAction(opt.key);
+                    }
+                    return;
+                  }
                   if (
                     !isExpanded &&
                     opt.key === "payment_collection" &&
@@ -722,7 +875,9 @@ export default function RevisitLogger({
                   setExpandedAction(isExpanded ? null : opt.key);
                 }}
                 disabled={
-                  isDone ||
+                  (isDone && !editMode) ||
+                  (isDone && editMode && opt.key === 'payment_collection' && paymentConfirmed) ||
+                  (isDone && editMode && opt.key === 'new_order' && orderDispatched) ||
                   (opt.key === "no_longer_active" && outstandingAmount > 0)
                 }
                 style={{
@@ -782,14 +937,8 @@ export default function RevisitLogger({
                 </div>
                 {!(opt.key === "no_longer_active" && outstandingAmount > 0) &&
                   (isDone ? (
-                    <span
-                      style={{
-                        color: "#16a34a",
-                        fontSize: 20,
-                        fontWeight: 900,
-                      }}
-                    >
-                      ✓
+                    <span style={{ color: (opt.key === 'payment_collection' && paymentConfirmed) || (opt.key === 'new_order' && orderDispatched) ? "#94a3b8" : "#16a34a", fontSize: editMode ? 11 : 20, fontWeight: 900 }}>
+                      {opt.key === 'new_order' && orderDispatched ? '🔒 Dispatched' : opt.key === 'payment_collection' && paymentConfirmed ? '🔒 Admin confirmed' : editMode ? '✓ tap to edit' : '✓'}
                     </span>
                   ) : (
                     <span style={{ color: t.text3, fontSize: 16 }}>
@@ -1263,21 +1412,29 @@ export default function RevisitLogger({
                   {/* ── PAYMENT COLLECTION ── */}
                   {opt.key === "payment_collection" && (
                     <>
-                      {outstandingAmount > 0 && (
-                        <div
-                          style={{
-                            background: "rgba(22,163,74,0.08)",
-                            border: "1px solid rgba(22,163,74,0.2)",
-                            borderRadius: 10,
-                            padding: "10px 12px",
-                            fontSize: 12,
-                            color: "#16a34a",
-                            fontWeight: 700,
-                          }}
-                        >
-                          Outstanding: ₹{outstandingAmount.toLocaleString()}
-                        </div>
-                      )}
+                      {outstandingAmount > 0 && (() => {
+                        const typedAmt = parseFloat(paymentAmount) || 0;
+                        const remaining = Math.max(0, outstandingAmount - typedAmt);
+                        const cleared = typedAmt > 0 && remaining === 0;
+                        return (
+                          <div style={{ background: cleared ? "rgba(22,163,74,0.12)" : "rgba(22,163,74,0.08)", border: `1px solid ${cleared ? "rgba(22,163,74,0.4)" : "rgba(22,163,74,0.2)"}`, borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <div style={{ fontSize: 12, color: "#16a34a", fontWeight: 700 }}>
+                              {cleared ? "✓ Fully cleared" : "Outstanding"}
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              {typedAmt > 0 && (
+                                <>
+                                  <span style={{ fontSize: 13, color: "#94a3b8", textDecoration: "line-through" }}>₹{outstandingAmount.toLocaleString()}</span>
+                                  <span style={{ fontSize: 12, color: "#64748b" }}>→</span>
+                                </>
+                              )}
+                              <span style={{ fontSize: 15, fontWeight: 900, color: cleared ? "#16a34a" : remaining < outstandingAmount ? "#f59e0b" : "#16a34a" }}>
+                                ₹{remaining.toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
                       <div>
                         <div
                           style={{

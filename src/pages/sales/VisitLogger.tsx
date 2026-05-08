@@ -4,6 +4,7 @@ import {
   addDoc,
   onSnapshot,
   updateDoc,
+  deleteDoc,
   doc,
   getDoc,
   query,
@@ -23,7 +24,9 @@ import {
   NotInterestedReason,
   DailyVisitLog,
   RetailerIndent,
+  VisitLogAuditEntry,
 } from "../../types";
+import { useConfirm } from "../../hooks/useConfirm";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import CustomSelect from "../../components/CustomSelect";
@@ -52,7 +55,16 @@ export default function VisitLogger({ onBack }: Props) {
   const [shareRequestPartyName, setShareRequestPartyName] = useState("");
   const [pendingShareRequests, setPendingShareRequests] = useState<any[]>([]);
   const [outgoingPendingRequests, setOutgoingPendingRequests] = useState<any[]>([]);
+  const [editSimpleEntry, setEditSimpleEntry] = useState<VisitEntry | null>(null);
+  const [editRevisitTarget, setEditRevisitTarget] = useState<{ revisitLog: any; visitEntry: VisitEntry } | null>(null);
+  const [deleteModal, setDeleteModal] = useState<{
+    entry: VisitEntry; rl: any | null;
+    blocked: string[];
+    deletable: { key: string; label: string; checked: boolean }[];
+    isShared: boolean;
+  } | null>(null);
   const [step, setStep] = useState<Step>("home");
+  const { modal: confirmModal, showConfirm, showDanger, showAlert } = useConfirm();
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [selectedParty, setSelectedParty] = useState<Party | null>(null);
@@ -64,7 +76,7 @@ export default function VisitLogger({ onBack }: Props) {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [allocQty, setAllocQty] = useState("");
   const [allocPrice, setAllocPrice] = useState("");
-  const [allocPayment, setAllocPayment] = useState<"cash" | "credit">("cash");
+  const [allocPayment, setAllocPayment] = useState<"cash" | "credit">("credit");
   const [allocDate, setAllocDate] = useState(localDateOffset(2));
   const [endNote, setEndNote] = useState("");
   const [newShop, setNewShop] = useState({
@@ -355,7 +367,7 @@ export default function VisitLogger({ onBack }: Props) {
   };
 
   // ── Derived ───────────────────────────────────────────────────────────────
-  const rawVisits: VisitEntry[] = todayLog?.visits || [];
+  const rawVisits: VisitEntry[] = [...(todayLog?.visits || [])].sort((a, b) => (a.loggedAt || 0) - (b.loggedAt || 0));
   const visits: VisitEntry[] =
     appUser && todayLog && todayLog.salesPersonId !== appUser.uid
       ? rawVisits.filter((v) => v.sharedWith?.includes(appUser.uid))
@@ -383,16 +395,234 @@ export default function VisitLogger({ onBack }: Props) {
     setAllocDate(localDateOffset(2));
   };
 
+  // ── EDIT / DELETE helpers ─────────────────────────────────────────────────
+
+  const auditWrite = (action: VisitLogAuditEntry['action'], entry: VisitEntry, detail?: string): VisitLogAuditEntry => ({
+    action, by: appUser!.uid, byName: appUser!.name, at: Date.now(),
+    partyId: entry.partyId, partyName: entry.partyName, detail,
+  });
+
+  const handleDeleteEntry = async (entry: VisitEntry) => {
+    if (!todayLog?.id || !appUser) return;
+    const rl = entry.isRevisit
+      ? todayRevisitLogs.find((r) => r.id === entry.revisitLogId) ?? null
+      : null;
+
+    const blocked: string[] = [];
+    const deletable: { key: string; label: string; checked: boolean }[] = [];
+
+    for (const action of (rl?.actions || [])) {
+      if (action.type === 'new_order') {
+        if (action.allocationId) {
+          const snap = await getDoc(doc(db, 'allocations_v2', action.allocationId));
+          const status = snap.data()?.status;
+          if (status && status !== 'pending' && status !== 'cancelled') {
+            blocked.push(`New order — allocation already "${status}"`);
+          } else if (status === 'pending') {
+            deletable.push({ key: 'new_order', label: `Pending allocation for ${action.quantity} pkts will be cancelled`, checked: true });
+          }
+        } else {
+          deletable.push({ key: 'new_order', label: `New order — ${action.quantity} pkts`, checked: true });
+        }
+      } else if (action.type === 'payment_collection') {
+        if (action.transactionId) {
+          const snap = await getDoc(doc(db, 'payment_transactions', action.transactionId));
+          if (snap.data()?.confirmedAt) {
+            blocked.push(`Payment ₹${action.amount?.toLocaleString()} — confirmed by admin`);
+          } else {
+            deletable.push({ key: 'payment_collection', label: `₹${action.amount?.toLocaleString()} payment will be reversed`, checked: true });
+          }
+        } else {
+          deletable.push({ key: 'payment_collection', label: `₹${action.amount?.toLocaleString()} payment`, checked: true });
+        }
+      } else if (action.type === 'stock_update') {
+        deletable.push({ key: 'stock_update', label: `Stock update · Balance: ${action.balanceQty} pkts`, checked: true });
+      } else if (action.type === 'relationship_visit') {
+        deletable.push({ key: 'relationship_visit', label: `Relationship visit${action.notes ? ` · "${action.notes}"` : ''}`, checked: true });
+      } else if (action.type === 'no_longer_active') {
+        deletable.push({ key: 'no_longer_active', label: `No longer active · ${action.reason}`, checked: true });
+      } else if (action.type === 'distribute_to_retailers') {
+        deletable.push({ key: 'distribute_to_retailers', label: 'Distribution to retailers', checked: true });
+      }
+    }
+
+    const isShared = (entry.sharedWith || []).some((id) => id !== appUser.uid);
+
+    // No revisit actions at all, or purely simple entry — just show a plain danger confirm
+    if (blocked.length === 0 && deletable.length === 0) {
+      const ok = await showDanger(`Delete visit to ${entry.partyName}?`, isShared ? 'Partner will be notified' : undefined, '🗑️ Delete');
+      if (!ok) return;
+      setSaving(true);
+      try {
+        await _executeDelete(entry, rl, [], false, isShared);
+      } finally { setSaving(false); }
+      return;
+    }
+
+    setDeleteModal({ entry, rl, blocked, deletable, isShared });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteModal || !todayLog?.id || !appUser) return;
+    const { entry, rl, blocked, deletable, isShared } = deleteModal;
+    setDeleteModal(null);
+
+    const checkedKeys = new Set(deletable.filter((d) => d.checked).map((d) => d.key));
+    const deleteAlloc = checkedKeys.has('new_order');
+    const deletePay = checkedKeys.has('payment_collection');
+    const deletableKeys = new Set(deletable.map((d) => d.key));
+
+    // Keep action if: it's blocked (not in deletable list) OR it's deletable but unchecked
+    const keepAction = (a: any) => {
+      if (!deletableKeys.has(a.type)) return true; // blocked → always keep
+      return !checkedKeys.has(a.type);             // deletable → keep if unchecked
+    };
+    const trueRemaining = (rl?.actions || []).filter((a: any) => keepAction(a));
+    const partialDelete = trueRemaining.length > 0;
+
+    setSaving(true);
+    try {
+      await _executeDelete(entry, rl, trueRemaining, partialDelete, isShared, deleteAlloc, deletePay);
+    } finally { setSaving(false); }
+  };
+
+  const _executeDelete = async (
+    entry: VisitEntry, rl: any, remainingActions: any[], partialDelete: boolean, isShared: boolean,
+    deleteAlloc = true, deletePay = true,
+  ) => {
+    if (!todayLog?.id || !appUser) return;
+    if (!partialDelete) {
+      const newVisits = (todayLog.visits || []).filter((v) => v.loggedAt !== entry.loggedAt);
+      await updateDoc(doc(db, 'visit_logs', todayLog.id), {
+        visits: newVisits,
+        totalVisited: Math.max(0, (todayLog.totalVisited || 0) - 1),
+        ...(entry.outcome === 'interested' && { totalInterested: Math.max(0, (todayLog.totalInterested || 0) - 1) }),
+        ...(entry.outcome === 'not_interested' && { totalNotInterested: Math.max(0, (todayLog.totalNotInterested || 0) - 1) }),
+        auditLog: arrayUnion(auditWrite('entry_deleted', entry, entry.isRevisit ? 'revisit entry' : entry.outcome)),
+        updatedAt: Date.now(),
+      });
+    } else {
+      await updateDoc(doc(db, 'visit_logs', todayLog.id), {
+        auditLog: arrayUnion(auditWrite('entry_deleted', entry, 'partial — blocked actions remain')),
+        updatedAt: Date.now(),
+      });
+    }
+    if (rl && entry.revisitLogId) {
+      if (deleteAlloc) {
+        const orderAction = rl.actions?.find((a: any) => a.type === 'new_order');
+        if (orderAction?.allocationId) {
+          const snap = await getDoc(doc(db, 'allocations_v2', orderAction.allocationId));
+          if (snap.exists() && snap.data()?.status === 'pending')
+            await updateDoc(doc(db, 'allocations_v2', orderAction.allocationId), { status: 'cancelled' });
+        }
+      }
+      if (deletePay) {
+        const payAction = rl.actions?.find((a: any) => a.type === 'payment_collection');
+        if (payAction?.transactionId) {
+          const txnSnap = await getDoc(doc(db, 'payment_transactions', payAction.transactionId));
+          if (txnSnap.exists()) {
+            for (const applied of (txnSnap.data()?.appliedTo || [])) {
+              const aSnap = await getDoc(doc(db, 'allocations_v2', applied.allocId));
+              if (aSnap.exists()) {
+                const aData = aSnap.data()!;
+                const newPaid = Math.max(0, (aData.paidAmount || 0) - applied.amount);
+                await updateDoc(doc(db, 'allocations_v2', applied.allocId), {
+                  paidAmount: newPaid,
+                  ...(aData.status === 'paid' && { status: 'sent' }),
+                });
+              }
+            }
+            await deleteDoc(doc(db, 'payment_transactions', payAction.transactionId));
+          }
+        }
+      }
+      if (partialDelete) {
+        await updateDoc(doc(db, 'revisit_logs', entry.revisitLogId), { actions: remainingActions, updatedAt: Date.now() });
+      } else {
+        await deleteDoc(doc(db, 'revisit_logs', entry.revisitLogId));
+      }
+    }
+    if (isShared) {
+      const partnerUids = (entry.sharedWith || []).filter((id) => id !== appUser.uid);
+      for (const uid of partnerUids) {
+        await addDoc(collection(db, 'alerts'), {
+          type: 'visit_share_requested',
+          message: `🗑️ ${appUser.name} deleted a shared visit entry for ${entry.partyName} on ${selectedDate}`,
+          relatedId: todayLog.id, toUid: uid, read: false, createdAt: Date.now(),
+        });
+      }
+    }
+  };
+
+  const handleSaveSimpleEdit = async () => {
+    if (!editSimpleEntry || !todayLog?.id || !appUser) return;
+    setSaving(true);
+    try {
+      const editedAt = Date.now();
+      const updatedEntry = { ...editSimpleEntry, loggedAt: editedAt };
+      const newVisits = (todayLog.visits || []).map((v) =>
+        v.loggedAt === editSimpleEntry.loggedAt ? updatedEntry : v,
+      );
+      const isShared = (updatedEntry.sharedWith || []).some((id) => id !== appUser.uid);
+      await updateDoc(doc(db, 'visit_logs', todayLog.id), {
+        visits: newVisits,
+        auditLog: arrayUnion(auditWrite('entry_edited', updatedEntry, `outcome → ${updatedEntry.outcome}`)),
+        updatedAt: Date.now(),
+      });
+      if (isShared) {
+        const partnerUids = (editSimpleEntry.sharedWith || []).filter((id) => id !== appUser.uid);
+        for (const uid of partnerUids) {
+          await addDoc(collection(db, 'alerts'), {
+            type: 'visit_share_requested',
+            message: `✏️ ${appUser.name} edited a shared visit entry for ${editSimpleEntry.partyName} on ${selectedDate}`,
+            relatedId: todayLog.id, toUid: uid, read: false, createdAt: Date.now(),
+          });
+        }
+      }
+      setEditSimpleEntry(null);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // ── REVISIT screen ────────────────────────────────────────────────────────
   const handleRevisitDone = async (
     revisitLogId: string,
     outcome: VisitOutcome,
   ) => {
-    if (!selectedParty || !appUser) {
+    if (!appUser) { resetVisit(); setEditRevisitTarget(null); setStep("home"); return; }
+
+    // Edit mode: update existing visit entry outcome + write audit
+    if (editRevisitTarget) {
+      const oldEntry = editRevisitTarget.visitEntry;
+      if (todayLog?.id) {
+        const editedAt = Date.now();
+        const newVisits = (todayLog.visits || []).map((v) =>
+          v.loggedAt === oldEntry.loggedAt ? { ...v, outcome, loggedAt: editedAt } : v,
+        );
+        await updateDoc(doc(db, 'visit_logs', todayLog.id), {
+          visits: newVisits,
+          auditLog: arrayUnion(auditWrite('entry_edited', oldEntry, `outcome ${oldEntry.outcome} → ${outcome}`)),
+          updatedAt: Date.now(),
+        });
+        const isShared = (oldEntry.sharedWith || []).some((id) => id !== appUser.uid);
+        if (isShared) {
+          for (const uid of (oldEntry.sharedWith || []).filter((id) => id !== appUser.uid)) {
+            await addDoc(collection(db, 'alerts'), {
+              type: 'visit_share_requested',
+              message: `✏️ ${appUser.name} edited a shared revisit entry for ${oldEntry.partyName} on ${selectedDate}`,
+              relatedId: todayLog.id, toUid: uid, read: false, createdAt: Date.now(),
+            });
+          }
+        }
+      }
       resetVisit();
+      setEditRevisitTarget(null);
       setStep("home");
       return;
     }
+
+    if (!selectedParty) { resetVisit(); setStep("home"); return; }
     const entry: VisitEntry = {
       partyId: selectedParty.id!,
       partyName: selectedParty.name,
@@ -409,6 +639,7 @@ export default function VisitLogger({ onBack }: Props) {
         await updateDoc(doc(db, "visit_logs", todayLog.id), {
           visits: [...(todayLog.visits || []), entry],
           totalVisited: increment(1),
+          auditLog: arrayUnion(auditWrite('entry_added', entry, 'revisit')),
           updatedAt: Date.now(),
         });
       } else {
@@ -423,6 +654,7 @@ export default function VisitLogger({ onBack }: Props) {
           totalInterested: 0,
           totalNotInterested: 0,
           updatedAt: Date.now(),
+          auditLog: [auditWrite('entry_added', entry, 'revisit')],
         });
       }
     } catch (err) {
@@ -432,18 +664,21 @@ export default function VisitLogger({ onBack }: Props) {
     setStep("home");
   };
 
-  if (step === "revisit" && selectedParty) {
-    return (
+  if (step === "revisit" && (selectedParty || editRevisitTarget)) {
+    const party = selectedParty ?? parties.find((p) => p.id === editRevisitTarget?.visitEntry.partyId) ?? null;
+    return party ? (
       <RevisitLogger
-        party={selectedParty}
+        party={party}
         logDate={selectedDate}
-        onBack={() => {
-          resetVisit();
-          setStep("home");
-        }}
+        onBack={() => { resetVisit(); setEditRevisitTarget(null); setStep("home"); }}
         onDone={handleRevisitDone}
+        editMode={editRevisitTarget ? {
+          revisitLogId: editRevisitTarget.revisitLog.id,
+          existingActions: editRevisitTarget.revisitLog.actions,
+          existingNotes: editRevisitTarget.revisitLog.notes || '',
+        } : undefined}
       />
-    );
+    ) : null;
   }
 
   // ── Handlers ──────────────────────────────────────────────────────────────
@@ -529,16 +764,15 @@ export default function VisitLogger({ onBack }: Props) {
         });
       }
 
+      const addedAudit = auditWrite('entry_added', entry, entry.outcome);
       if (todayLog?.id) {
+        const isPastLog = selectedDate !== localDateStr();
         await updateDoc(doc(db, "visit_logs", todayLog.id), {
           visits: arrayUnion(entry),
           totalVisited: increment(1),
-          ...(entry.outcome === "interested" && {
-            totalInterested: increment(1),
-          }),
-          ...(entry.outcome === "not_interested" && {
-            totalNotInterested: increment(1),
-          }),
+          ...(entry.outcome === "interested" && { totalInterested: increment(1) }),
+          ...(entry.outcome === "not_interested" && { totalNotInterested: increment(1) }),
+          auditLog: arrayUnion({ ...addedAudit, ...(isPastLog && { detail: `${entry.outcome} (past log edit)` }) }),
           updatedAt: Date.now(),
         });
       } else {
@@ -553,6 +787,7 @@ export default function VisitLogger({ onBack }: Props) {
           totalInterested: entry.outcome === "interested" ? 1 : 0,
           totalNotInterested: entry.outcome === "not_interested" ? 1 : 0,
           updatedAt: Date.now(),
+          auditLog: [addedAudit],
         });
       }
       resetVisit();
@@ -670,20 +905,22 @@ export default function VisitLogger({ onBack }: Props) {
 
   const handleFinishDay = async () => {
     if (todayLog?.id) {
-      if (endNote.trim()) {
-        await updateDoc(doc(db, "visit_logs", todayLog.id), {
-          endOfDayNote: endNote,
-        });
-      }
-      const interested =
-        todayLog.totalInterested ??
-        visits.filter((v) => v.outcome === "interested").length;
+      const isPastLog = selectedDate !== localDateStr();
+      const submitAudit: VisitLogAuditEntry = {
+        action: isPastLog ? 'log_edited_after_submit' : 'log_submitted',
+        by: appUser!.uid, byName: appUser!.name, at: Date.now(),
+        detail: `${visits.length} visit${visits.length !== 1 ? 's' : ''}`,
+      };
+      await updateDoc(doc(db, "visit_logs", todayLog.id), {
+        ...(endNote.trim() && { endOfDayNote: endNote }),
+        auditLog: arrayUnion(submitAudit),
+        updatedAt: Date.now(),
+      });
+      const interested = todayLog.totalInterested ?? visits.filter((v) => v.outcome === "interested").length;
       await addDoc(collection(db, "alerts"), {
         type: "visit_log_submitted",
         message: `📋 ${appUser!.name} submitted visit log · ${visits.length} visit${visits.length !== 1 ? "s" : ""} · ${interested} interested`,
-        relatedId: todayLog.id,
-        read: false,
-        createdAt: Date.now(),
+        relatedId: todayLog.id, read: false, createdAt: Date.now(),
       });
     }
     onBack();
@@ -726,6 +963,117 @@ export default function VisitLogger({ onBack }: Props) {
   if (step === "home")
     return (
       <div style={{ minHeight: "100vh", background: t.bg, paddingBottom: 40 }}>
+        {confirmModal}
+
+        {/* Delete entry modal */}
+        {deleteModal && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 16px' }}>
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }} onClick={() => setDeleteModal(null)} />
+            <div style={{ position: 'relative', zIndex: 1, background: t.card, borderRadius: 20, padding: '24px 20px', width: '100%', maxWidth: 440, border: `1.5px solid ${t.border}`, boxShadow: '0 24px 64px rgba(0,0,0,0.5)', maxHeight: '90vh', overflowY: 'auto' }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: t.text, marginBottom: 4 }}>Delete visit to {deleteModal.entry.partyName}</div>
+              <div style={{ fontSize: 12, color: t.text3, marginBottom: 20 }}>Choose what to remove</div>
+
+              {deleteModal.blocked.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#dc2626', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Cannot be deleted</div>
+                  {deleteModal.blocked.map((r, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.15)', borderRadius: 10, marginBottom: 6 }}>
+                      <span style={{ fontSize: 13 }}>🔒</span>
+                      <span style={{ fontSize: 13, color: '#dc2626' }}>{r}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {deleteModal.deletable.length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: t.text3, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Choose what to delete</div>
+                  {deleteModal.deletable.map((item, i) => (
+                    <button
+                      key={item.key}
+                      onClick={() => setDeleteModal((prev) => prev ? {
+                        ...prev,
+                        deletable: prev.deletable.map((d, j) => j === i ? { ...d, checked: !d.checked } : d),
+                      } : prev)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', background: item.checked ? 'rgba(220,38,38,0.07)' : t.bg3, border: `1.5px solid ${item.checked ? 'rgba(220,38,38,0.3)' : t.border}`, borderRadius: 10, padding: '10px 12px', marginBottom: 6, textAlign: 'left', cursor: 'pointer' }}
+                    >
+                      <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${item.checked ? '#dc2626' : t.border}`, background: item.checked ? '#dc2626' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {item.checked && <span style={{ color: '#fff', fontSize: 11, fontWeight: 900 }}>✓</span>}
+                      </div>
+                      <span style={{ fontSize: 13, color: item.checked ? '#dc2626' : t.text2 }}>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {deleteModal.isShared && (
+                <div style={{ fontSize: 12, color: '#d97706', marginBottom: 16 }}>⚠️ Partner will be notified</div>
+              )}
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => setDeleteModal(null)} style={{ flex: 1, background: t.bg3, border: `1px solid ${t.border}`, borderRadius: 12, padding: '13px', fontSize: 14, fontWeight: 700, color: t.text2 }}>Cancel</button>
+                <button
+                  onClick={handleConfirmDelete}
+                  disabled={saving || deleteModal.deletable.every((d) => !d.checked)}
+                  style={{ flex: 2, background: 'linear-gradient(135deg,#7f1d1d,#dc2626)', color: '#fff', border: 'none', borderRadius: 12, padding: '13px', fontSize: 14, fontWeight: 800, opacity: deleteModal.deletable.every((d) => !d.checked) ? 0.4 : 1 }}
+                >
+                  {saving ? 'Deleting...' : deleteModal.blocked.length > 0 ? '🗑️ Remove selected' : '🗑️ Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Simple entry edit modal */}
+        {editSimpleEntry && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+            <div style={{ background: t.card, borderRadius: '20px 20px 0 0', padding: '20px 16px 32px', maxHeight: '85vh', overflowY: 'auto' }}>
+              <div style={{ fontWeight: 800, fontSize: 16, color: t.text, marginBottom: 4 }}>Edit Visit — {editSimpleEntry.partyName}</div>
+              {selectedDate !== localDateStr() && (
+                <div style={{ fontSize: 12, color: '#f59e0b', marginBottom: 12 }}>⚠️ Editing past log — {selectedDate}</div>
+              )}
+              <div style={{ fontSize: 13, color: t.text3, marginBottom: 14 }}>Outcome</div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                {(['interested', 'not_interested', 'follow_up'] as VisitOutcome[]).map((o) => (
+                  <button key={o} onClick={() => setEditSimpleEntry({ ...editSimpleEntry, outcome: o })}
+                    style={{ flex: 1, padding: '10px 4px', borderRadius: 10, fontSize: 12, fontWeight: 700,
+                      background: editSimpleEntry.outcome === o ? 'rgba(22,163,74,0.15)' : t.bg3,
+                      color: editSimpleEntry.outcome === o ? '#16a34a' : t.text2,
+                      border: `1px solid ${editSimpleEntry.outcome === o ? 'rgba(22,163,74,0.3)' : t.border}` }}>
+                    {o === 'interested' ? '✅ Interested' : o === 'not_interested' ? '❌ Not Int.' : '🔄 Follow Up'}
+                  </button>
+                ))}
+              </div>
+              {editSimpleEntry.outcome === 'not_interested' && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, color: t.text3, marginBottom: 8 }}>Reason</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {NOT_INTERESTED_REASONS.map((r) => (
+                      <button key={r} onClick={() => setEditSimpleEntry({ ...editSimpleEntry, notInterestedReason: r as NotInterestedReason })}
+                        style={{ padding: '6px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                          background: editSimpleEntry.notInterestedReason === r ? 'rgba(220,38,38,0.15)' : t.bg3,
+                          color: editSimpleEntry.notInterestedReason === r ? '#dc2626' : t.text2,
+                          border: `1px solid ${editSimpleEntry.notInterestedReason === r ? 'rgba(220,38,38,0.3)' : t.border}` }}>
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button onClick={() => setEditSimpleEntry(null)}
+                  style={{ flex: 1, padding: '12px', borderRadius: 12, background: t.bg3, color: t.text2, border: `1px solid ${t.border}`, fontSize: 14, fontWeight: 700 }}>
+                  Cancel
+                </button>
+                <button onClick={handleSaveSimpleEdit} disabled={saving}
+                  style={{ flex: 2, padding: '12px', borderRadius: 12, background: 'linear-gradient(135deg,#0d3d2e,#1a5c42)', color: '#fff', border: 'none', fontSize: 14, fontWeight: 700 }}>
+                  {saving ? 'Saving…' : 'Save Changes'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Confirm modal */}
         {showFinishModal && (
           <div
@@ -1229,6 +1577,13 @@ export default function VisitLogger({ onBack }: Props) {
             </div>
           )}
 
+          {/* Past log warning */}
+          {selectedDate !== localDateStr() && visits.length > 0 && (
+            <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#f59e0b', fontWeight: 600 }}>
+              ⚠️ Editing past log — {selectedDate}. All changes are tracked.
+            </div>
+          )}
+
           {/* Log visit button */}
           {visits.length > 0 && (
             <>
@@ -1275,7 +1630,7 @@ export default function VisitLogger({ onBack }: Props) {
                   }
                 });
 
-                const renderEntries = (entries: VisitEntry[]) =>
+                const renderEntries = (entries: VisitEntry[], canEdit = true) =>
                   entries.map((v, vi) => {
                     const rl = v.revisitLogId
                       ? todayRevisitLogs.find((r) => r.id === v.revisitLogId)
@@ -1297,6 +1652,26 @@ export default function VisitLogger({ onBack }: Props) {
                         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
                           <span style={{ fontSize: 15 }}>{outcomeEmoji}</span>
                           {timeStr && <span style={{ fontSize: 11, color: t.text3, fontWeight: 600 }}>{timeStr}</span>}
+                          {canEdit && (
+                            <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                              <button
+                                onClick={() => {
+                                  if (v.isRevisit && rl) {
+                                    setEditRevisitTarget({ revisitLog: rl, visitEntry: v });
+                                    setSelectedParty(null);
+                                    setStep('revisit');
+                                  } else {
+                                    setEditSimpleEntry({ ...v });
+                                  }
+                                }}
+                                style={{ fontSize: 13, background: 'rgba(255,255,255,0.06)', border: `1px solid ${t.border}`, borderRadius: 6, padding: '2px 7px', color: t.text3, cursor: 'pointer' }}
+                              >✏️</button>
+                              <button
+                                onClick={() => handleDeleteEntry(v)}
+                                style={{ fontSize: 13, background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.15)', borderRadius: 6, padding: '2px 7px', color: '#dc2626', cursor: 'pointer' }}
+                              >🗑️</button>
+                            </div>
+                          )}
                         </div>
                         {v.isRevisit && rl?.actions?.map((action: any, ai: number) => {
                           const label =
@@ -1333,7 +1708,7 @@ export default function VisitLogger({ onBack }: Props) {
                     : allNotInterested ? "rgba(220,38,38,0.15)"
                     : "rgba(217,119,6,0.2)";
 
-                  // ── Shared card (read-only, entries already accepted by partner) ──
+                  // ── Shared card ──
                   if (groupType === 'shared') {
                     const sharedWithNames = Array.from(new Set(entries.flatMap((v) => v.sharedWith || [])))
                       .filter((id) => id !== appUser?.uid)
@@ -1354,7 +1729,7 @@ export default function VisitLogger({ onBack }: Props) {
                             <span style={{ fontSize: 11, color: t.text3, fontWeight: 700 }}>{entries.length} visits</span>
                           )}
                         </div>
-                        {renderEntries(entries)}
+                        {renderEntries(entries, true)}
                       </div>
                     );
                   }

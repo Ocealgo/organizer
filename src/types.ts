@@ -122,6 +122,9 @@ export interface Dispatch {
   paymentType: PaymentType
   notes: string
   month: string
+  fromType?: 'company' | 'distributor'
+  fromId?: string
+  fromName?: string
   dispatchedBy: string
   dispatchedByName: string
   dispatchedAt: number           // exact timestamp
@@ -347,6 +350,7 @@ export interface DailyVisitLog {
   createdAt: number
   updatedAt: number
   isNoEntry?: boolean
+  auditLog?: VisitLogAuditEntry[]
 }
 
 export interface VisitShareRequest {
@@ -405,6 +409,8 @@ export type RevisitActionType = 'stock_update' | 'new_order' | 'payment_collecti
 
 export interface StockUpdateAction {
   type: 'stock_update'
+  productId?: string
+  productName?: string
   openingQty: number
   purchasedQty: number
   soldQty: number
@@ -433,6 +439,7 @@ export interface PaymentCollectionAction {
   status: 'pending_approval' | 'approved'
   approvedBy?: string
   approvedAt?: number
+  transactionId?: string
 }
 
 export interface RelationshipVisitAction {
@@ -463,4 +470,21 @@ export interface RevisitLog {
   actions: RevisitAction[]
   notes: string
   createdAt: number
+}
+
+// ── VISIT LOG AUDIT ───────────────────────────────────────────────────────────
+export type VisitLogAuditAction =
+  | 'entry_added' | 'entry_edited' | 'entry_deleted'
+  | 'stock_updated' | 'order_placed' | 'order_edited' | 'order_cancelled'
+  | 'payment_collected' | 'payment_edited' | 'payment_deleted'
+  | 'log_submitted' | 'log_edited_after_submit'
+
+export interface VisitLogAuditEntry {
+  action: VisitLogAuditAction
+  by: string
+  byName: string
+  at: number
+  partyId?: string
+  partyName?: string
+  detail?: string
 }

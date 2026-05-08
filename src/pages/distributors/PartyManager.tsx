@@ -228,6 +228,24 @@ export default function PartyManager({ onBack }: Props) {
   }
 
   const handleDelete = async (id: string) => {
+    const outstanding = allocations
+      .filter((a) =>
+        a.partyId === id &&
+        a.paymentType === 'credit' &&
+        (a.status === 'sent' || a.status === 'overdue') &&
+        (a as any).fromType !== 'distributor',
+      )
+      .reduce((s, a) => s + Math.max(0, (a.totalAmount || 0) - ((a as any).paidAmount || 0)), 0)
+
+    if (outstanding > 0) {
+      await showDanger(
+        'Cannot Delete',
+        `This party has ₹${outstanding.toLocaleString()} in outstanding credit. Clear all dues before deleting.`,
+        'OK',
+      )
+      return
+    }
+
     if (!await showDanger('Delete Entry?', 'This cannot be undone.')) return
     setDeleting(id)
     await deleteDoc(doc(db, 'parties', id))

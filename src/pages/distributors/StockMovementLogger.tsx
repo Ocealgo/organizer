@@ -31,7 +31,7 @@ export default function StockMovementLogger({ onBack, parties }: Props) {
   const [saving, setSaving] = useState(false)
   const [unit, setUnit] = useState<'packets' | 'cartons'>('packets')
   const [selectedMonth, setSelectedMonth] = useState(localMonthStr())
-  const [form, setForm] = useState({ fromId: '', toPartyId: '', quantity: '', pricePerPacket: '', paymentType: 'cash' as PaymentType, notes: '' })
+  const [form, setForm] = useState({ fromId: '', toPartyId: '', quantity: '', pricePerPacket: '', paymentType: 'credit' as PaymentType, notes: '' })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {

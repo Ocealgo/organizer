@@ -2096,20 +2096,39 @@ export default function AdminDashboard() {
                                 marginTop: 4,
                               }}
                             >
-                              <div
-                                style={{
-                                  fontSize: 11,
-                                  color: t.text3,
-                                  marginBottom: 2,
-                                }}
-                              >
-                                📝 End of day note
-                              </div>
-                              <div style={{ fontSize: 13, color: t.text2 }}>
-                                {log.endOfDayNote}
-                              </div>
+                              <div style={{ fontSize: 11, color: t.text3, marginBottom: 2 }}>📝 End of day note</div>
+                              <div style={{ fontSize: 13, color: t.text2 }}>{log.endOfDayNote}</div>
                             </div>
                           )}
+                          {/* Audit trail */}
+                          {(log.auditLog?.length ?? 0) > 0 && (() => {
+                            const actionEmoji: Record<string, string> = {
+                              entry_added: '➕', entry_edited: '✏️', entry_deleted: '🗑️',
+                              stock_updated: '📊', order_placed: '📦', order_edited: '📦', order_cancelled: '🚫',
+                              payment_collected: '💰', payment_edited: '💰', payment_deleted: '🗑️',
+                              log_submitted: '✅', log_edited_after_submit: '⚠️',
+                            };
+                            return (
+                              <details style={{ marginTop: 8 }}>
+                                <summary style={{ fontSize: 11, color: t.text3, fontWeight: 700, cursor: 'pointer', userSelect: 'none', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <span>📋</span> Activity Log ({log.auditLog.length})
+                                </summary>
+                                <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                  {[...(log.auditLog || [])].sort((a: any, b: any) => a.at - b.at).map((entry: any, i: number) => (
+                                    <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', fontSize: 11 }}>
+                                      <span style={{ flexShrink: 0 }}>{actionEmoji[entry.action] ?? '•'}</span>
+                                      <span style={{ color: t.text2, fontWeight: 600 }}>{entry.action.replace(/_/g, ' ')}</span>
+                                      {entry.partyName && <span style={{ color: t.text3 }}>· {entry.partyName}</span>}
+                                      {entry.detail && <span style={{ color: t.text3 }}>· {entry.detail}</span>}
+                                      <span style={{ marginLeft: 'auto', color: t.text3, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                        {entry.byName?.split(' ')[0]} · {new Date(entry.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </details>
+                            );
+                          })()}
                         </div>
                       );
                     })}
