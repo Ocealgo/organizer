@@ -12,7 +12,7 @@ import AllocationManager from '../distributors/AllocationManager'
 import VisitLogger from './VisitLogger'
 import VisitHistoryScreen from './VisitHistoryScreen'
 import LeaveHistory from './LeaveHistory'
-import { CheckIn, Party, DailyVisitLog, LeaveRecord, LeaveReason, LEAVE_REASONS } from '../../types'
+import { CheckIn, Party, DailyVisitLog, LeaveRecord, LeaveReason, LEAVE_REASONS, Holiday } from '../../types'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr, localMonthStr } from '../../utils/date'
 
@@ -29,6 +29,7 @@ export default function SalesView({ name }: Props) {
   const { t, theme } = useTheme()
   const isOnline = appUser?.role === 'online_sales'
   const [screen, setScreen] = useState<SubScreen>('home')
+  const [visitInitialDate, setVisitInitialDate] = useState<string | undefined>()
   const [checkIns, setCheckIns] = useState<CheckIn[]>([])
   const [parties, setParties] = useState<Party[]>([])
   const [todayVisitLog, setTodayVisitLog] = useState<DailyVisitLog | null>(null)
@@ -39,6 +40,7 @@ export default function SalesView({ name }: Props) {
   const [pendingLeaveType, setPendingLeaveType] = useState<'full_day' | 'half_day' | null>(null)
   const [leaveReason, setLeaveReason] = useState<LeaveReason | ''>('')
   const [visitLogLoaded, setVisitLogLoaded] = useState(false)
+  const [holidays, setHolidays] = useState<Holiday[]>([])
   const { modal: leaveModal, showConfirm: showLeaveConfirm, showAlert: showLeaveAlert } = useConfirm()
 
   useEffect(() => {
@@ -77,6 +79,12 @@ export default function SalesView({ name }: Props) {
   }, [name, appUser])
 
   useEffect(() => {
+    return onSnapshot(collection(db, 'holidays'), snap => {
+      setHolidays(snap.docs.map(d => ({ id: d.id, ...d.data() } as Holiday)))
+    })
+  }, [])
+
+  useEffect(() => {
     if (!appUser) return
     const q = query(collection(db, 'leave_records'), where('uid', '==', appUser.uid))
     return onSnapshot(q, snap => {
@@ -94,6 +102,7 @@ export default function SalesView({ name }: Props) {
     if (!appUser || !visitLogLoaded || todayVisitLog !== null) return
     if (noEntryCreated.current) return
     if (todayLeave?.leaveType === 'full_day' && (todayLeave.status === 'active' || todayLeave.status === 'pending_approval')) return
+    if (holidays.some(h => h.date === todayStr())) return
     const now = new Date()
     if (now.getHours() < 12) return
     noEntryCreated.current = true
@@ -159,10 +168,10 @@ export default function SalesView({ name }: Props) {
   }
 
   // Route to sub-screens — hooks are above so this is safe
-  if (screen === 'visits')      return <VisitLogger onBack={() => setScreen('home')} />
+  if (screen === 'visits')      return <VisitLogger onBack={() => { setVisitInitialDate(undefined); setScreen('home') }} initialDate={visitInitialDate} />
   if (screen === 'parties')     return <PartyManager onBack={() => setScreen('home')} />
   if (screen === 'stock')       return <StockManager onBack={() => setScreen('home')} />
-  if (screen === 'expenses')    return <ExpenseLogger onBack={() => setScreen('home')} />
+  if (screen === 'expenses')    return <ExpenseLogger onBack={() => setScreen('home')} onLogVisit={date => { setVisitInitialDate(date); setScreen('visits') }} />
   if (screen === 'credits')     return <CreditBook onBack={() => setScreen('home')} />
   if (screen === 'allocations') return <AllocationManager onBack={() => setScreen('home')} parties={parties} isAdmin={false} />
   if (screen === 'history')     return <VisitHistoryScreen onBack={() => setScreen('home')} />
@@ -183,13 +192,14 @@ export default function SalesView({ name }: Props) {
   // Count today's visits
   const todayCheckIn = checkIns.find(c => c.date === todayStr())
   const initials = name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
-  const isOnFullLeave = !!(todayLeave && todayLeave.leaveType === 'full_day' && todayLeave.status === 'active')
+  const isTodayHoliday = holidays.some(h => h.date === todayStr())
+  const isOnFullLeave = isTodayHoliday || !!(todayLeave && todayLeave.leaveType === 'full_day' && todayLeave.status === 'active')
 
   const menuItems = [
     {
       emoji: '🗺️',
       label: "Today's Visits",
-      sub: isOnFullLeave ? 'Disabled — you are on full day leave' : 'Log shop visits & outcomes',
+      sub: isTodayHoliday ? 'Disabled — public holiday' : isOnFullLeave ? 'Disabled — you are on full day leave' : 'Log shop visits & outcomes',
       action: isOnFullLeave ? undefined : () => setScreen('visits'),
       primary: true,
       disabled: isOnFullLeave,

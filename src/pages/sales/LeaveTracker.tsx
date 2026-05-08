@@ -1,27 +1,31 @@
 import { useState, useEffect } from 'react'
-import { collection, onSnapshot, updateDoc, doc, addDoc } from 'firebase/firestore'
+import { collection, onSnapshot, updateDoc, doc, addDoc, deleteDoc, query, orderBy } from 'firebase/firestore'
 import { db } from '../../firebase'
-import { LeaveRecord, AppUser } from '../../types'
+import { LeaveRecord, AppUser, Holiday } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr, localMonthStr } from '../../utils/date'
 
 interface Props { onBack: () => void }
 
-type LeaveTab = 'today' | 'month' | 'all'
+type LeaveTab = 'today' | 'month' | 'all' | 'holidays'
 
 const todayStr = () => localDateStr()
 const thisMonth = () => localMonthStr()
 
 export default function LeaveTracker({ onBack }: Props) {
   const { t, theme } = useTheme()
-  const { modal, showConfirm } = useConfirm()
+  const { modal, showConfirm, showAlert } = useConfirm()
 
   const [leaveRecords, setLeaveRecords] = useState<LeaveRecord[]>([])
   const [salesUsers, setSalesUsers] = useState<AppUser[]>([])
   const [tab, setTab] = useState<LeaveTab>('today')
   const [selectedPerson, setSelectedPerson] = useState<string>('all')
   const [expandedAudit, setExpandedAudit] = useState<string | null>(null)
+  const [holidays, setHolidays] = useState<Holiday[]>([])
+  const [newHolidayName, setNewHolidayName] = useState('')
+  const [newHolidayDate, setNewHolidayDate] = useState(localDateStr())
+  const [addingHoliday, setAddingHoliday] = useState(false)
 
   useEffect(() => {
     const u1 = onSnapshot(collection(db, 'leave_records'), snap => {
@@ -32,7 +36,10 @@ export default function LeaveTracker({ onBack }: Props) {
         .map(d => ({ uid: d.id, ...d.data() } as AppUser))
         .filter(u => u.status === 'approved' && (u.role === 'offline_sales' || u.role === 'online_sales')))
     })
-    return () => { u1(); u2() }
+    const u3 = onSnapshot(query(collection(db, 'holidays'), orderBy('date')), snap => {
+      setHolidays(snap.docs.map(d => ({ id: d.id, ...d.data() } as Holiday)))
+    })
+    return () => { u1(); u2(); u3() }
   }, [])
 
   const today = todayStr()
@@ -99,6 +106,27 @@ export default function LeaveTracker({ onBack }: Props) {
     })
   }
 
+  const handleAddHoliday = async () => {
+    if (!newHolidayName.trim()) { await showAlert('Name required', 'Enter a holiday name.'); return }
+    if (!newHolidayDate) { await showAlert('Date required', 'Pick a date.'); return }
+    if (holidays.some(h => h.date === newHolidayDate)) { await showAlert('Already exists', `A holiday is already marked on ${newHolidayDate}.`); return }
+    setAddingHoliday(true)
+    try {
+      await addDoc(collection(db, 'holidays'), {
+        name: newHolidayName.trim(), date: newHolidayDate,
+        createdBy: 'admin', createdByName: 'Admin', createdAt: Date.now(),
+      })
+      setNewHolidayName('')
+      setNewHolidayDate(localDateStr())
+    } finally { setAddingHoliday(false) }
+  }
+
+  const handleDeleteHoliday = async (h: Holiday) => {
+    const ok = await showConfirm('Remove Holiday?', `Remove "${h.name}" on ${h.date}?`, '🗑️ Remove')
+    if (!ok) return
+    await deleteDoc(doc(db, 'holidays', h.id!))
+  }
+
   const tabFiltered = leaveRecords.filter(l => {
     if (l.status === 'removed' || l.status === 'rejected') return false
     if (tab === 'today') return l.date === today
@@ -133,9 +161,9 @@ export default function LeaveTracker({ onBack }: Props) {
           )}
         </div>
         <div style={{ display: 'flex', gap: 0 }}>
-          {([['today', 'Today'], ['month', 'Month'], ['all', 'All']] as [LeaveTab, string][]).map(([val, label]) => (
+          {([['today', 'Today'], ['month', 'Month'], ['all', 'All'], ['holidays', '🎉 Holidays']] as [LeaveTab, string][]).map(([val, label]) => (
             <button key={val} onClick={() => setTab(val)}
-              style={{ flex: 1, background: tab === val ? 'rgba(255,255,255,0.2)' : 'transparent', color: tab === val ? '#fff' : 'rgba(255,255,255,0.5)', border: 'none', borderRadius: '10px 10px 0 0', padding: '10px 12px', fontSize: 13, fontWeight: 800 }}>
+              style={{ flex: 1, background: tab === val ? 'rgba(255,255,255,0.2)' : 'transparent', color: tab === val ? '#fff' : 'rgba(255,255,255,0.5)', border: 'none', borderRadius: '10px 10px 0 0', padding: '10px 8px', fontSize: 12, fontWeight: 800 }}>
               {label}
             </button>
           ))}
@@ -144,6 +172,55 @@ export default function LeaveTracker({ onBack }: Props) {
 
       <div style={{ padding: '14px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
+        {/* ── HOLIDAYS TAB ── */}
+        {tab === 'holidays' && (<>
+          {/* Add holiday form */}
+          <div style={{ background: t.card, borderRadius: 14, padding: 14, border: `1px solid ${t.border}` }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: t.text, marginBottom: 12 }}>Add Holiday</div>
+            <input
+              value={newHolidayName}
+              onChange={e => setNewHolidayName(e.target.value)}
+              placeholder="Holiday name (e.g. Onam, Eid)"
+              style={{ width: '100%', background: t.bg3 ?? t.bg, border: `1px solid ${t.border}`, borderRadius: 8, padding: '10px 12px', fontSize: 13, color: t.text, outline: 'none', boxSizing: 'border-box', marginBottom: 8 }}
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                type="date"
+                value={newHolidayDate}
+                onChange={e => setNewHolidayDate(e.target.value)}
+                style={{ flex: 1, background: t.bg3 ?? t.bg, border: `1px solid ${t.border}`, borderRadius: 8, padding: '10px 12px', fontSize: 13, color: t.text, outline: 'none' }}
+              />
+              <button onClick={handleAddHoliday} disabled={addingHoliday}
+                style={{ background: 'linear-gradient(135deg,#0f766e,#14b8a6)', border: 'none', color: '#fff', borderRadius: 8, padding: '10px 20px', fontSize: 13, fontWeight: 800, opacity: addingHoliday ? 0.6 : 1 }}>
+                {addingHoliday ? '…' : 'Add'}
+              </button>
+            </div>
+          </div>
+
+          {/* Holiday list */}
+          {holidays.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 40, color: t.text3 }}>
+              <div style={{ fontSize: 32, marginBottom: 10 }}>🎉</div>
+              <div style={{ fontWeight: 700 }}>No holidays marked</div>
+            </div>
+          ) : holidays.map(h => (
+            <div key={h.id} style={{ background: t.card, borderRadius: 12, padding: '12px 14px', border: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 22 }}>🎉</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 800, fontSize: 14, color: t.text }}>{h.name}</div>
+                <div style={{ fontSize: 12, color: t.text3 }}>{new Date(h.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })}</div>
+              </div>
+              {h.date >= localDateStr() && (
+                <button onClick={() => handleDeleteHoliday(h)}
+                  style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.2)', color: '#fca5a5', borderRadius: 8, padding: '6px 10px', fontSize: 12, fontWeight: 700 }}>
+                  Remove
+                </button>
+              )}
+            </div>
+          ))}
+        </>)}
+
+        {tab !== 'holidays' && (<>
         {/* Pending Leave Approval Requests */}
         {pendingApproval.length > 0 && (
           <div style={{ background: 'rgba(99,102,241,0.06)', border: '1.5px solid rgba(99,102,241,0.2)', borderRadius: 14, overflow: 'hidden' }}>
@@ -302,6 +379,7 @@ export default function LeaveTracker({ onBack }: Props) {
             </div>
           )
         })}
+        </>)}
       </div>
 
       {modal}

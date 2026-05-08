@@ -156,17 +156,61 @@ export interface CreditEntry {
   settledBy?: string; settledByName?: string; settledAt?: number; createdAt: number
 }
 
-// ── EXPENSE ───────────────────────────────────────────────────────────────────
-export type ExpenseCategory = 'travel' | 'food' | 'misc' | 'marketing' | 'operations'
+// ── HOLIDAY ───────────────────────────────────────────────────────────────────
+export interface Holiday {
+  id?: string
+  name: string
+  date: string        // YYYY-MM-DD
+  createdBy: string
+  createdByName: string
+  createdAt: number
+}
 
-export interface Expense {
-  id?: string; amount: number; category: ExpenseCategory
-  note: string; addedBy: string; addedByName: string; date: string; createdAt: number
+// ── EXPENSE ───────────────────────────────────────────────────────────────────
+export type AllowanceType = 'HQ' | 'EX' | 'OS'
+export type ExpenseCategory = 'bus_fare' | 'fuel' | 'food' | 'lodging' | 'printing' | 'other'
+
+export interface ExpenseConfig {
+  hq: number
+  ex: number
+  os: number
+  updatedAt?: number
+  updatedBy?: string
+}
+
+export interface ExpenseReport {
+  id?: string
+  userId: string
+  userName: string
+  weekStart: string
+  weekEnd: string
+  status: 'draft' | 'submitted' | 'cleared' | 'rejected'
+  totalAmount: number
+  submittedAt?: number
+  clearedAt?: number
+  clearedBy?: string
+  clearedByName?: string
+  clearNote?: string
+  createdAt: number
+}
+
+export interface ExpenseEntry {
+  id?: string
+  reportId: string
+  userId: string
+  date: string
+  type: 'allowance' | 'variable'
+  allowanceType?: AllowanceType
+  category?: ExpenseCategory
+  customLabel?: string
+  amount: number
+  notes?: string
+  createdAt: number
 }
 
 // ── ALERT ─────────────────────────────────────────────────────────────────────
 export interface Alert {
-  id?: string; type: 'new_party' | 'credit_settlement' | 'low_stock' | 'stock_dispatched' | 'new_allocation' | 'visit_log_submitted' | 'leave_requested' | 'leave_approved' | 'visit_share_requested'
+  id?: string; type: 'new_party' | 'credit_settlement' | 'low_stock' | 'stock_dispatched' | 'new_allocation' | 'visit_log_submitted' | 'leave_requested' | 'leave_approved' | 'visit_share_requested' | 'expense_submitted'
   message: string; relatedId: string; read: boolean; createdAt: number
   toUid?: string        // only that user sees it
   toRole?: 'admin_group' // only admin/super_admin see it

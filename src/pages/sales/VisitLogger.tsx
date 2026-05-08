@@ -25,6 +25,8 @@ import {
   DailyVisitLog,
   RetailerIndent,
   VisitLogAuditEntry,
+  LeaveRecord,
+  Holiday,
 } from "../../types";
 import { useConfirm } from "../../hooks/useConfirm";
 import { useAuth } from "../../context/AuthContext";
@@ -36,11 +38,12 @@ import { INDIAN_STATES } from "../../data";
 
 interface Props {
   onBack: () => void;
+  initialDate?: string;
 }
 
 type Step = "home" | "selectShop" | "addNewShop" | "markOutcome" | "revisit";
 
-export default function VisitLogger({ onBack }: Props) {
+export default function VisitLogger({ onBack, initialDate }: Props) {
   const { appUser } = useAuth();
   const { t } = useTheme();
   const [parties, setParties] = useState<Party[]>([]);
@@ -96,7 +99,7 @@ export default function VisitLogger({ onBack }: Props) {
   const [visitPartyStatus, setVisitPartyStatus] = useState<
     "all" | "active" | "prospect" | "inactive"
   >("all");
-  const [selectedDate, setSelectedDate] = useState(localDateStr());
+  const [selectedDate, setSelectedDate] = useState(initialDate ?? localDateStr());
 
   // ── ALL hooks first ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -209,6 +212,22 @@ export default function VisitLogger({ onBack }: Props) {
       );
     });
   }, [appUser, selectedDate, todayLog?.sharedWith?.join("|"), todayLog?.sharedPartnerMeta]);
+
+  const [leaveRecords, setLeaveRecords] = useState<LeaveRecord[]>([])
+  useEffect(() => {
+    if (!appUser) return
+    return onSnapshot(
+      query(collection(db, 'leave_records'), where('uid', '==', appUser.uid), where('status', '==', 'active')),
+      snap => setLeaveRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as LeaveRecord)))
+    )
+  }, [appUser?.uid])
+
+  const [holidays, setHolidays] = useState<Holiday[]>([])
+  useEffect(() => {
+    return onSnapshot(collection(db, 'holidays'), snap => {
+      setHolidays(snap.docs.map(d => ({ id: d.id, ...d.data() } as Holiday)))
+    })
+  }, [])
 
   useEffect(() => {
     if (selectedProduct)
@@ -959,6 +978,9 @@ export default function VisitLogger({ onBack }: Props) {
 
   // ── HOME ──────────────────────────────────────────────────────────────────
   const isSundaySelected = new Date(selectedDate + 'T00:00:00').getDay() === 0
+  const isLeaveDay = leaveRecords.some(l => l.date === selectedDate)
+  const isHolidayDay = holidays.some(h => h.date === selectedDate)
+  const isBlocked = isSundaySelected || isLeaveDay || isHolidayDay
 
   if (step === "home")
     return (
@@ -1341,27 +1363,27 @@ export default function VisitLogger({ onBack }: Props) {
           }}
         >
           <button
-            onClick={() => !isSundaySelected && setStep("selectShop")}
-            disabled={isSundaySelected}
+            onClick={() => !isBlocked && setStep("selectShop")}
+            disabled={isBlocked}
             style={{
-              background: isSundaySelected ? 'rgba(255,255,255,0.05)' : "linear-gradient(135deg,#0d3d2e,#1a5c42)",
-              color: isSundaySelected ? 'rgba(255,255,255,0.3)' : "#fff",
-              border: isSundaySelected ? '1px solid rgba(255,255,255,0.08)' : "none",
+              background: isBlocked ? 'rgba(255,255,255,0.05)' : "linear-gradient(135deg,#0d3d2e,#1a5c42)",
+              color: isBlocked ? 'rgba(255,255,255,0.3)' : "#fff",
+              border: isBlocked ? '1px solid rgba(255,255,255,0.08)' : "none",
               borderRadius: 16,
               padding: "18px 20px",
               display: "flex",
               alignItems: "center",
               gap: 14,
-              boxShadow: isSundaySelected ? 'none' : "0 8px 24px rgba(13,61,46,0.3)",
-              cursor: isSundaySelected ? 'not-allowed' : 'pointer',
-              opacity: isSundaySelected ? 0.5 : 1,
+              boxShadow: isBlocked ? 'none' : "0 8px 24px rgba(13,61,46,0.3)",
+              cursor: isBlocked ? 'not-allowed' : 'pointer',
+              opacity: isBlocked ? 0.5 : 1,
             }}
           >
             <span style={{ fontSize: 28 }}>📋</span>
             <div style={{ textAlign: "left" }}>
               <div style={{ fontWeight: 800, fontSize: 17 }}>Log a Visit</div>
-              <div style={{ fontSize: 14, color: isSundaySelected ? 'rgba(255,255,255,0.3)' : "#a7f3d0", marginTop: 2 }}>
-                {isSundaySelected ? 'Disabled on Sundays' : 'Distributor or Retailer visit'}
+              <div style={{ fontSize: 14, color: isHolidayDay ? '#86efac' : isLeaveDay ? '#fbbf24' : isSundaySelected ? 'rgba(255,255,255,0.3)' : "#a7f3d0", marginTop: 2 }}>
+                {isSundaySelected ? 'Disabled on Sundays' : isLeaveDay ? "You're on leave today" : isHolidayDay ? "Public holiday" : 'Distributor or Retailer visit'}
               </div>
             </div>
             <span style={{ marginLeft: "auto", fontSize: 22 }}>›</span>
@@ -1816,7 +1838,7 @@ export default function VisitLogger({ onBack }: Props) {
               onChange={(e) => setEndNote(e.target.value)}
               placeholder="Anything to note for today? (optional)"
               rows={3}
-              disabled={isSundaySelected}
+              disabled={isBlocked}
               style={{
                 width: "100%",
                 background: t.bg3,
@@ -1824,12 +1846,12 @@ export default function VisitLogger({ onBack }: Props) {
                 borderRadius: 10,
                 padding: "12px 14px",
                 fontSize: 14,
-                color: isSundaySelected ? t.text3 : t.text,
+                color: isBlocked ? t.text3 : t.text,
                 outline: "none",
                 resize: "none",
                 boxSizing: "border-box",
-                cursor: isSundaySelected ? 'not-allowed' : 'auto',
-                opacity: isSundaySelected ? 0.5 : 1,
+                cursor: isBlocked ? 'not-allowed' : 'auto',
+                opacity: isBlocked ? 0.5 : 1,
               }}
             />
           </div>

@@ -268,7 +268,14 @@ export default function AdminDashboard() {
   if (subScreen === "credits")
     return <CreditBook onBack={() => setSubScreen("dashboard")} />;
   if (subScreen === "expenses")
-    return <ExpenseLogger onBack={() => setSubScreen("dashboard")} />;
+    return <ExpenseLogger onBack={() => setSubScreen("dashboard")}
+      onViewVisitLog={(userName, date) => {
+        setSelectedUser(userName)
+        setDateMode("day")
+        setDateDay(date)
+        setMainTab("sales")
+        setSubScreen("dashboard")
+      }} />;
   if (subScreen === "leaves")
     return <LeaveTracker onBack={() => setSubScreen("dashboard")} />;
 
