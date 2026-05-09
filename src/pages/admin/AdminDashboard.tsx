@@ -6,6 +6,8 @@ import {
   addDoc,
   doc,
   updateDoc,
+  getDoc,
+  setDoc,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { usePostStatuses } from "../../hooks/useFirebase";
@@ -43,7 +45,13 @@ type SubScreen =
   | "expenses"
   | "allocations"
   | "products"
-  | "leaves";
+  | "leaves"
+  | "settings";
+
+function isValidUrl(url: string): boolean {
+  try { return ['http:', 'https:'].includes(new URL(url).protocol) }
+  catch { return false }
+}
 
 export default function AdminDashboard() {
   const { t, theme } = useTheme();
@@ -81,6 +89,9 @@ export default function AdminDashboard() {
   const [datePeriodFrom, setDatePeriodFrom] = useState(localDateStr());
   const [datePeriodTo, setDatePeriodTo] = useState(localDateStr());
   const [allCheckIns, setAllCheckIns] = useState<CheckIn[]>([]);
+  const [settingsMapperLink, setSettingsMapperLink] = useState('');
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsSaved, setSettingsSaved] = useState(false);
 
   useEffect(() => {
     const u0 = onSnapshot(collection(db, "parties"), (snap) => {
@@ -148,6 +159,13 @@ export default function AdminDashboard() {
     });
     return unsub;
   }, []);
+
+  useEffect(() => {
+    if (appUser?.role !== 'super_admin') return;
+    getDoc(doc(db, 'config', 'settings')).then(snap => {
+      if (snap.exists()) setSettingsMapperLink(snap.data().mapperLink || '');
+    }).catch(() => {});
+  }, [appUser?.role]);
 
   // Filter check-ins
   const filteredCheckIns = allCheckIns.filter((ci) => {
@@ -250,6 +268,81 @@ export default function AdminDashboard() {
       missed: wp.filter((p) => statuses[p.id] === "missed").length,
     };
   });
+
+  if (subScreen === "settings") return (
+    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
+      <div style={{ background: 'linear-gradient(135deg,#1a5c42,#0f3d2b)', padding: '24px 20px 20px' }}>
+        <button onClick={() => setSubScreen('dashboard')}
+          style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#6ee7b7', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 16 }}>
+          ← Back
+        </button>
+        <div style={{ color: '#6ee7b7', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Super Admin</div>
+        <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', marginBottom: 2 }}>Settings</div>
+        <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>App configuration & links</div>
+      </div>
+
+      <div style={{ padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* Mapper Link */}
+        <div style={{ background: t.card, borderRadius: 16, padding: 20, border: `1px solid ${t.border}` }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: t.text, marginBottom: 4 }}>🔗 Mapper Link</div>
+          <div style={{ fontSize: 12, color: t.text3, marginBottom: 14, lineHeight: 1.5 }}>
+            The mapper converts Zoho's export format into the format the importer expects. This link will appear as a clickable step in the Import screen.
+          </div>
+          <input
+            type="url"
+            value={settingsMapperLink}
+            onChange={e => { setSettingsMapperLink(e.target.value); setSettingsSaved(false); }}
+            placeholder="https://docs.google.com/spreadsheets/..."
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              background: 'rgba(255,255,255,0.06)',
+              border: `1.5px solid ${
+                settingsMapperLink && !isValidUrl(settingsMapperLink)
+                  ? '#dc2626'
+                  : t.border2
+              }`,
+              borderRadius: 12, padding: '13px 16px',
+              fontSize: 14, color: t.text, outline: 'none',
+            }}
+          />
+          {settingsMapperLink && !isValidUrl(settingsMapperLink) && (
+            <div style={{ fontSize: 12, color: '#dc2626', marginTop: 6 }}>
+              ⚠️ Enter a valid URL starting with https://
+            </div>
+          )}
+          {settingsMapperLink && isValidUrl(settingsMapperLink) && (
+            <a href={settingsMapperLink} target="_blank" rel="noopener noreferrer"
+              style={{ display: 'block', marginTop: 8, fontSize: 12, color: '#6ee7b7', wordBreak: 'break-all', textDecoration: 'underline' }}>
+              {settingsMapperLink}
+            </a>
+          )}
+          <button
+            onClick={async () => {
+              setSettingsSaving(true);
+              try {
+                await setDoc(doc(db, 'config', 'settings'), { mapperLink: settingsMapperLink.trim() }, { merge: true });
+                setSettingsSaved(true);
+              } finally {
+                setSettingsSaving(false);
+              }
+            }}
+            disabled={settingsSaving || (!!settingsMapperLink && !isValidUrl(settingsMapperLink))}
+            style={{
+              marginTop: 14, width: '100%',
+              background: settingsSaved ? 'rgba(22,163,74,0.15)' : 'linear-gradient(135deg,#1a5c42,#0f3d2b)',
+              color: settingsSaved ? '#6ee7b7' : '#fff',
+              border: settingsSaved ? '1px solid rgba(22,163,74,0.3)' : 'none',
+              borderRadius: 12, padding: '14px',
+              fontSize: 14, fontWeight: 800,
+              opacity: (settingsSaving || (!!settingsMapperLink && !isValidUrl(settingsMapperLink))) ? 0.5 : 1,
+            }}
+          >
+            {settingsSaving ? 'Saving...' : settingsSaved ? '✅ Saved' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   if (subScreen === "stock")
     return <StockManager onBack={() => setSubScreen("dashboard")} />;
@@ -394,6 +487,13 @@ export default function AdminDashboard() {
             ? String(onLeaveTodayCount)
             : undefined,
     },
+    ...(appUser?.role === 'super_admin' ? [{
+      emoji: "⚙️",
+      label: "Settings",
+      sub: "App config & links",
+      screen: "settings" as SubScreen,
+      color: "#475569",
+    }] : []),
   ];
 
   return (
@@ -460,6 +560,7 @@ export default function AdminDashboard() {
       >
         {/* ── WORKSPACE ── */}
         {mainTab === "workspace" && <WorkspaceDashboard />}
+
 
         {/* ── OVERVIEW ────────────────────────────────────────────────────── */}
         {mainTab === "overview" && (

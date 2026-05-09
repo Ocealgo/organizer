@@ -272,9 +272,9 @@ export default function PartyManager({ onBack }: Props) {
           {([
             { id: 'list', label: '📋 View All' },
             { id: 'add', label: editingId ? '✏️ Editing' : '➕ Add New' },
-            { id: 'import', label: '📥 Import CSV' },
+            ...(isAdmin ? [{ id: 'import', label: '📥 Import' }] : []),
             { id: 'allocations', label: '📦 Allocations' },
-          ] as const).map(t => (
+          ] as { id: 'list' | 'add' | 'import' | 'allocations'; label: string }[]).map(t => (
             <button key={t.id} onClick={() => { setTab(t.id); if (t.id !== 'add') { setEditingId(null); setForm(emptyForm) } }}
               style={{ background: tab === t.id ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.08)', color: tab === t.id ? '#fff' : 'rgba(255,255,255,0.6)', border: 'none', borderRadius: 20, padding: '7px 14px', fontSize: 11, fontWeight: 700 }}>
               {t.label}

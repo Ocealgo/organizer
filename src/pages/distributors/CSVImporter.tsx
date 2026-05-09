@@ -1,9 +1,9 @@
-import React, { useState, useRef } from 'react'
-import { collection, addDoc, getDocs } from 'firebase/firestore'
+import React, { useState, useRef, useEffect } from 'react'
+import * as XLSX from 'xlsx'
+import { collection, addDoc, getDocs, doc, getDoc } from 'firebase/firestore'
 import { db } from '../../firebase'
-import { Party, PartyType, PartyCategory } from '../../types'
+import { PartyType, PartyCategory } from '../../types'
 import { useAuth } from '../../context/AuthContext'
-import { useStockConfig, toDisplay } from '../../hooks/useFirebase'
 
 interface Props { onBack: () => void; onDone: (count: number) => void }
 
@@ -11,88 +11,97 @@ interface ParsedRow {
   name: string
   phone: string
   email: string
+  address: string
   place: string
+  district: string
+  state: string
+  pincode: string
   receivables: number
   skip: boolean
-  // Admin fills these
   type: PartyType
   category: PartyCategory
-  pricePerPacket: string
-  address: string
-  packetsAllocated: string
+  underDistributorId: string
+  underDistributorName: string
 }
 
 const CATEGORIES: PartyCategory[] = ['FMCG', 'Pharma', 'General Store', 'Supermarket', 'Online', 'Other']
 
-const SKIP_KEYWORDS = ['amazon', 'flipkart', 'meesho', 'online', 'ecommerce', 'e-commerce']
-const INDIVIDUAL_PATTERN = /^[a-z][a-z]+ [a-z]+$/i // first last name pattern
+function normalizeHeader(h: string): string {
+  return h.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
 
-// Clean Zoho phone format: '+91-9876543210 → 9876543210
+function findByHeader(row: Record<string, string>, ...patterns: string[]): string {
+  const normPatterns = patterns.map(normalizeHeader)
+  for (const [key, val] of Object.entries(row)) {
+    const normKey = normalizeHeader(key)
+    if (normPatterns.some(p => normKey === p || normKey.startsWith(p))) {
+      return String(val ?? '').trim()
+    }
+  }
+  return ''
+}
+
 function cleanPhone(raw: string): string {
   if (!raw) return ''
   return raw.replace(/['+\-\s]/g, '').replace(/^91/, '').slice(-10)
 }
 
-// Parse amount: ₹1,380.00 → 1380
 function parseAmount(raw: string): number {
   return parseFloat(raw.replace(/[₹,\s"]/g, '')) || 0
 }
 
-// Should skip this row?
-function shouldSkip(name: string, receivables: number): boolean {
-  const lower = name.toLowerCase()
-  if (SKIP_KEYWORDS.some(k => lower.includes(k))) return true
-  if (INDIVIDUAL_PATTERN.test(name.trim()) && receivables === 0) return true
-  return false
+function parseTypeValue(val: string): PartyType {
+  return val.toLowerCase().includes('distributor') ? 'distributor' : 'retailer'
 }
 
-// Parse Zoho Contacts CSV
-function parseZohoCSV(text: string): ParsedRow[] {
-  const lines = text.trim().split('\n')
-  if (lines.length < 2) return []
-
-  const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''))
-  const rows: ParsedRow[] = []
-
-  for (let i = 1; i < lines.length; i++) {
-    // Handle quoted commas
-    const cols: string[] = []
-    let current = ''
-    let inQuotes = false
-    for (const ch of lines[i]) {
-      if (ch === '"') { inQuotes = !inQuotes }
-      else if (ch === ',' && !inQuotes) { cols.push(current); current = '' }
-      else { current += ch }
-    }
-    cols.push(current)
-
-    const get = (idx: number) => (cols[idx] || '').trim().replace(/^["']|["']$/g, '')
-
-    const name = get(1) || get(2) // Name or Company Name
-    if (!name) continue
-
-    const receivables = parseAmount(get(6))
-    const skip = shouldSkip(name, receivables)
-
-    rows.push({
-      name,
-      phone: cleanPhone(get(4)),
-      email: get(3),
-      place: get(0) || 'Kerala', // CONTACT_ID column has state
-      receivables,
-      skip,
-      type: 'distributor',
-      category: 'FMCG',
-      pricePerPacket: '',
-      address: '',
-      packetsAllocated: '',
-    })
+function parseCategoryValue(val: string): PartyCategory {
+  const v = val.toLowerCase()
+  if (v.includes('pharma')) return 'Pharma'
+  if (v.includes('general')) return 'General Store'
+  if (v.includes('super')) return 'Supermarket'
+  if (v.includes('online')) return 'Online'
+  if (v.includes('fmcg')) return 'FMCG'
+  for (const cat of CATEGORIES) {
+    if (v === cat.toLowerCase()) return cat
   }
-
-  return rows
+  return 'Other'
 }
 
-// ── FIELD COMPONENT (outside to prevent focus loss) ───────────────────────────
+function parseImportFile(arrayBuffer: ArrayBuffer): ParsedRow[] {
+  const wb = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array', cellText: true, raw: false })
+  const ws = wb.Sheets[wb.SheetNames[0]]
+  const data = XLSX.utils.sheet_to_json<Record<string, string>>(ws, { defval: '' })
+  if (data.length === 0) return []
+
+  return data
+    .map(row => {
+      const name = findByHeader(row, 'name', 'customername', 'companyname', 'businessname')
+      if (!name) return null
+
+      const typeStr = findByHeader(row, 'type', 'partytype')
+      const catStr = findByHeader(row, 'category', 'businesstype')
+      const receivablesStr = findByHeader(row, 'outstandingreceivables', 'receivables', 'outstandingbalance', 'outstanding')
+
+      return {
+        name,
+        phone: cleanPhone(findByHeader(row, 'phone', 'mobile', 'mobileno', 'phonenumber')),
+        email: findByHeader(row, 'email', 'emailaddress', 'emailid'),
+        address: findByHeader(row, 'address', 'billingaddress', 'streetaddress', 'fulladdress'),
+        place: findByHeader(row, 'placearea', 'place', 'area', 'city', 'location', 'town'),
+        district: findByHeader(row, 'district'),
+        state: findByHeader(row, 'state', 'stateprovince'),
+        pincode: findByHeader(row, 'pincode', 'zip', 'postalcode', 'pin', 'zipcode'),
+        receivables: parseAmount(receivablesStr),
+        skip: false,
+        type: typeStr ? parseTypeValue(typeStr) : 'retailer',
+        category: catStr ? parseCategoryValue(catStr) : 'FMCG',
+        underDistributorId: '',
+        underDistributorName: '',
+      } as ParsedRow
+    })
+    .filter(Boolean) as ParsedRow[]
+}
+
 function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return (
     <div>
@@ -114,46 +123,69 @@ function inputStyle(small?: boolean): React.CSSProperties {
 
 export default function CSVImporter({ onBack, onDone }: Props) {
   const { appUser } = useAuth()
-  const { config } = useStockConfig()
   const fileRef = useRef<HTMLInputElement>(null)
   const [rows, setRows] = useState<ParsedRow[]>([])
-  const [step, setStep] = useState<'upload' | 'review' | 'importing' | 'done'>('upload')
+  const [step, setStep] = useState<'upload' | 'review' | 'done'>('upload')
   const [currentIdx, setCurrentIdx] = useState(0)
   const [importCount, setImportCount] = useState(0)
   const [error, setError] = useState('')
-  const [existingNames, setExistingNames] = useState<Set<string>>(new Set())
+  const [, setExistingNames] = useState<Set<string>>(new Set())
+  const [distributors, setDistributors] = useState<{ id: string; name: string }[]>([])
+  const [mapperLink, setMapperLink] = useState('')
+  const [importing, setImporting] = useState(false)
+
+  useEffect(() => {
+    getDoc(doc(db, 'config', 'settings'))
+      .then(snap => { if (snap.exists()) setMapperLink(snap.data().mapperLink || '') })
+      .catch(() => {})
+  }, [])
 
   const activeRows = rows.filter(r => !r.skip)
   const currentRow = activeRows[currentIdx]
+  const skippedCount = rows.filter(r => r.skip).length
 
   const handleFile = async (file: File) => {
     setError('')
-    if (!file.name.endsWith('.csv')) { setError('Please upload a .csv file'); return }
-    const text = await file.text()
-    const parsed = parseZohoCSV(text)
-    if (parsed.length === 0) { setError('No valid data found in CSV'); return }
+    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls')
+    const isCSV = file.name.endsWith('.csv')
+    if (!isExcel && !isCSV) {
+      setError('Please upload a .csv, .xlsx, or .xls file')
+      return
+    }
+    try {
+      const arrayBuffer = await file.arrayBuffer()
+      const parsed = parseImportFile(arrayBuffer)
+      if (parsed.length === 0) {
+        setError('No valid data found. Make sure the file has the correct column headers (Name, Phone, Address, etc.)')
+        return
+      }
 
-    // Load existing party names for duplicate check
-    const snap = await getDocs(collection(db, 'parties'))
-    const names = new Set(snap.docs.map(d => (d.data().name as string).toLowerCase()))
-    setExistingNames(names)
+      const snap = await getDocs(collection(db, 'parties'))
+      const names = new Set(snap.docs.map(d => (d.data().name as string).toLowerCase().trim()))
+      setExistingNames(names)
+      setDistributors(
+        snap.docs
+          .filter(d => d.data().type === 'distributor')
+          .map(d => ({ id: d.id, name: d.data().name as string }))
+          .sort((a, b) => a.name.localeCompare(b.name))
+      )
 
-    // Mark duplicates as skip
-    const withDupes = parsed.map(r => ({
-      ...r,
-      skip: r.skip || names.has(r.name.toLowerCase()),
-    }))
+      const withDupes = parsed.map(r => ({
+        ...r,
+        skip: names.has(r.name.toLowerCase().trim()),
+      }))
 
-    setRows(withDupes)
-    setCurrentIdx(0)
-    setStep('review')
+      setRows(withDupes)
+      setCurrentIdx(0)
+      setStep('review')
+    } catch {
+      setError('Failed to parse file. Please check the format and try again.')
+    }
   }
 
-  const updateRow = (field: keyof ParsedRow, value: string | boolean) => {
+  const updateRow = (field: keyof ParsedRow, value: string | boolean | number | PartyType | PartyCategory) => {
     setRows(prev => {
       const updated = [...prev]
-      const activeIdx = prev.findIndex((r, i) => !r.skip && activeRows.indexOf(r) === currentIdx)
-      // Find the actual index in rows array
       let count = -1
       for (let i = 0; i < prev.length; i++) {
         if (!prev[i].skip) count++
@@ -167,31 +199,37 @@ export default function CSVImporter({ onBack, onDone }: Props) {
   }
 
   const handleNext = async () => {
-    if (!currentRow.pricePerPacket || !currentRow.address) {
-      setError('Please fill price per packet and address')
-      return
-    }
+    if (!currentRow.name.trim()) { setError('Name is required'); return }
     setError('')
-
-    // Save this entry
-    const packets = parseInt(currentRow.packetsAllocated) || 0
-    await addDoc(collection(db, 'parties'), {
-      name: currentRow.name,
-      type: currentRow.type,
-      category: currentRow.category,
-      phone: currentRow.phone,
-      email: currentRow.email || '',
-      address: currentRow.address,
-      place: currentRow.place,
-      pricePerPacket: parseFloat(currentRow.pricePerPacket),
-      packetsAllocated: packets,
-      cartonsAllocated: Math.floor(packets / config.packetsPerCarton),
-      lowStockThreshold: 0,
-      addedBy: appUser!.uid,
-      addedByName: appUser!.name,
-      createdAt: Date.now(),
-    })
-    setImportCount(c => c + 1)
+    setImporting(true)
+    try {
+      await addDoc(collection(db, 'parties'), {
+        name: currentRow.name.trim(),
+        type: currentRow.type,
+        category: currentRow.category,
+        phone: currentRow.phone,
+        email: currentRow.email || '',
+        address: currentRow.address,
+        place: currentRow.place,
+        district: currentRow.district || '',
+        state: currentRow.state || '',
+        pincode: currentRow.pincode || '',
+        pricePerPacket: 0,
+        packetsAllocated: 0,
+        cartonsAllocated: 0,
+        lowStockThreshold: 0,
+        ...(currentRow.underDistributorId
+          ? { underDistributorId: currentRow.underDistributorId, underDistributorName: currentRow.underDistributorName }
+          : {}),
+        status: 'prospect',
+        addedBy: appUser!.uid,
+        addedByName: appUser!.name,
+        createdAt: Date.now(),
+      })
+      setImportCount(c => c + 1)
+    } finally {
+      setImporting(false)
+    }
 
     if (currentIdx < activeRows.length - 1) {
       setCurrentIdx(i => i + 1)
@@ -215,40 +253,57 @@ export default function CSVImporter({ onBack, onDone }: Props) {
       <div style={{ background: 'linear-gradient(135deg,#0891b2,#0e7490)', padding: '24px 20px 20px' }}>
         <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#bae6fd', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 16 }}>← Back</button>
         <div style={{ color: '#bae6fd', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Import 📥</div>
-        <div style={{ fontSize: 22, fontWeight: 900 }}>CSV Import</div>
-        <div style={{ color: '#e0f2fe', fontSize: 13, marginTop: 4 }}>Import distributors & retailers from Zoho</div>
+        <div style={{ fontSize: 22, fontWeight: 900 }}>Import from Excel / CSV</div>
+        <div style={{ color: '#e0f2fe', fontSize: 13, marginTop: 4 }}>Import distributors & retailers from Zoho via mapper</div>
       </div>
 
       <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* How to export from Zoho */}
-        <div style={{ background: '#161b22', borderRadius: 14, padding: 16, border: '1px solid rgba(255,255,255,0.06)' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 10 }}>📋 How to export from Zoho</div>
-          {[
-            'Go to Zoho Books → Contacts',
-            'Click "Export" → Select CSV format',
-            'Download the Contacts.csv file',
-            'Upload it below',
-          ].map((step, i) => (
-            <div key={i} style={{ display: 'flex', gap: 10, marginBottom: 8, alignItems: 'flex-start' }}>
-              <div style={{ width: 20, height: 20, background: 'rgba(8,145,178,0.2)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: '#0891b2', flexShrink: 0 }}>{i + 1}</div>
-              <div style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.5 }}>{step}</div>
+        {/* 3-step guide */}
+        <div style={{ background: '#161b22', borderRadius: 14, border: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+          {/* Step 1 */}
+          <div style={{ padding: '14px 16px', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+            <div style={{ width: 28, height: 28, background: 'rgba(8,145,178,0.15)', border: '1.5px solid rgba(8,145,178,0.3)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 900, color: '#0891b2', flexShrink: 0, marginTop: 1 }}>1</div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', marginBottom: 3 }}>📤 Export from Zoho</div>
+              <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
+                Go to <span style={{ color: '#94a3b8' }}>Zoho Books → Sales → Customers</span>, click <span style={{ color: '#94a3b8' }}>Export</span> and download the CSV file.
+              </div>
             </div>
-          ))}
-        </div>
+          </div>
 
-        {/* What gets auto-filled */}
-        <div style={{ background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.15)', borderRadius: 12, padding: 14 }}>
-          <div style={{ fontSize: 12, color: '#16a34a', fontWeight: 700, marginBottom: 8 }}>✅ Auto-filled from CSV</div>
-          {['Name', 'Phone (if available)', 'Email (if available)', 'State / Region'].map(f => (
-            <div key={f} style={{ fontSize: 12, color: '#86efac', padding: '2px 0' }}>• {f}</div>
-          ))}
-        </div>
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.04)', marginLeft: 58 }} />
 
-        <div style={{ background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.15)', borderRadius: 12, padding: 14 }}>
-          <div style={{ fontSize: 12, color: '#d97706', fontWeight: 700, marginBottom: 8 }}>📝 You fill per entry</div>
-          {['Type (Distributor/Retailer)', 'Category', 'Price per packet', 'Full address'].map(f => (
-            <div key={f} style={{ fontSize: 12, color: '#fde68a', padding: '2px 0' }}>• {f}</div>
-          ))}
+          {/* Step 2 */}
+          <div style={{ padding: '14px 16px', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+            <div style={{ width: 28, height: 28, background: 'rgba(124,58,237,0.15)', border: '1.5px solid rgba(124,58,237,0.3)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 900, color: '#a78bfa', flexShrink: 0, marginTop: 1 }}>2</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', marginBottom: 3 }}>🔀 Remap columns in mapper</div>
+              <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6, marginBottom: mapperLink ? 10 : 0 }}>
+                Paste the CSV into the mapper, match the columns to our format, then download the result.
+              </div>
+              {mapperLink ? (
+                <a href={mapperLink} target="_blank" rel="noopener noreferrer"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(124,58,237,0.3)', borderRadius: 8, padding: '6px 12px', fontSize: 12, color: '#a78bfa', fontWeight: 700, textDecoration: 'none' }}>
+                  Open Mapper →
+                </a>
+              ) : (
+                <div style={{ fontSize: 11, color: '#475569', fontStyle: 'italic' }}>Mapper link not set — ask your admin to add it in Settings.</div>
+              )}
+            </div>
+          </div>
+
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.04)', marginLeft: 58 }} />
+
+          {/* Step 3 */}
+          <div style={{ padding: '14px 16px', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+            <div style={{ width: 28, height: 28, background: 'rgba(22,163,74,0.15)', border: '1.5px solid rgba(22,163,74,0.3)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 900, color: '#16a34a', flexShrink: 0, marginTop: 1 }}>3</div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', marginBottom: 3 }}>📁 Upload the file below</div>
+              <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
+                All fields are pre-filled from the file and editable. Review each entry before confirming.
+              </div>
+            </div>
+          </div>
         </div>
 
         {error && (
@@ -257,13 +312,12 @@ export default function CSVImporter({ onBack, onDone }: Props) {
           </div>
         )}
 
-        {/* Upload button */}
-        <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }}
+        <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }}
           onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
 
         <button onClick={() => fileRef.current?.click()}
           style={{ background: 'linear-gradient(135deg,#0891b2,#0e7490)', color: '#fff', border: 'none', borderRadius: 14, padding: '18px', fontSize: 15, fontWeight: 800, boxShadow: '0 8px 24px rgba(8,145,178,0.3)' }}>
-          📁 Select CSV File
+          📁 Select CSV or Excel File
         </button>
       </div>
     </div>
@@ -283,11 +337,11 @@ export default function CSVImporter({ onBack, onDone }: Props) {
           <span style={{ fontSize: 13, color: '#16a34a', fontWeight: 700 }}>{importCount}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-          <span style={{ fontSize: 13, color: '#64748b' }}>Skipped</span>
-          <span style={{ fontSize: 13, color: '#64748b', fontWeight: 700 }}>{rows.length - importCount}</span>
+          <span style={{ fontSize: 13, color: '#64748b' }}>Skipped (duplicates)</span>
+          <span style={{ fontSize: 13, color: '#64748b', fontWeight: 700 }}>{skippedCount}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 13, color: '#64748b' }}>Total in CSV</span>
+          <span style={{ fontSize: 13, color: '#64748b' }}>Total in file</span>
           <span style={{ fontSize: 13, color: '#fff', fontWeight: 700 }}>{rows.length}</span>
         </div>
       </div>
@@ -298,15 +352,13 @@ export default function CSVImporter({ onBack, onDone }: Props) {
     </div>
   )
 
-  // ── REVIEW STEP — one entry at a time ────────────────────────────────────
+  // ── REVIEW STEP ───────────────────────────────────────────────────────────
   if (!currentRow) return null
 
-  const isDuplicate = existingNames.has(currentRow.name.toLowerCase())
   const progress = Math.round(((currentIdx + 1) / activeRows.length) * 100)
 
   return (
     <div style={{ minHeight: '100vh', background: '#0d1117', paddingBottom: 40 }}>
-      {/* Header */}
       <div style={{ background: 'linear-gradient(135deg,#0891b2,#0e7490)', padding: '20px 20px 16px' }}>
         <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#bae6fd', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 12 }}>← Cancel</button>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -316,44 +368,16 @@ export default function CSVImporter({ onBack, onDone }: Props) {
         <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 99, height: 6, overflow: 'hidden' }}>
           <div style={{ width: `${progress}%`, height: '100%', background: '#fff', borderRadius: 99, transition: 'width 0.3s' }} />
         </div>
-
-        {/* Skipped summary */}
-        {rows.filter(r => r.skip).length > 0 && (
+        {skippedCount > 0 && (
           <div style={{ marginTop: 8, fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>
-            {rows.filter(r => r.skip).length} entries auto-skipped (duplicates / non-business)
+            {skippedCount} duplicate {skippedCount === 1 ? 'entry' : 'entries'} auto-skipped
           </div>
         )}
       </div>
 
       <div style={{ padding: '16px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-        {/* Auto-filled info */}
-        <div style={{ background: '#161b22', borderRadius: 14, padding: 14, border: '1px solid rgba(8,145,178,0.25)' }}>
-          <div style={{ fontSize: 11, color: '#0891b2', fontWeight: 700, marginBottom: 10, letterSpacing: 1 }}>FROM ZOHO CSV</div>
-          <div style={{ fontSize: 18, fontWeight: 900, color: '#fff', marginBottom: 6 }}>{currentRow.name}</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {currentRow.phone && (
-              <span style={{ fontSize: 11, background: 'rgba(22,163,74,0.15)', color: '#16a34a', padding: '3px 10px', borderRadius: 99 }}>📞 {currentRow.phone}</span>
-            )}
-            {currentRow.email && (
-              <span style={{ fontSize: 11, background: 'rgba(8,145,178,0.15)', color: '#0891b2', padding: '3px 10px', borderRadius: 99 }}>✉️ {currentRow.email}</span>
-            )}
-            {currentRow.place && (
-              <span style={{ fontSize: 11, background: 'rgba(255,255,255,0.06)', color: '#94a3b8', padding: '3px 10px', borderRadius: 99 }}>📍 {currentRow.place}</span>
-            )}
-            {currentRow.receivables > 0 && (
-              <span style={{ fontSize: 11, background: 'rgba(217,119,6,0.15)', color: '#d97706', padding: '3px 10px', borderRadius: 99 }}>₹{currentRow.receivables.toLocaleString()} receivable</span>
-            )}
-          </div>
-        </div>
-
-        {isDuplicate && (
-          <div style={{ background: 'rgba(217,119,6,0.1)', border: '1px solid rgba(217,119,6,0.25)', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#fde68a' }}>
-            ⚠️ This name already exists in your network — it will be skipped on import
-          </div>
-        )}
-
-        {/* Type selector */}
+        {/* Type toggle */}
         <div>
           <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8, letterSpacing: 1, textTransform: 'uppercase' }}>Type</div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -365,6 +389,63 @@ export default function CSVImporter({ onBack, onDone }: Props) {
             ))}
           </div>
         </div>
+
+        {/* Parent distributor — retailers only */}
+        {currentRow.type === 'retailer' && (
+          <div style={{
+            background: 'rgba(255,255,255,0.02)',
+            border: '1.5px solid rgba(255,255,255,0.08)',
+            borderRadius: 12, padding: 14,
+          }}>
+            <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>
+              Parent Distributor <span style={{ color: '#334155', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+            </div>
+            <div style={{ fontSize: 11, color: '#475569', marginBottom: 10 }}>
+              Link this retailer to a distributor to enable distribution tracking. Unlinked = independent retailer.
+            </div>
+            <select
+              value={currentRow.underDistributorId}
+              onChange={e => {
+                const id = e.target.value
+                const name = distributors.find(d => d.id === id)?.name || ''
+                updateRow('underDistributorId', id)
+                updateRow('underDistributorName', name)
+              }}
+              style={{
+                width: '100%', background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 8, padding: '10px 12px',
+                fontSize: 13, color: currentRow.underDistributorId ? '#fff' : '#64748b',
+                outline: 'none', boxSizing: 'border-box',
+              }}
+            >
+              <option value="" style={{ background: '#1e2530', color: '#94a3b8' }}>Independent retailer</option>
+              {distributors.map(d => (
+                <option key={d.id} value={d.id} style={{ background: '#1e2530', color: '#fff' }}>
+                  🚚 {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <Field label="Name *">
+          <input type="text" value={currentRow.name}
+            onChange={e => updateRow('name', e.target.value)}
+            placeholder="Business name" style={inputStyle()} />
+        </Field>
+
+        <Field label="Phone">
+          <input type="tel" value={currentRow.phone}
+            onChange={e => updateRow('phone', e.target.value.replace(/\D/g, '').slice(0, 10))}
+            placeholder="10-digit mobile number" style={inputStyle()} />
+        </Field>
+
+        <Field label="Email">
+          <input type="email" value={currentRow.email}
+            onChange={e => updateRow('email', e.target.value)}
+            placeholder="email@example.com (optional)" style={inputStyle()} />
+        </Field>
 
         {/* Category */}
         <div>
@@ -379,38 +460,42 @@ export default function CSVImporter({ onBack, onDone }: Props) {
           </div>
         </div>
 
-        {/* Full address */}
-        <Field label="Full Address *">
-          <input type="text"
-            value={currentRow.address}
+        <Field label="Address">
+          <input type="text" value={currentRow.address}
             onChange={e => updateRow('address', e.target.value)}
-            placeholder="e.g. 12/A MG Road, Ernakulam"
-            style={inputStyle()} />
+            placeholder="e.g. 12/A MG Road, Ernakulam" style={inputStyle()} />
         </Field>
 
-        {/* Price */}
-        <Field label="Selling Price Per Single Packet (₹) *" hint="Price you charge them — not your cost price">
-          <input type="number"
-            value={currentRow.pricePerPacket}
-            onChange={e => updateRow('pricePerPacket', e.target.value)}
-            placeholder="e.g. 45"
-            style={inputStyle()} />
+        <Field label="Place / Area">
+          <input type="text" value={currentRow.place}
+            onChange={e => updateRow('place', e.target.value)}
+            placeholder="e.g. Ernakulam" style={inputStyle()} />
         </Field>
 
-        {/* Packets */}
-        <Field label="Packets to Allocate (optional)">
-          <input type="number"
-            value={currentRow.packetsAllocated}
-            onChange={e => updateRow('packetsAllocated', e.target.value)}
-            placeholder="Leave empty to set later"
-            style={inputStyle()} />
-          {currentRow.packetsAllocated && currentRow.pricePerPacket && (
-            <div style={{ marginTop: 6, fontSize: 12, color: '#6ee7b7', fontWeight: 600 }}>
-              = {toDisplay(parseInt(currentRow.packetsAllocated), config.packetsPerCarton)}
-              {' '}• ₹{(parseInt(currentRow.packetsAllocated) * parseFloat(currentRow.pricePerPacket)).toLocaleString()}
-            </div>
-          )}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <Field label="District">
+            <input type="text" value={currentRow.district}
+              onChange={e => updateRow('district', e.target.value)}
+              placeholder="District" style={inputStyle(true)} />
+          </Field>
+          <Field label="State">
+            <input type="text" value={currentRow.state}
+              onChange={e => updateRow('state', e.target.value)}
+              placeholder="State" style={inputStyle(true)} />
+          </Field>
+        </div>
+
+        <Field label="Pincode">
+          <input type="text" value={currentRow.pincode}
+            onChange={e => updateRow('pincode', e.target.value.replace(/\D/g, '').slice(0, 6))}
+            placeholder="6-digit pincode" style={inputStyle()} />
         </Field>
+
+        {currentRow.receivables > 0 && (
+          <div style={{ background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#fde68a' }}>
+            📊 Outstanding receivable from Zoho: ₹{currentRow.receivables.toLocaleString()}
+          </div>
+        )}
 
         {error && (
           <div style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.3)', borderRadius: 10, padding: '10px 14px', color: '#fca5a5', fontSize: 13 }}>
@@ -418,26 +503,23 @@ export default function CSVImporter({ onBack, onDone }: Props) {
           </div>
         )}
 
-        {/* Actions */}
         <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
           <button onClick={handleSkipCurrent}
             style={{ flex: 1, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#64748b', borderRadius: 12, padding: '14px', fontSize: 14, fontWeight: 700 }}>
             Skip →
           </button>
-          <button onClick={handleNext} disabled={isDuplicate}
-            style={{ flex: 2, background: isDuplicate ? '#334155' : 'linear-gradient(135deg,#0891b2,#0e7490)', color: isDuplicate ? '#64748b' : '#fff', border: 'none', borderRadius: 12, padding: '14px', fontSize: 14, fontWeight: 800, opacity: isDuplicate ? 0.6 : 1 }}>
-            {isDuplicate ? 'Will be skipped' : currentIdx === activeRows.length - 1 ? 'Import & Finish ✅' : 'Import & Next →'}
+          <button onClick={handleNext} disabled={importing}
+            style={{ flex: 2, background: importing ? '#334155' : 'linear-gradient(135deg,#0891b2,#0e7490)', color: '#fff', border: 'none', borderRadius: 12, padding: '14px', fontSize: 14, fontWeight: 800, opacity: importing ? 0.7 : 1 }}>
+            {importing ? 'Saving...' : currentIdx === activeRows.length - 1 ? 'Import & Finish ✅' : 'Import & Next →'}
           </button>
         </div>
 
-        {/* Upcoming entries preview */}
         {activeRows.length > currentIdx + 1 && (
           <div style={{ background: '#161b22', borderRadius: 12, padding: 12, border: '1px solid rgba(255,255,255,0.04)' }}>
             <div style={{ fontSize: 11, color: '#475569', marginBottom: 8 }}>NEXT UP</div>
             {activeRows.slice(currentIdx + 1, currentIdx + 4).map((r, i) => (
-              <div key={i} style={{ fontSize: 12, color: '#64748b', padding: '3px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div key={i} style={{ fontSize: 12, color: '#64748b', padding: '3px 0' }}>
                 <span style={{ color: '#334155' }}>{currentIdx + 2 + i}.</span> {r.name}
-                {existingNames.has(r.name.toLowerCase()) && <span style={{ fontSize: 10, color: '#d97706' }}>duplicate</span>}
               </div>
             ))}
           </div>
