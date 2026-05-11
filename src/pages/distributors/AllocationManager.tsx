@@ -10,7 +10,7 @@ import DateInput from '../../components/DateInput'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr, localMonthStr, localDateOffset } from '../../utils/date'
 
-interface Props { onBack: () => void; parties: Party[]; isAdmin?: boolean }
+interface Props { onBack: () => void; parties: Party[]; isAdmin?: boolean; highlightId?: string; salesRepOnly?: boolean }
 
 const STATUS_STYLE: Record<AllocationStatus, { color: string; bg: string; emoji: string; label: string }> = {
   pending:   { color: '#d97706', bg: 'rgba(217,119,6,0.12)',   emoji: '🟡', label: 'Pending' },
@@ -41,7 +41,7 @@ function inputStyle(hasError?: boolean, dark = true): React.CSSProperties {
   }
 }
 
-export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
+export default function AllocationManager({ onBack, parties, isAdmin, highlightId, salesRepOnly }: Props) {
   const { appUser } = useAuth()
   const { t, theme } = useTheme()
   const isDark = theme === 'dark'
@@ -51,6 +51,17 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
   const [stockMovements, setStockMovements] = useState<any[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [indents, setIndents] = useState<RetailerIndent[]>([])
+
+  useEffect(() => {
+    if (!highlightId || allocations.length === 0) return
+    const base = salesRepOnly ? allocations.filter(a => a.createdBy === appUser?.uid) : allocations
+    const idx = base.findIndex(a => a.id === highlightId)
+    if (idx >= 0) setAllocPage(Math.floor(idx / ALLOC_PAGE_SIZE))
+    setTimeout(() => {
+      const el = document.getElementById(`alloc-${highlightId}`)
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 300)
+  }, [highlightId, allocations, salesRepOnly, appUser])
   const [tab, setTab] = useState<'list' | 'add' | 'network'>('list')
   const [saving, setSaving] = useState(false)
   const [acting, setActing] = useState<string | null>(null)
@@ -65,10 +76,17 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
   const [filterPayment, setFilterPayment] = useState<'all' | PaymentType>('all')
   const [filterParty, setFilterParty] = useState<string>('all')
   const [filterDistributor, setFilterDistributor] = useState<string>('all')
+  const [allocPage, setAllocPage] = useState(0)
+  const ALLOC_PAGE_SIZE = 5
+  useEffect(() => { setAllocPage(0) }, [filterSource, filterStatus, filterPayment, filterParty, filterDistributor])
   // Network tab party status filter
   const [networkStatusFilter, setNetworkStatusFilter] = useState<'all' | 'active' | 'prospect' | 'inactive'>('all')
   const [networkPartyFilter, setNetworkPartyFilter] = useState<string>('')
+  const [expandedRetailAllocs, setExpandedRetailAllocs] = useState<Set<string>>(new Set())
   const [historyPartyId, setHistoryPartyId] = useState<string | null>(null)
+
+  // Allocation edit state
+  const [allocEdit, setAllocEdit] = useState<{ id: string; packets: string; pricePerPacket: string; paymentType: PaymentType; plannedDate: string; creditDueDate: string } | null>(null)
 
   // Indent send state
   const [indentSendQty, setIndentSendQty] = useState<Record<string, string>>({})
@@ -259,6 +277,27 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
     } finally { setSendingIndent(null) }
   }
 
+  const saveAllocEdit = async () => {
+    if (!allocEdit || !appUser) return
+    const a = allocations.find(al => al.id === allocEdit.id)
+    if (!a) return
+    setSaving(true)
+    try {
+      const packets = parseInt(allocEdit.packets) || 0
+      const cartons = Math.floor(packets / config.packetsPerCarton)
+      const price = parseFloat(allocEdit.pricePerPacket) || 0
+      const totalAmount = packets * price
+      await updateDoc(doc(db, 'allocations_v2', allocEdit.id), {
+        packets, cartons, pricePerPacket: price, totalAmount,
+        paymentType: allocEdit.paymentType,
+        plannedDate: allocEdit.plannedDate,
+        ...(allocEdit.paymentType === 'credit' ? { creditDueDate: allocEdit.creditDueDate } : {}),
+        updatedAt: Date.now(), updatedBy: appUser.uid, updatedByName: appUser.name,
+      })
+      setAllocEdit(null)
+    } finally { setSaving(false) }
+  }
+
   const handleCancelAllocation = async (a: UnifiedAllocation) => {
     const isCompany = a.fromType === 'company' || !(a as any).fromType
     const detail = isCompany
@@ -384,6 +423,7 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
 
   // Filter allocations
   const filtered = allocations.filter(a => {
+    if (salesRepOnly && a.createdBy !== appUser?.uid) return false
     if (filterSource === 'company' && a.fromType === 'distributor') return false
     if (filterSource === 'distributor' && a.fromType !== 'distributor') return false
     if (filterStatus !== 'all' && a.status !== filterStatus) return false
@@ -731,13 +771,14 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                   <div style={{ fontSize: 13, marginTop: 6 }}>Tap "New Allocation" to create one</div>
                 </div>
               )
-            ) : filtered.map(a => {
+            ) : filtered.slice(allocPage * ALLOC_PAGE_SIZE, (allocPage + 1) * ALLOC_PAGE_SIZE).map(a => {
               const ss = STATUS_STYLE[a.status]
               const isOverdue = a.status === 'overdue'
               const isSentCredit = a.status === 'sent' && a.paymentType === 'credit'
               const daysUntil = Math.ceil((new Date(a.plannedDate).getTime() - Date.now()) / 86400000)
+              const isHighlighted = a.id === highlightId
               return (
-                <div key={a.id} style={{ background: t.card, borderRadius: 16, padding: 16, border: `1.5px solid ${isOverdue ? '#dc262644' : ss.color + '33'}` }}>
+                <div key={a.id} id={`alloc-${a.id}`} style={{ background: isHighlighted ? (isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.06)') : t.card, borderRadius: 16, padding: 16, border: `1.5px solid ${isHighlighted ? '#6366f1' : isOverdue ? '#dc262644' : ss.color + '33'}`, transition: 'border-color 0.3s' }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
                     <div style={{ fontSize: 20, flexShrink: 0 }}>{a.partyType === 'distributor' ? '🚚' : '🏪'}</div>
                     <div style={{ flex: 1 }}>
@@ -779,47 +820,119 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                     </div>
                   )}
                   {a.notes && <div style={{ fontSize: 11, color: '#475569', marginBottom: 10 }}>📝 {a.notes}</div>}
-                  {isAdmin && (
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      {(a.status === 'pending' || a.status === 'overdue') && (
-                        <>
-                          <button onClick={() => { setDispatchDateAlloc(a); setDispatchDate(localDateStr()) }} disabled={acting === a.id}
-                            style={{ flex: 1, background: a.fromType === 'distributor' ? 'linear-gradient(135deg,#0e4f7a,#0891b2)' : 'linear-gradient(135deg,#1a5c42,#16a34a)', color: '#fff', border: 'none', borderRadius: 10, padding: '10px', fontSize: 12, fontWeight: 800, opacity: acting === a.id ? 0.5 : 1 }}>
-                            {acting === a.id ? 'Processing...' : a.fromType === 'distributor' ? '✅ Confirm Sent' : '📦 Dispatch'}
-                          </button>
-                          <button onClick={() => handleCancelAllocation(a)} disabled={acting === a.id}
-                            style={{ background: 'rgba(220,38,38,0.1)', color: '#dc2626', border: '1px solid rgba(220,38,38,0.25)', borderRadius: 10, padding: '10px 14px', fontSize: 12, fontWeight: 700, opacity: acting === a.id ? 0.5 : 1 }}>
-                            🚫 Cancel
-                          </button>
-                        </>
-                      )}
-                      {a.fromType !== 'distributor' && isSentCredit && (
-                        <button onClick={() => handleMarkPaid(a)} disabled={acting === a.id}
-                          style={{ flex: 1, background: 'rgba(22,163,74,0.15)', color: '#16a34a', border: '1.5px solid rgba(22,163,74,0.3)', borderRadius: 10, padding: '10px', fontSize: 12, fontWeight: 800, opacity: acting === a.id ? 0.5 : 1 }}>
-                          {acting === a.id ? '...' : '✅ Mark Paid'}
-                        </button>
-                      )}
-                      {a.fromType !== 'distributor' && a.status === 'sent' && a.paymentType === 'cash' && (
-                        <div style={{ flex: 1, background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.15)', borderRadius: 10, padding: '10px', fontSize: 12, color: '#16a34a', textAlign: 'center', fontWeight: 700 }}>✅ Cash received</div>
-                      )}
-                      {a.fromType !== 'distributor' && a.status === 'paid' && (
-                        <div style={{ flex: 1, background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.15)', borderRadius: 10, padding: '10px', fontSize: 12, color: '#16a34a', textAlign: 'center', fontWeight: 700 }}>
-                          ✅ Fully paid {a.paidAt ? new Date(a.paidAt).toLocaleDateString('en-IN') : ''}
+                  {allocEdit && allocEdit.id === a.id ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#6ee7b7', marginBottom: 2 }}>✏️ Edit Allocation</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        <div>
+                          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Packets</div>
+                          <input type="number" value={allocEdit.packets} onChange={e => setAllocEdit(p => p ? { ...p, packets: e.target.value } : p)}
+                            style={inputStyle(false, isDark)} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Price / packet (₹)</div>
+                          <input type="number" value={allocEdit.pricePerPacket} onChange={e => setAllocEdit(p => p ? { ...p, pricePerPacket: e.target.value } : p)}
+                            style={inputStyle(false, isDark)} />
+                        </div>
+                      </div>
+                      {(parseInt(allocEdit.packets) || 0) > 0 && (parseFloat(allocEdit.pricePerPacket) || 0) > 0 && (
+                        <div style={{ fontSize: 13, color: '#16a34a', fontWeight: 700 }}>
+                          Total: ₹{((parseInt(allocEdit.packets)||0) * (parseFloat(allocEdit.pricePerPacket)||0)).toLocaleString('en-IN')}
                         </div>
                       )}
-                      {a.fromType === 'distributor' && a.status === 'sent' && (
-                        <div style={{ flex: 1, background: 'rgba(8,145,178,0.08)', border: '1px solid rgba(8,145,178,0.15)', borderRadius: 10, padding: '10px', fontSize: 12, color: '#0891b2', textAlign: 'center', fontWeight: 700 }}>✅ Stock transferred</div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {(['cash', 'credit'] as const).map(pt => (
+                          <button key={pt} onClick={() => setAllocEdit(p => p ? { ...p, paymentType: pt } : p)}
+                            style={{ flex: 1, background: allocEdit.paymentType === pt ? (pt === 'cash' ? 'rgba(22,163,74,0.15)' : 'rgba(217,119,6,0.15)') : 'rgba(255,255,255,0.04)', color: allocEdit.paymentType === pt ? (pt === 'cash' ? '#16a34a' : '#d97706') : '#64748b', border: `1px solid ${allocEdit.paymentType === pt ? (pt === 'cash' ? 'rgba(22,163,74,0.3)' : 'rgba(217,119,6,0.3)') : 'rgba(255,255,255,0.08)'}`, borderRadius: 8, padding: '8px', fontSize: 12, fontWeight: 700 }}>
+                            {pt === 'cash' ? '💵 Cash' : '💳 Credit'}
+                          </button>
+                        ))}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Planned date</div>
+                        <input type="date" value={allocEdit.plannedDate} onChange={e => setAllocEdit(p => p ? { ...p, plannedDate: e.target.value } : p)}
+                          style={inputStyle(false, isDark)} />
+                      </div>
+                      {allocEdit.paymentType === 'credit' && (
+                        <div>
+                          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Credit due date</div>
+                          <input type="date" value={allocEdit.creditDueDate} onChange={e => setAllocEdit(p => p ? { ...p, creditDueDate: e.target.value } : p)}
+                            style={inputStyle(false, isDark)} />
+                        </div>
                       )}
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => setAllocEdit(null)} style={{ flex: 1, background: 'none', border: '1px solid rgba(255,255,255,0.12)', color: '#94a3b8', borderRadius: 10, padding: '10px', fontSize: 12, fontWeight: 700 }}>Cancel</button>
+                        <button onClick={saveAllocEdit} disabled={saving} style={{ flex: 2, background: 'linear-gradient(135deg,#1a5c42,#16a34a)', color: '#fff', border: 'none', borderRadius: 10, padding: '10px', fontSize: 12, fontWeight: 800, opacity: saving ? 0.6 : 1 }}>{saving ? 'Saving…' : 'Save Changes'}</button>
+                      </div>
                     </div>
-                  )}
-                  {!isAdmin && (a.status === 'pending' || a.status === 'overdue') && (
-                    <div style={{ background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.15)', borderRadius: 10, padding: '8px 12px', fontSize: 11, color: '#d97706' }}>
-                      ⏳ Waiting for admin to dispatch
-                    </div>
+                  ) : (
+                    <>
+                      {a.status === 'pending' && a.fromType !== 'distributor' && (
+                        <button onClick={() => setAllocEdit({ id: a.id!, packets: String(a.packets), pricePerPacket: String(a.pricePerPacket), paymentType: (a.paymentType || 'credit') as PaymentType, plannedDate: a.plannedDate, creditDueDate: (a as any).creditDueDate || '' })}
+                          style={{ width: '100%', background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.2)', color: '#818cf8', borderRadius: 10, padding: '9px', fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
+                          ✏️ Edit Allocation
+                        </button>
+                      )}
+                      {isAdmin && (
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          {(a.status === 'pending' || a.status === 'overdue') && (
+                            <>
+                              <button onClick={() => { setDispatchDateAlloc(a); setDispatchDate(localDateStr()) }} disabled={acting === a.id}
+                                style={{ flex: 1, background: a.fromType === 'distributor' ? 'linear-gradient(135deg,#0e4f7a,#0891b2)' : 'linear-gradient(135deg,#1a5c42,#16a34a)', color: '#fff', border: 'none', borderRadius: 10, padding: '10px', fontSize: 12, fontWeight: 800, opacity: acting === a.id ? 0.5 : 1 }}>
+                                {acting === a.id ? 'Processing...' : a.fromType === 'distributor' ? '✅ Confirm Sent' : '📦 Dispatch'}
+                              </button>
+                              <button onClick={() => handleCancelAllocation(a)} disabled={acting === a.id}
+                                style={{ background: 'rgba(220,38,38,0.1)', color: '#dc2626', border: '1px solid rgba(220,38,38,0.25)', borderRadius: 10, padding: '10px 14px', fontSize: 12, fontWeight: 700, opacity: acting === a.id ? 0.5 : 1 }}>
+                                🚫 Cancel
+                              </button>
+                            </>
+                          )}
+                          {a.fromType !== 'distributor' && isSentCredit && (
+                            <button onClick={() => handleMarkPaid(a)} disabled={acting === a.id}
+                              style={{ flex: 1, background: 'rgba(22,163,74,0.15)', color: '#16a34a', border: '1.5px solid rgba(22,163,74,0.3)', borderRadius: 10, padding: '10px', fontSize: 12, fontWeight: 800, opacity: acting === a.id ? 0.5 : 1 }}>
+                              {acting === a.id ? '...' : '✅ Mark Paid'}
+                            </button>
+                          )}
+                          {a.fromType !== 'distributor' && a.status === 'sent' && a.paymentType === 'cash' && (
+                            <div style={{ flex: 1, background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.15)', borderRadius: 10, padding: '10px', fontSize: 12, color: '#16a34a', textAlign: 'center', fontWeight: 700 }}>✅ Cash received</div>
+                          )}
+                          {a.fromType !== 'distributor' && a.status === 'paid' && (
+                            <div style={{ flex: 1, background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.15)', borderRadius: 10, padding: '10px', fontSize: 12, color: '#16a34a', textAlign: 'center', fontWeight: 700 }}>
+                              ✅ Fully paid {a.paidAt ? new Date(a.paidAt).toLocaleDateString('en-IN') : ''}
+                            </div>
+                          )}
+                          {a.fromType === 'distributor' && a.status === 'sent' && (
+                            <div style={{ flex: 1, background: 'rgba(8,145,178,0.08)', border: '1px solid rgba(8,145,178,0.15)', borderRadius: 10, padding: '10px', fontSize: 12, color: '#0891b2', textAlign: 'center', fontWeight: 700 }}>✅ Stock transferred</div>
+                          )}
+                        </div>
+                      )}
+                      {!isAdmin && (a.status === 'pending' || a.status === 'overdue') && (
+                        <div style={{ background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.15)', borderRadius: 10, padding: '8px 12px', fontSize: 11, color: '#d97706' }}>
+                          ⏳ Waiting for admin to dispatch
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )
             })}
+
+            {/* Pagination */}
+            {filtered.length > ALLOC_PAGE_SIZE && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px' }}>
+                <button onClick={() => setAllocPage(p => p - 1)} disabled={allocPage === 0}
+                  style={{ padding: '7px 16px', borderRadius: 8, border: `1px solid ${allocPage === 0 ? '#334155' : '#475569'}`, background: 'transparent', color: allocPage === 0 ? '#475569' : '#94a3b8', fontWeight: 700, cursor: allocPage === 0 ? 'default' : 'pointer' }}>
+                  ← Prev
+                </button>
+                <span style={{ fontSize: 13, color: '#64748b' }}>
+                  {allocPage + 1} of {Math.ceil(filtered.length / ALLOC_PAGE_SIZE)} pages
+                </span>
+                <button onClick={() => setAllocPage(p => p + 1)} disabled={allocPage >= Math.ceil(filtered.length / ALLOC_PAGE_SIZE) - 1}
+                  style={{ padding: '7px 16px', borderRadius: 8, border: `1px solid ${allocPage >= Math.ceil(filtered.length / ALLOC_PAGE_SIZE) - 1 ? '#334155' : '#475569'}`, background: 'transparent', color: allocPage >= Math.ceil(filtered.length / ALLOC_PAGE_SIZE) - 1 ? '#475569' : '#94a3b8', fontWeight: 700, cursor: allocPage >= Math.ceil(filtered.length / ALLOC_PAGE_SIZE) - 1 ? 'default' : 'pointer' }}>
+                  Next →
+                </button>
+              </div>
+            )}
 
             {/* Indent cards */}
             {filterSource !== 'company' && (
@@ -1337,9 +1450,23 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                               {rPendingPackets > 0 && <div style={{ fontSize: 10, color: '#d97706', marginTop: 1 }}>{rPendingPackets} pkts pending</div>}
                             </div>
                           </div>
-                          {/* Recent allocations from distributor to this retailer */}
-                          {rAllocs.slice(0, 3).map((a) => (
-                            <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(255,255,255,0.03)', borderRadius: 6, padding: '5px 8px', marginTop: 5, fontSize: 11 }}>
+                          {/* Recent allocations from distributor to this retailer — collapsible */}
+                          {rAllocs.length > 0 && (
+                            <button
+                              onClick={e => {
+                                e.stopPropagation()
+                                setExpandedRetailAllocs(prev => {
+                                  const next = new Set(prev)
+                                  next.has(r.id!) ? next.delete(r.id!) : next.add(r.id!)
+                                  return next
+                                })
+                              }}
+                              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '3px 8px', fontSize: 10, color: '#64748b', marginTop: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}>
+                              {expandedRetailAllocs.has(r.id!) ? '▲' : '▼'} Last dispatches
+                            </button>
+                          )}
+                          {expandedRetailAllocs.has(r.id!) && rAllocs.slice(0, 3).map((a) => (
+                            <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(255,255,255,0.03)', borderRadius: 6, padding: '5px 8px', marginTop: 4, fontSize: 11 }}>
                               <span style={{ color: '#64748b' }}>{a.sentAt ? new Date(a.sentAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : a.plannedDate} — {a.packets} pkts{a.productName ? ` · ${a.productName}` : ''}</span>
                               <span style={{ color: a.status === 'sent' || a.status === 'paid' ? '#16a34a' : '#d97706', fontWeight: 700 }}>
                                 {a.status === 'sent' || a.status === 'paid' ? '✅ Sent' : '⏳ Pending'}
@@ -1425,6 +1552,35 @@ export default function AllocationManager({ onBack, parties, isAdmin }: Props) {
                                 })}
                               </div>
                             )
+                          })()}
+                          {rAllocs.length > 0 && (
+                            <button
+                              onClick={e => {
+                                e.stopPropagation()
+                                setExpandedRetailAllocs(prev => {
+                                  const next = new Set(prev)
+                                  next.has(r.id!) ? next.delete(r.id!) : next.add(r.id!)
+                                  return next
+                                })
+                              }}
+                              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '3px 8px', fontSize: 10, color: '#64748b', marginTop: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}>
+                              {expandedRetailAllocs.has(r.id!) ? '▲' : '▼'} Last allocations
+                            </button>
+                          )}
+                          {expandedRetailAllocs.has(r.id!) && (() => {
+                            const statusOrder: Record<string, number> = { overdue: 0, pending: 1, sent: 2, paid: 3 }
+                            const pa = rAllocs
+                              .filter(a => a.status !== 'cancelled')
+                              .sort((a, b) => (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9))
+                              .slice(0, 5)
+                            return pa.map(a => (
+                              <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(255,255,255,0.03)', borderRadius: 6, padding: '5px 8px', marginTop: 4, fontSize: 11 }}>
+                                <span style={{ color: '#64748b' }}>{a.sentAt ? new Date(a.sentAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : a.plannedDate} — {a.packets} pkts{a.productName ? ` · ${a.productName}` : ''}</span>
+                                <span style={{ color: a.status === 'sent' || a.status === 'paid' ? '#16a34a' : a.status === 'overdue' ? '#dc2626' : '#d97706', fontWeight: 700 }}>
+                                  {a.status === 'sent' || a.status === 'paid' ? '✅ Sent' : a.status === 'overdue' ? '🔴 Overdue' : '⏳ Pending'}
+                                </span>
+                              </div>
+                            ))
                           })()}
                           {isAdmin && (
                             <button onClick={() => setHistoryPartyId(r.id!)}

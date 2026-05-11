@@ -13,7 +13,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr } from '../../utils/date'
 
-interface Props { onBack: () => void; onViewVisitLog?: (userName: string, date: string) => void; onLogVisit?: (date: string) => void }
+interface Props { onBack: () => void; onViewVisitLog?: (userName: string, date: string) => void; onLogVisit?: (date: string) => void; defaultToDay?: boolean }
 
 // ── Week helpers ──────────────────────────────────────────────────────────────
 function getWeekStart(d: Date = new Date()): string {
@@ -145,26 +145,26 @@ const VAR_CATS: { value: ExpenseCategory; label: string; emoji: string }[] = [
 const DEFAULT_CONFIG: ExpenseConfig = { hq: 200, ex: 300, os: 450 }
 
 // ── Root ──────────────────────────────────────────────────────────────────────
-export default function ExpenseLogger({ onBack, onViewVisitLog, onLogVisit }: Props) {
+export default function ExpenseLogger({ onBack, onViewVisitLog, onLogVisit, defaultToDay }: Props) {
   const { appUser } = useAuth()
   const isAdmin = appUser?.role === 'super_admin' || appUser?.role === 'admin'
   if (!appUser) return null
   return isAdmin
     ? <AdminView onBack={onBack} appUser={appUser} onViewVisitLog={onViewVisitLog} />
-    : <SalesView onBack={onBack} appUser={appUser} onLogVisit={onLogVisit} />
+    : <SalesView onBack={onBack} appUser={appUser} onLogVisit={onLogVisit} defaultToDay={defaultToDay} />
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SALES VIEW
 // ─────────────────────────────────────────────────────────────────────────────
-function SalesView({ onBack, appUser, onLogVisit }: { onBack: () => void; appUser: AppUser; onLogVisit?: (date: string) => void }) {
+function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () => void; appUser: AppUser; onLogVisit?: (date: string) => void; defaultToDay?: boolean }) {
   const { modal, showAlert, showConfirm } = useConfirm()
   const [config, setConfig] = useState<ExpenseConfig>(DEFAULT_CONFIG)
   const [reports, setReports] = useState<ExpenseReport[]>([])
   const [entries, setEntries] = useState<ExpenseEntry[]>([])
   const [leaves, setLeaves] = useState<LeaveRecord[]>([])
   const [mainTab, setMainTab] = useState<'log' | 'reports'>('log')
-  const [viewMode, setViewMode] = useState<'week' | 'day'>('week')
+  const [viewMode, setViewMode] = useState<'week' | 'day'>(defaultToDay ? 'day' : 'week')
   const [weekStart, setWeekStart] = useState(getWeekStart())
   const [selectedDay, setSelectedDay] = useState(localDateStr())
   const [addVarDay, setAddVarDay] = useState<string | null>(null)

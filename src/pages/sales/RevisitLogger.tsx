@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect } from "react";
 import {
   collection,
   addDoc,
@@ -20,8 +20,6 @@ import {
   StockUpdateAction,
   NewOrderAction,
   PaymentCollectionAction,
-  StockMovement,
-  VisitOutcome,
 } from "../../types";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
@@ -37,7 +35,7 @@ interface EditMode {
 interface Props {
   party: Party;
   onBack: () => void;
-  onDone: (revisitLogId: string, outcome: VisitOutcome) => void;
+  onDone: (revisitLogId: string) => void;
   logDate?: string;
   editMode?: EditMode;
 }
@@ -47,8 +45,7 @@ type ActionKey =
   | "new_order"
   | "payment_collection"
   | "relationship_visit"
-  | "no_longer_active"
-  | "distribute_to_retailers";
+  | "no_longer_active";
 
 const today2 = () => localDateOffset(2);
 
@@ -95,6 +92,7 @@ export default function RevisitLogger({
 
   // New order
   const [orderProduct, setOrderProduct] = useState<Product | null>(null);
+  const [orderUnit, setOrderUnit] = useState<"packet" | "carton">("packet");
   const [orderQty, setOrderQty] = useState(() => {
     if (!editMode) return "";
     const a = editMode.existingActions.find((a) => a.type === 'new_order') as any;
@@ -140,13 +138,6 @@ export default function RevisitLogger({
   });
 
   const [allocations, setAllocations] = useState<any[]>([]);
-  const [subRetailers, setSubRetailers] = useState<Party[]>([]);
-  const [distributions, setDistributions] = useState<
-    Record<
-      string,
-      { qty: string; pricePerUnit: string; payment: "cash" | "credit" }
-    >
-  >({});
 
   const isUnderDistributor =
     party.type === "retailer" && !!(party as any).underDistributorId;
@@ -202,22 +193,12 @@ export default function RevisitLogger({
       label: "Relationship Visit",
       sub: "Visited, maintained relationship",
     },
-    {
-      key: "no_longer_active",
+    ...((party as any).status === "active" ? [{
+      key: "no_longer_active" as ActionKey,
       emoji: "⚠️",
       label: "No Longer Active",
       sub: "Will be moved back to Prospect",
-    },
-    ...(party.type === "distributor"
-      ? [
-          {
-            key: "distribute_to_retailers" as ActionKey,
-            emoji: "📋",
-            label: "Distribute to Retailers",
-            sub: "Log stock pushed out to retailer network",
-          },
-        ]
-      : []),
+    }] : []),
   ];
 
   useEffect(() => {
@@ -257,18 +238,6 @@ export default function RevisitLogger({
     );
   }, [party.id]);
 
-  useEffect(() => {
-    if (party.type !== "distributor") return;
-    const q = query(
-      collection(db, "parties"),
-      where("underDistributorId", "==", party.id!),
-    );
-    return onSnapshot(q, (snap) =>
-      setSubRetailers(
-        snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Party),
-      ),
-    );
-  }, [party.id, party.type]);
 
   useEffect(() => {
     if (orderProduct) setOrderPrice(String(orderProduct.defaultPricePerUnit));
@@ -352,7 +321,10 @@ export default function RevisitLogger({
 
   const handleConfirmNewOrder = async () => {
     if (!orderProduct || !orderQty || parseInt(orderQty) <= 0) return;
-    const qty = parseInt(orderQty);
+    const rawQty = parseInt(orderQty);
+    const qty = orderUnit === "carton"
+      ? rawQty * (orderProduct.unitsPerCarton || 1)
+      : rawQty;
     const price = parseFloat(orderPrice) || orderProduct.defaultPricePerUnit;
     const total = qty * price;
 
@@ -521,10 +493,7 @@ export default function RevisitLogger({
       collectedBy: appUser!.uid,
       collectedByName: appUser!.name,
       notes: paymentNote,
-      status: "approved",
-      approvedBy: appUser!.uid,
-      approvedByName: appUser!.name,
-      approvedAt: Date.now(),
+      status: "pending_approval",
       date: logDate || localDateStr(),
       createdAt: Date.now(),
       appliedTo,
@@ -543,7 +512,7 @@ export default function RevisitLogger({
       type: "payment_collection",
       amount,
       notes: paymentNote,
-      status: "approved",
+      status: "pending_approval",
       transactionId: txnRef.id,
     } as PaymentCollectionAction);
   };
@@ -577,52 +546,6 @@ export default function RevisitLogger({
     });
   };
 
-  const handleConfirmDistribute = async () => {
-    const entries = Object.entries(distributions).filter(
-      ([, d]) => (parseInt(d.qty) || 0) > 0,
-    );
-    if (entries.length === 0) return;
-    const totalQty = entries.reduce(
-      (s, [, d]) => s + (parseInt(d.qty) || 0),
-      0,
-    );
-    const confirmed = await showConfirm(
-      "Confirm Distribution",
-      `Send stock to ${entries.length} retailer${entries.length > 1 ? "s" : ""} · Total: ${totalQty} packets`,
-    );
-    if (!confirmed) return;
-    const todayDate = logDate || localDateStr();
-    for (const [retailerId, data] of entries) {
-      const qty = parseInt(data.qty) || 0;
-      const retailer = subRetailers.find((r) => r.id === retailerId);
-      if (!retailer) continue;
-      const mov: Omit<StockMovement, "id"> = {
-        fromId: party.id!,
-        fromName: party.name,
-        toPartyId: retailerId,
-        toPartyName: retailer.name,
-        packets: qty,
-        cartons: 0,
-        pricePerPacket: 0,
-        totalAmount: 0,
-        paymentType: "cash",
-        notes: "",
-        month: todayDate.slice(0, 7),
-        loggedBy: appUser!.uid,
-        loggedByName: appUser!.name,
-        date: todayDate,
-        createdAt: Date.now(),
-      };
-      await addDoc(collection(db, "stock_movements"), mov);
-    }
-    await updateDoc(doc(db, "parties", party.id!), {
-      packetsAllocated: increment(-totalQty),
-    });
-    markDone("distribute_to_retailers", {
-      type: "distribute_to_retailers",
-    } as any);
-  };
-
   const handleDone = async () => {
     if (confirmedActions.length === 0) {
       onBack();
@@ -630,19 +553,13 @@ export default function RevisitLogger({
     }
     setSaving(true);
     try {
-      const outcome: VisitOutcome = confirmedActions.some((a) => a.type === "no_longer_active")
-        ? "not_interested"
-        : confirmedActions.some((a) => a.type === "new_order")
-          ? "interested"
-          : "follow_up";
-
       if (editMode) {
         await updateDoc(doc(db, "revisit_logs", editMode.revisitLogId), {
           actions: confirmedActions,
           notes: visitNote,
           updatedAt: Date.now(),
         });
-        onDone(editMode.revisitLogId, outcome);
+        onDone(editMode.revisitLogId);
       } else {
         const revisitRef = await addDoc(collection(db, "revisit_logs"), {
           partyId: party.id!,
@@ -655,7 +572,7 @@ export default function RevisitLogger({
           notes: visitNote,
           createdAt: Date.now(),
         });
-        onDone(revisitRef.id, outcome);
+        onDone(revisitRef.id);
       }
     } finally {
       setSaving(false);
@@ -1262,39 +1179,48 @@ export default function RevisitLogger({
                       {orderProduct && (
                         <>
                           <div>
-                            <div
-                              style={{
-                                fontSize: 12,
-                                color: t.text3,
-                                marginBottom: 4,
-                                textTransform: "uppercase",
-                                letterSpacing: 1,
-                              }}
-                            >
-                              Quantity ({orderProduct.unitLabel})
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                              <div style={{ fontSize: 12, color: t.text3, textTransform: "uppercase", letterSpacing: 1 }}>
+                                Quantity
+                              </div>
+                              <div style={{ display: "flex", gap: 4 }}>
+                                {(["packet", "carton"] as const).map((u) => (
+                                  <button
+                                    key={u}
+                                    onClick={() => { setOrderUnit(u); setOrderQty(""); }}
+                                    style={{
+                                      padding: "3px 10px",
+                                      borderRadius: 20,
+                                      fontSize: 11,
+                                      fontWeight: 700,
+                                      border: `1.5px solid ${orderUnit === u ? "#16a34a" : t.border}`,
+                                      background: orderUnit === u ? "rgba(22,163,74,0.12)" : t.bg3,
+                                      color: orderUnit === u ? "#16a34a" : t.text3,
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    {u === "packet" ? orderProduct.unitLabel : "cartons"}
+                                  </button>
+                                ))}
+                              </div>
                             </div>
                             <input
                               type="number"
                               value={orderQty}
                               onChange={(e) => setOrderQty(e.target.value)}
-                              placeholder={`No. of ${orderProduct.unitLabel}`}
+                              placeholder={orderUnit === "carton" ? "No. of cartons" : `No. of ${orderProduct.unitLabel}`}
                               style={{
                                 ...inputStyle,
-                                borderColor:
-                                  orderQty && parseInt(orderQty) <= 0
-                                    ? "#dc2626"
-                                    : undefined,
+                                borderColor: orderQty && parseInt(orderQty) <= 0 ? "#dc2626" : undefined,
                               }}
                             />
+                            {orderUnit === "carton" && orderQty && parseInt(orderQty) > 0 && (
+                              <div style={{ fontSize: 12, color: t.text2, marginTop: 5 }}>
+                                = {parseInt(orderQty) * (orderProduct.unitsPerCarton || 1)} {orderProduct.unitLabel}
+                              </div>
+                            )}
                             {orderQty && parseInt(orderQty) <= 0 && (
-                              <div
-                                style={{
-                                  fontSize: 12,
-                                  color: "#dc2626",
-                                  marginTop: 6,
-                                  fontWeight: 600,
-                                }}
-                              >
+                              <div style={{ fontSize: 12, color: "#dc2626", marginTop: 6, fontWeight: 600 }}>
                                 Quantity must be greater than zero
                               </div>
                             )}
@@ -1335,7 +1261,9 @@ export default function RevisitLogger({
                                     >
                                       Total: ₹
                                       {(
-                                        parseInt(orderQty) *
+                                        (orderUnit === "carton"
+                                          ? parseInt(orderQty) * (orderProduct.unitsPerCarton || 1)
+                                          : parseInt(orderQty)) *
                                         parseFloat(orderPrice)
                                       ).toLocaleString()}
                                     </div>
@@ -1678,113 +1606,6 @@ export default function RevisitLogger({
                         "Move to Prospect ✓",
                         handleConfirmNoLongerActive,
                         !inactiveReason,
-                      )}
-                    </>
-                  )}
-
-                  {/* ── DISTRIBUTE TO RETAILERS ── */}
-                  {opt.key === "distribute_to_retailers" && (
-                    <>
-                      {subRetailers.length === 0 ? (
-                        <div
-                          style={{
-                            fontSize: 13,
-                            color: t.text3,
-                            textAlign: "center",
-                            padding: 12,
-                          }}
-                        >
-                          No retailers linked under this distributor yet.
-                        </div>
-                      ) : (
-                        <>
-                          {subRetailers.map((r) => {
-                            const dist = distributions[r.id!] || {
-                              qty: "",
-                              pricePerUnit: "",
-                              payment: "cash" as const,
-                            };
-                            const setDist = (key: string, val: string) =>
-                              setDistributions((prev) => ({
-                                ...prev,
-                                [r.id!]: { ...dist, [key]: val },
-                              }));
-                            const qty = parseInt(dist.qty) || 0;
-                            return (
-                              <div
-                                key={r.id}
-                                style={{
-                                  background: t.bg3,
-                                  borderRadius: 12,
-                                  padding: 14,
-                                  border: `1.5px solid ${qty > 0 ? "#16a34a33" : t.border}`,
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 10,
-                                  }}
-                                >
-                                  <span style={{ fontSize: 16 }}>🏪</span>
-                                  <div style={{ flex: 1 }}>
-                                    <div
-                                      style={{
-                                        fontWeight: 700,
-                                        fontSize: 14,
-                                        color: t.text,
-                                      }}
-                                    >
-                                      {r.name}
-                                    </div>
-                                    <div
-                                      style={{ fontSize: 11, color: t.text3 }}
-                                    >
-                                      {r.place || r.address}
-                                    </div>
-                                  </div>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    value={dist.qty}
-                                    onChange={(e) =>
-                                      setDist("qty", e.target.value)
-                                    }
-                                    placeholder="0"
-                                    style={{
-                                      ...inputStyle,
-                                      width: 90,
-                                      fontSize: 15,
-                                      fontWeight: 700,
-                                      textAlign: "center",
-                                    }}
-                                  />
-                                </div>
-                                {qty > 0 && (
-                                  <div
-                                    style={{
-                                      fontSize: 12,
-                                      color: "#6ee7b7",
-                                      fontWeight: 600,
-                                      marginTop: 6,
-                                      textAlign: "right",
-                                    }}
-                                  >
-                                    {qty} packet{qty > 1 ? "s" : ""} sent
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                          {confirmBtn(
-                            "Confirm Distribution ✓",
-                            handleConfirmDistribute,
-                            !Object.values(distributions).some(
-                              (d) => (parseInt(d.qty) || 0) > 0,
-                            ),
-                          )}
-                        </>
                       )}
                     </>
                   )}

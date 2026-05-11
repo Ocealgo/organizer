@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { collection, onSnapshot, query, where, updateDoc, doc, addDoc, deleteDoc } from 'firebase/firestore'
 import { db } from '../../firebase'
-import { submitCheckIn } from '../../hooks/useFirebase'
+
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import PartyManager from '../distributors/PartyManager'
@@ -10,9 +10,9 @@ import ExpenseLogger from '../stock/ExpenseLogger'
 import CreditBook from '../credit/CreditBook'
 import AllocationManager from '../distributors/AllocationManager'
 import VisitLogger from './VisitLogger'
-import VisitHistoryScreen from './VisitHistoryScreen'
+import ActivityScreen from './ActivityScreen'
 import LeaveHistory from './LeaveHistory'
-import { CheckIn, Party, DailyVisitLog, LeaveRecord, LeaveReason, LEAVE_REASONS, Holiday } from '../../types'
+import { Party, DailyVisitLog, LeaveRecord, Holiday } from '../../types'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr, localMonthStr } from '../../utils/date'
 
@@ -30,18 +30,24 @@ export default function SalesView({ name }: Props) {
   const isOnline = appUser?.role === 'online_sales'
   const [screen, setScreen] = useState<SubScreen>('home')
   const [visitInitialDate, setVisitInitialDate] = useState<string | undefined>()
-  const [checkIns, setCheckIns] = useState<CheckIn[]>([])
   const [parties, setParties] = useState<Party[]>([])
   const [todayVisitLog, setTodayVisitLog] = useState<DailyVisitLog | null>(null)
   const [todayLeave, setTodayLeave] = useState<LeaveRecord | null>(null)
   const [allLeaveRecords, setAllLeaveRecords] = useState<LeaveRecord[]>([])
-  const [leaveDate, setLeaveDate] = useState(localDateStr())
-  const [markingLeave, setMarkingLeave] = useState(false)
-  const [pendingLeaveType, setPendingLeaveType] = useState<'full_day' | 'half_day' | null>(null)
-  const [leaveReason, setLeaveReason] = useState<LeaveReason | ''>('')
   const [visitLogLoaded, setVisitLogLoaded] = useState(false)
+  const [monthlyVisitLogCount, setMonthlyVisitLogCount] = useState(0)
+  const [monthlyRevisitLogCount, setMonthlyRevisitLogCount] = useState(0)
+  const [revisitLogsToday, setRevisitLogsToday] = useState(0)
+  const [ordersToday, setOrdersToday] = useState(0)
+  const [highlightAllocationId, setHighlightAllocationId] = useState<string | undefined>()
+  const [allocSalesRepOnly, setAllocSalesRepOnly] = useState(false)
+  const [allocReturnScreen, setAllocReturnScreen] = useState<SubScreen>('home')
+  const [deepLinkPaymentPartyId, setDeepLinkPaymentPartyId] = useState<string | undefined>()
+  const [deepLinkPaymentId, setDeepLinkPaymentId] = useState<string | undefined>()
+  const [creditReturnScreen, setCreditReturnScreen] = useState<SubScreen>('home')
+  const [expenseDefaultToDay, setExpenseDefaultToDay] = useState(false)
   const [holidays, setHolidays] = useState<Holiday[]>([])
-  const { modal: leaveModal, showConfirm: showLeaveConfirm, showAlert: showLeaveAlert } = useConfirm()
+  const { modal: leaveModal, showConfirm: showLeaveConfirm } = useConfirm()
 
   useEffect(() => {
     return onSnapshot(collection(db, 'parties'), snap => {
@@ -57,8 +63,10 @@ export default function SalesView({ name }: Props) {
     const unsubOwn = onSnapshot(ownQuery, snap => {
       const logs = snap.docs.map(d => ({ id: d.id, ...d.data() } as DailyVisitLog))
       const today = todayStr()
-      const record = logs.find(l => l.date === today && l.salesPersonId === appUser.uid) || null
+      const month = currentMonth()
+      const record = logs.find(l => l.date === today) || null
       setTodayVisitLog(record)
+      setMonthlyVisitLogCount(logs.filter(l => l.date.startsWith(month) && !l.isNoEntry).length)
       setVisitLogLoaded(true)
     })
 
@@ -69,14 +77,16 @@ export default function SalesView({ name }: Props) {
 
   useEffect(() => {
     if (!appUser) return
-    const q = query(collection(db, 'checkins'), where('name', '==', name))
+    const q = query(collection(db, 'revisit_logs'), where('salesPersonId', '==', appUser.uid))
     return onSnapshot(q, snap => {
       const month = currentMonth()
-      setCheckIns(snap.docs.map(d => ({ id: d.id, ...d.data() } as CheckIn))
-        .filter(c => c.date.startsWith(month))
-        .sort((a, b) => b.createdAt - a.createdAt))
+      const today = todayStr()
+      const docs = snap.docs.map(d => d.data())
+      setMonthlyRevisitLogCount(docs.filter(d => (d.date as string).startsWith(month)).length)
+      setRevisitLogsToday(docs.filter(d => d.date === today).length)
+      setOrdersToday(docs.filter(d => d.date === today && (d.actions as any[])?.some((a: any) => a.type === 'new_order')).length)
     })
-  }, [name, appUser])
+  }, [appUser])
 
   useEffect(() => {
     return onSnapshot(collection(db, 'holidays'), snap => {
@@ -113,43 +123,11 @@ export default function SalesView({ name }: Props) {
       visits: [],
       endOfDayNote: '',
       totalVisited: 0,
-      totalInterested: 0,
-      totalNotInterested: 0,
       isNoEntry: true,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     })
   }, [appUser, visitLogLoaded, todayVisitLog, todayLeave])
-
-  const handleMarkLeave = async (type: 'full_day' | 'half_day', reason: LeaveReason) => {
-    if (!appUser || markingLeave) return
-    const confirmed = await showLeaveConfirm(
-      `Request ${type === 'full_day' ? 'Full Day' : 'Half Day'} Leave?`,
-      `Reason: ${reason} · ${leaveDate} · Admin will approve before it takes effect.`
-    )
-    if (!confirmed) return
-    setMarkingLeave(true)
-    setPendingLeaveType(null)
-    setLeaveReason('')
-    try {
-      const leaveRef = await addDoc(collection(db, 'leave_records'), {
-        uid: appUser.uid, name: appUser.name, role: appUser.role,
-        date: leaveDate, leaveType: type, reason,
-        markedAt: Date.now(), markedBy: appUser.uid, markedByName: appUser.name,
-        status: 'pending_approval',
-        auditLog: [{ action: 'leave_requested', by: appUser.uid, byName: appUser.name, at: Date.now() }],
-      })
-      await addDoc(collection(db, 'alerts'), {
-        type: 'leave_requested',
-        message: `🏖️ ${appUser.name} requested ${type === 'full_day' ? 'Full Day' : 'Half Day'} leave · ${leaveDate} · ${reason}`,
-        relatedId: leaveRef.id, read: false, createdAt: Date.now(),
-        toRole: 'admin_group',
-      })
-    } catch (e) {
-      console.error('Leave request failed:', e)
-      await showLeaveAlert('Failed to send request', 'Check your connection and try again.')
-    } finally { setMarkingLeave(false) }
-  }
 
   const handleUnmarkLeave = async () => {
     if (!todayLeave?.id) return
@@ -168,13 +146,13 @@ export default function SalesView({ name }: Props) {
   }
 
   // Route to sub-screens — hooks are above so this is safe
-  if (screen === 'visits')      return <VisitLogger onBack={() => { setVisitInitialDate(undefined); setScreen('home') }} initialDate={visitInitialDate} />
+  if (screen === 'visits')      return <VisitLogger onBack={() => { setVisitInitialDate(undefined); setScreen('home') }} initialDate={visitInitialDate} onViewAllocation={(id) => { setHighlightAllocationId(id); setScreen('allocations') }} onViewPayment={(partyId, paymentId) => { setDeepLinkPaymentPartyId(partyId); setDeepLinkPaymentId(paymentId); setCreditReturnScreen('visits'); setScreen('credits') }} />
   if (screen === 'parties')     return <PartyManager onBack={() => setScreen('home')} />
   if (screen === 'stock')       return <StockManager onBack={() => setScreen('home')} />
-  if (screen === 'expenses')    return <ExpenseLogger onBack={() => setScreen('home')} onLogVisit={date => { setVisitInitialDate(date); setScreen('visits') }} />
-  if (screen === 'credits')     return <CreditBook onBack={() => setScreen('home')} />
-  if (screen === 'allocations') return <AllocationManager onBack={() => setScreen('home')} parties={parties} isAdmin={false} />
-  if (screen === 'history')     return <VisitHistoryScreen onBack={() => setScreen('home')} />
+  if (screen === 'expenses')    return <ExpenseLogger onBack={() => setScreen('home')} onLogVisit={date => { setVisitInitialDate(date); setScreen('visits') }} defaultToDay={expenseDefaultToDay} />
+  if (screen === 'credits')     return <CreditBook onBack={() => { const ret = creditReturnScreen; setDeepLinkPaymentPartyId(undefined); setDeepLinkPaymentId(undefined); setCreditReturnScreen('home'); setScreen(ret) }} initialPartyId={deepLinkPaymentPartyId} focusPaymentId={deepLinkPaymentId} salesRepOnly={!!deepLinkPaymentId} />
+  if (screen === 'allocations') return <AllocationManager onBack={() => { const ret = allocReturnScreen; setHighlightAllocationId(undefined); setAllocSalesRepOnly(false); setAllocReturnScreen('home'); setScreen(ret) }} parties={parties} isAdmin={false} highlightId={highlightAllocationId} salesRepOnly={allocSalesRepOnly} />
+  if (screen === 'history')     return <ActivityScreen onBack={() => setScreen('home')} onViewAllocation={(allocId) => { setHighlightAllocationId(allocId); setAllocSalesRepOnly(true); setAllocReturnScreen('history'); setScreen('allocations') }} onViewPayment={(partyId, paymentId) => { setDeepLinkPaymentPartyId(partyId); setDeepLinkPaymentId(paymentId); setCreditReturnScreen('history'); setScreen('credits') }} />
   if (screen === 'leaves')      return <LeaveHistory leaveRecords={allLeaveRecords} onBack={() => setScreen('home')} />
 
   // Online Sales — disabled
@@ -189,29 +167,25 @@ export default function SalesView({ name }: Props) {
     </div>
   )
 
-  // Count today's visits
-  const todayCheckIn = checkIns.find(c => c.date === todayStr())
   const initials = name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
   const isTodayHoliday = holidays.some(h => h.date === todayStr())
   const isOnFullLeave = isTodayHoliday || !!(todayLeave && todayLeave.leaveType === 'full_day' && todayLeave.status === 'active')
+  const pendingLeavesCount = allLeaveRecords.filter(l => l.status === 'pending_approval').length
 
-  const menuItems = [
-    {
-      emoji: '🗺️',
-      label: "Today's Visits",
-      sub: isTodayHoliday ? 'Disabled — public holiday' : isOnFullLeave ? 'Disabled — you are on full day leave' : 'Log shop visits & outcomes',
-      action: isOnFullLeave ? undefined : () => setScreen('visits'),
-      primary: true,
-      disabled: isOnFullLeave,
-    },
-    { emoji: '🤝', label: 'Network', sub: 'Distributors & retailers', action: () => setScreen('parties'), primary: false, disabled: false },
-    { emoji: '📦', label: 'Allocations', sub: 'View & create stock requests', action: () => setScreen('allocations'), primary: false, disabled: false },
-    { emoji: '📅', label: 'Visit History', sub: 'Past logs by day & month', action: () => setScreen('history'), primary: false, disabled: false },
-    { emoji: '🏖️', label: 'My Leaves', sub: allLeaveRecords.filter(l => l.status === 'pending_approval').length > 0 ? `${allLeaveRecords.filter(l => l.status === 'pending_approval').length} pending approval` : 'View & manage leave requests', action: () => setScreen('leaves'), primary: false, disabled: false },
-    { emoji: '📊', label: 'Stock', sub: 'Available inventory', action: () => setScreen('stock'), primary: false, disabled: false },
-    { emoji: '💜', label: 'Credit Book', sub: 'Outstanding & settlements', action: () => setScreen('credits'), primary: false, disabled: false },
-    { emoji: '💸', label: 'Expenses', sub: 'Travel, food, misc', action: () => setScreen('expenses'), primary: false, disabled: false },
-  ]
+  const renderCard = (item: { emoji: string; label: string; sub: string; action: () => void; badge?: string }) => (
+    <button key={item.label} onClick={item.action}
+      style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.7)', color: theme === 'dark' ? '#fff' : '#0d3d2e', border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)'}`, borderRadius: 18, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left', cursor: 'pointer', marginBottom: 10, width: '100%' }}>
+      <span style={{ fontSize: 26 }}>{item.emoji}</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 800, fontSize: 15 }}>{item.label}</div>
+        <div style={{ fontSize: 13, color: theme === 'dark' ? '#a7f3d0' : '#475569', marginTop: 3 }}>{item.sub}</div>
+      </div>
+      {item.badge
+        ? <span style={{ fontSize: 10, fontWeight: 700, color: theme === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.35)', background: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', borderRadius: 99, padding: '3px 8px', flexShrink: 0 }}>{item.badge}</span>
+        : <span style={{ fontSize: 22, opacity: 0.4 }}>›</span>
+      }
+    </button>
+  )
 
   return (
     <div style={{ minHeight: '100vh', background: theme === 'dark' ? 'linear-gradient(145deg,#0d3d2e 0%,#1a5c42 55%,#2d7a56 100%)' : 'linear-gradient(145deg,#ecfdf5 0%,#d1fae5 100%)' }}>
@@ -229,8 +203,8 @@ export default function SalesView({ name }: Props) {
         <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
           {[
             { label: 'Visits Today', val: isOnFullLeave ? '🏖️' : (todayVisitLog ? todayVisitLog.totalVisited : '—'), color: theme === 'dark' ? '#fff' : '#0d3d2e' },
-            { label: 'Interested', val: isOnFullLeave ? '—' : (todayVisitLog ? todayVisitLog.totalInterested : '—'), color: theme === 'dark' ? '#86efac' : '#16a34a' },
-            { label: 'This Month', val: `${checkIns.length} logs`, color: theme === 'dark' ? '#bae6fd' : '#0891b2' },
+            { label: 'Orders Today', val: isOnFullLeave ? '—' : ordersToday, color: theme === 'dark' ? '#86efac' : '#16a34a' },
+            { label: 'Logs Today', val: isOnFullLeave ? '—' : revisitLogsToday, color: theme === 'dark' ? '#bae6fd' : '#0891b2' },
           ].map(s => (
             <div key={s.label} style={{ flex: 1, background: theme === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.5)', borderRadius: 12, padding: '12px 8px', textAlign: 'center' }}>
               <div style={{ fontSize: 18, fontWeight: 900, color: s.color }}>{s.val}</div>
@@ -284,83 +258,42 @@ export default function SalesView({ name }: Props) {
         </div>
       )}
 
-      {/* Menu */}
-      <div style={{ padding: '0 20px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {menuItems.map((item, i) => (
-          <button key={i} onClick={item.disabled ? undefined : item.action}
-            disabled={item.disabled}
-            style={{ background: item.primary ? (item.disabled ? (theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)') : '#fff') : theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.7)', color: item.primary ? (item.disabled ? (theme === 'dark' ? 'rgba(255,255,255,0.3)' : '#9ca3af') : '#0d3d2e') : theme === 'dark' ? '#fff' : '#0d3d2e', border: item.primary ? (item.disabled ? `1.5px dashed ${theme === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)'}` : 'none') : `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)'}`, borderRadius: 18, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left', boxShadow: item.primary && !item.disabled ? '0 8px 32px rgba(0,0,0,0.2)' : 'none', cursor: item.disabled ? 'not-allowed' : 'pointer', opacity: item.disabled ? 0.6 : 1 }}>
-            <span style={{ fontSize: 28 }}>{item.emoji}</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 800, fontSize: 16 }}>{item.label}</div>
-              <div style={{ fontSize: 13, color: item.primary ? (item.disabled ? (theme === 'dark' ? 'rgba(255,255,255,0.3)' : '#ef4444') : '#6b7280') : theme === 'dark' ? '#a7f3d0' : '#475569', marginTop: 3 }}>{item.sub}</div>
+      {/* Menu — sectioned */}
+      <div style={{ padding: '0 20px 40px' }}>
+
+        {/* ── TODAY ── */}
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', color: theme === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.35)', marginBottom: 10, marginTop: 4 }}>Today</div>
+
+        <button onClick={isOnFullLeave ? undefined : () => setScreen('visits')} disabled={isOnFullLeave}
+          style={{ background: isOnFullLeave ? (theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)') : '#fff', color: isOnFullLeave ? (theme === 'dark' ? 'rgba(255,255,255,0.3)' : '#9ca3af') : '#0d3d2e', border: isOnFullLeave ? `1.5px dashed ${theme === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)'}` : 'none', borderRadius: 18, padding: '20px', display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left', boxShadow: isOnFullLeave ? 'none' : '0 8px 32px rgba(0,0,0,0.2)', cursor: isOnFullLeave ? 'not-allowed' : 'pointer', opacity: isOnFullLeave ? 0.6 : 1, marginBottom: 10, width: '100%' }}>
+          <span style={{ fontSize: 32 }}>🗺️</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 900, fontSize: 18 }}>Log a Visit</div>
+            <div style={{ fontSize: 13, color: isOnFullLeave ? (theme === 'dark' ? 'rgba(255,255,255,0.3)' : '#ef4444') : '#6b7280', marginTop: 3 }}>
+              {isTodayHoliday ? 'Disabled — public holiday' : isOnFullLeave ? 'Disabled — you are on full day leave' : 'Log shop visits & outcomes'}
             </div>
-            {!item.disabled && <span style={{ fontSize: 22, opacity: 0.4 }}>›</span>}
-          </button>
-        ))}
-      </div>
-
-      {/* Leave request — bottom, low prominence */}
-      {!todayLeave && (
-        <div style={{ padding: '20px 20px 40px' }}>
-          <div style={{ borderTop: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'}`, paddingTop: 16 }}>
-            <div style={{ fontSize: 13, color: theme === 'dark' ? 'rgba(255,255,255,0.7)' : '#6b7280', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8, textAlign: 'center' }}>Not working today?</div>
-
-            {!pendingLeaveType ? (
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => setPendingLeaveType('full_day')} disabled={markingLeave}
-                  style={{ flex: 1, background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)'}`, color: theme === 'dark' ? '#fff' : '#374151', borderRadius: 12, padding: '11px', fontSize: 14, fontWeight: 700 }}>
-                  Full Day Leave
-                </button>
-                <button onClick={() => setPendingLeaveType('half_day')} disabled={markingLeave}
-                  style={{ flex: 1, background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)'}`, color: theme === 'dark' ? '#fff' : '#374151', borderRadius: 12, padding: '11px', fontSize: 14, fontWeight: 700 }}>
-                  Half Day Leave
-                </button>
-              </div>
-            ) : (
-              <div style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 14, padding: 14, border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}` }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: theme === 'dark' ? '#fff' : t.text, marginBottom: 10 }}>
-                  {pendingLeaveType === 'full_day' ? 'Full Day' : 'Half Day'} Leave Request · <span style={{ color: theme === 'dark' ? 'rgba(255,255,255,0.55)' : t.text3, fontWeight: 400 }}>Select a reason</span>
-                </div>
-                <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 12, color: theme === 'dark' ? 'rgba(255,255,255,0.55)' : t.text3, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>Leave Date</div>
-                  <input type="date" value={leaveDate} onChange={e => setLeaveDate(e.target.value)}
-                    style={{ width: '100%', background: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)', border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.12)'}`, borderRadius: 10, padding: '9px 12px', color: theme === 'dark' ? '#fff' : '#374151', fontSize: 14, outline: 'none', boxSizing: 'border-box', colorScheme: theme === 'dark' ? 'dark' : 'light' }} />
-                  {new Date(leaveDate + 'T00:00:00').getDay() === 0 && (
-                    <div style={{ fontSize: 12, color: '#ef4444', marginTop: 5, fontWeight: 600 }}>
-                      🔴 Sunday is a day off — leave cannot be applied
-                    </div>
-                  )}
-                  {new Date(leaveDate + 'T00:00:00').getDay() !== 0 && allLeaveRecords.some(l => l.date === leaveDate && l.status !== 'removed' && l.status !== 'rejected') && (
-                    <div style={{ fontSize: 12, color: '#dc2626', marginTop: 5, fontWeight: 600 }}>
-                      ⚠️ Leave already submitted for this date
-                    </div>
-                  )}
-                </div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-                  {LEAVE_REASONS.map(r => (
-                    <button key={r} onClick={() => setLeaveReason(r)}
-                      style={{ background: leaveReason === r ? (theme === 'dark' ? 'rgba(99,102,241,0.3)' : 'rgba(99,102,241,0.12)') : (theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'transparent'), border: `1px solid ${leaveReason === r ? '#818cf8' : (theme === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.12)')}`, color: leaveReason === r ? (theme === 'dark' ? '#fff' : '#4f46e5') : (theme === 'dark' ? '#fff' : '#374151'), borderRadius: 20, padding: '7px 15px', fontSize: 13, fontWeight: 700 }}>
-                      {r}
-                    </button>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => { setPendingLeaveType(null); setLeaveReason('') }}
-                    style={{ flex: 1, background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.1)'}`, color: theme === 'dark' ? '#fff' : '#374151', borderRadius: 10, padding: '11px', fontSize: 14, fontWeight: 700 }}>
-                    Cancel
-                  </button>
-                  <button onClick={() => leaveReason && handleMarkLeave(pendingLeaveType, leaveReason as LeaveReason)}
-                    disabled={!leaveReason || markingLeave || new Date(leaveDate + 'T00:00:00').getDay() === 0 || allLeaveRecords.some(l => l.date === leaveDate && l.status !== 'removed' && l.status !== 'rejected')}
-                    style={{ flex: 2, background: leaveReason ? 'rgba(99,102,241,0.2)' : (theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'transparent'), border: `1px solid ${leaveReason ? '#818cf8' : (theme === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)')}`, color: leaveReason ? (theme === 'dark' ? '#fff' : '#4f46e5') : (theme === 'dark' ? 'rgba(255,255,255,0.35)' : t.text3), borderRadius: 10, padding: '11px', fontSize: 14, fontWeight: 700, opacity: (!leaveReason || markingLeave || new Date(leaveDate + 'T00:00:00').getDay() === 0 || allLeaveRecords.some(l => l.date === leaveDate && l.status !== 'removed' && l.status !== 'rejected')) ? 0.5 : 1 }}>
-                    {markingLeave ? 'Sending…' : 'Send Request'}
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
-        </div>
-      )}
+          {!isOnFullLeave && <span style={{ fontSize: 24, opacity: 0.4 }}>›</span>}
+        </button>
+
+        {renderCard({ emoji: '💸', label: 'Add Expense', sub: 'Log travel, food & misc', action: () => { setExpenseDefaultToDay(true); setScreen('expenses') } })}
+
+        {/* ── SALES ── */}
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', color: theme === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.35)', marginBottom: 10, marginTop: 8 }}>Trade</div>
+
+        {renderCard({ emoji: '🤝', label: 'Network', sub: 'Distributors & retailers', action: () => setScreen('parties') })}
+        {renderCard({ emoji: '📦', label: 'Allocations', sub: 'View & create stock requests', action: () => setScreen('allocations') })}
+        {renderCard({ emoji: '📊', label: 'Stock', sub: 'Available inventory', action: () => setScreen('stock'), badge: '👁 View only' })}
+        {renderCard({ emoji: '💜', label: 'Credit Book', sub: 'Outstanding & settlements', action: () => setScreen('credits'), badge: '👁 View only' })}
+
+        {/* ── PERSONAL ── */}
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', color: theme === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.35)', marginBottom: 10, marginTop: 8 }}>Personal</div>
+
+        {renderCard({ emoji: '📅', label: 'My Activity', sub: 'Visit logs & action history', action: () => setScreen('history') })}
+        {renderCard({ emoji: '🏖️', label: 'My Leaves', sub: pendingLeavesCount > 0 ? `${pendingLeavesCount} pending approval` : 'Apply & manage leaves', action: () => setScreen('leaves') })}
+        {renderCard({ emoji: '🧾', label: 'Expense Reports', sub: 'Weekly submissions & history', action: () => { setExpenseDefaultToDay(false); setScreen('expenses') } })}
+
+      </div>
       {leaveModal}
     </div>
   )

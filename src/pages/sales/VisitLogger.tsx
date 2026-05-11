@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect } from "react";
 import {
   collection,
   addDoc,
@@ -23,7 +23,6 @@ import {
   NOT_INTERESTED_REASONS,
   NotInterestedReason,
   DailyVisitLog,
-  RetailerIndent,
   VisitLogAuditEntry,
   LeaveRecord,
   Holiday,
@@ -33,23 +32,27 @@ import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import CustomSelect from "../../components/CustomSelect";
 import RevisitLogger from "./RevisitLogger";
-import { localDateStr, localDateOffset } from "../../utils/date";
+import { localDateStr } from "../../utils/date";
 import { INDIAN_STATES } from "../../data";
 
 interface Props {
   onBack: () => void;
   initialDate?: string;
+  onViewAllocation?: (allocationId: string) => void;
+  onViewPayment?: (partyId: string, paymentId: string) => void;
 }
 
-type Step = "home" | "selectShop" | "addNewShop" | "markOutcome" | "revisit";
+type Step = "home" | "selectShop" | "addNewShop" | "revisit";
 
-export default function VisitLogger({ onBack, initialDate }: Props) {
+export default function VisitLogger({ onBack, initialDate, onViewAllocation, onViewPayment }: Props) {
   const { appUser } = useAuth();
   const { t } = useTheme();
   const [parties, setParties] = useState<Party[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [todayLog, setTodayLog] = useState<DailyVisitLog | null>(null);
   const [todayRevisitLogs, setTodayRevisitLogs] = useState<any[]>([]);
+  const [allocations, setAllocations] = useState<any[]>([]);
+  const [livePayments, setLivePayments] = useState<any[]>([]);
   const [salesUsers, setSalesUsers] = useState<AppUser[]>([]);
   const [shareRequestTargets, setShareRequestTargets] = useState<string[]>([]);
   const [shareRequestPartyId, setShareRequestPartyId] = useState<string | null>(
@@ -69,18 +72,7 @@ export default function VisitLogger({ onBack, initialDate }: Props) {
   const [step, setStep] = useState<Step>("home");
   const { modal: confirmModal, showConfirm, showDanger, showAlert } = useConfirm();
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState("");
   const [selectedParty, setSelectedParty] = useState<Party | null>(null);
-  const [outcome, setOutcome] = useState<VisitOutcome | null>(null);
-  const [notInterestedReason, setNotInterestedReason] = useState<
-    NotInterestedReason | ""
-  >("");
-  const [otherReason, setOtherReason] = useState("");
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [allocQty, setAllocQty] = useState("");
-  const [allocPrice, setAllocPrice] = useState("");
-  const [allocPayment, setAllocPayment] = useState<"cash" | "credit">("credit");
-  const [allocDate, setAllocDate] = useState(localDateOffset(2));
   const [endNote, setEndNote] = useState("");
   const [newShop, setNewShop] = useState({
     name: "",
@@ -100,6 +92,7 @@ export default function VisitLogger({ onBack, initialDate }: Props) {
     "all" | "active" | "prospect" | "inactive"
   >("all");
   const [selectedDate, setSelectedDate] = useState(initialDate ?? localDateStr());
+  const [isNewParty, setIsNewParty] = useState(false);
 
   // ── ALL hooks first ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -113,9 +106,17 @@ export default function VisitLogger({ onBack, initialDate }: Props) {
           .filter((p) => p.active),
       ),
     );
+    const u3 = onSnapshot(collection(db, "allocations_v2"), (snap) =>
+      setAllocations(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    );
+    const u4 = onSnapshot(collection(db, "payment_transactions"), (snap) =>
+      setLivePayments(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    );
     return () => {
       u1();
       u2();
+      u3();
+      u4();
     };
   }, []);
 
@@ -228,11 +229,6 @@ export default function VisitLogger({ onBack, initialDate }: Props) {
       setHolidays(snap.docs.map(d => ({ id: d.id, ...d.data() } as Holiday)))
     })
   }, [])
-
-  useEffect(() => {
-    if (selectedProduct)
-      setAllocPrice(String(selectedProduct.defaultPricePerUnit));
-  }, [selectedProduct]);
 
   const openSharePanel = (partyId: string, partyName: string) => {
     setShareRequestPartyId(partyId);
@@ -404,14 +400,7 @@ export default function VisitLogger({ onBack, initialDate }: Props) {
 
   const resetVisit = () => {
     setSelectedParty(null);
-    setOutcome(null);
-    setNotInterestedReason("");
-    setOtherReason("");
-    setSelectedProduct(null);
-    setAllocQty("");
-    setAllocPrice("");
-    setAllocPayment("cash");
-    setAllocDate(localDateOffset(2));
+    setIsNewParty(false);
   };
 
   // ── EDIT / DELETE helpers ─────────────────────────────────────────────────
@@ -605,23 +594,20 @@ export default function VisitLogger({ onBack, initialDate }: Props) {
   };
 
   // ── REVISIT screen ────────────────────────────────────────────────────────
-  const handleRevisitDone = async (
-    revisitLogId: string,
-    outcome: VisitOutcome,
-  ) => {
+  const handleRevisitDone = async (revisitLogId: string) => {
     if (!appUser) { resetVisit(); setEditRevisitTarget(null); setStep("home"); return; }
 
-    // Edit mode: update existing visit entry outcome + write audit
+    // Edit mode: update existing visit entry + write audit
     if (editRevisitTarget) {
       const oldEntry = editRevisitTarget.visitEntry;
       if (todayLog?.id) {
         const editedAt = Date.now();
         const newVisits = (todayLog.visits || []).map((v) =>
-          v.loggedAt === oldEntry.loggedAt ? { ...v, outcome, loggedAt: editedAt } : v,
+          v.loggedAt === oldEntry.loggedAt ? { ...v, loggedAt: editedAt } : v,
         );
         await updateDoc(doc(db, 'visit_logs', todayLog.id), {
           visits: newVisits,
-          auditLog: arrayUnion(auditWrite('entry_edited', oldEntry, `outcome ${oldEntry.outcome} → ${outcome}`)),
+          auditLog: arrayUnion(auditWrite('entry_edited', oldEntry, 'revisit updated')),
           updatedAt: Date.now(),
         });
         const isShared = (oldEntry.sharedWith || []).some((id) => id !== appUser.uid);
@@ -642,43 +628,44 @@ export default function VisitLogger({ onBack, initialDate }: Props) {
     }
 
     if (!selectedParty) { resetVisit(); setStep("home"); return; }
-    const entry: VisitEntry = {
-      partyId: selectedParty.id!,
-      partyName: selectedParty.name,
-      isNew: false,
-      outcome,
-      isRevisit: true,
-      revisitLogId,
-      loggedAt: Date.now(),
-    };
-    try {
-      if (todayLog?.id) {
-        // Use spread instead of arrayUnion — arrayUnion deduplicates identical objects
-        // which would drop a second visit to the same party in the same day
-        await updateDoc(doc(db, "visit_logs", todayLog.id), {
-          visits: [...(todayLog.visits || []), entry],
-          totalVisited: increment(1),
-          auditLog: arrayUnion(auditWrite('entry_added', entry, 'revisit')),
-          updatedAt: Date.now(),
-        });
-      } else {
-        await addDoc(collection(db, "visit_logs"), {
-          salesPersonId: appUser.uid,
-          salesPersonName: appUser.name,
-          date: selectedDate,
-          endOfDayNote: "",
-          createdAt: Date.now(),
-          visits: [entry],
-          totalVisited: 1,
-          totalInterested: 0,
-          totalNotInterested: 0,
-          updatedAt: Date.now(),
-          auditLog: [auditWrite('entry_added', entry, 'revisit')],
-        });
+
+    // For new parties, the visit_log entry was already written in handleSaveNewShop.
+    // Only write the revisit entry for regular (non-new) revisits.
+    if (!isNewParty) {
+      const entry: VisitEntry = {
+        partyId: selectedParty.id!,
+        partyName: selectedParty.name,
+        isNew: false,
+        isRevisit: true,
+        revisitLogId,
+        loggedAt: Date.now(),
+      };
+      try {
+        if (todayLog?.id) {
+          await updateDoc(doc(db, "visit_logs", todayLog.id), {
+            visits: [...(todayLog.visits || []), entry],
+            totalVisited: increment(1),
+            auditLog: arrayUnion(auditWrite('entry_added', entry, 'revisit')),
+            updatedAt: Date.now(),
+          });
+        } else {
+          await addDoc(collection(db, "visit_logs"), {
+            salesPersonId: appUser.uid,
+            salesPersonName: appUser.name,
+            date: selectedDate,
+            endOfDayNote: "",
+            createdAt: Date.now(),
+            visits: [entry],
+            totalVisited: 1,
+            updatedAt: Date.now(),
+            auditLog: [auditWrite('entry_added', entry, 'revisit')],
+          });
+        }
+      } catch (err) {
+        console.error("Failed to log revisit:", err);
       }
-    } catch (err) {
-      console.error("Failed to log revisit:", err);
     }
+
     resetVisit();
     setStep("home");
   };
@@ -699,127 +686,6 @@ export default function VisitLogger({ onBack, initialDate }: Props) {
       />
     ) : null;
   }
-
-  // ── Handlers ──────────────────────────────────────────────────────────────
-  const handleAddVisit = async () => {
-    if (!selectedParty || !outcome) return;
-    setSaving(true);
-    setSaveError("");
-    try {
-      const entry: VisitEntry = {
-        partyId: selectedParty.id!,
-        partyName: selectedParty.name,
-        isNew: false,
-        outcome,
-        loggedAt: Date.now(),
-        ...(outcome === "not_interested" && {
-          notInterestedReason: notInterestedReason as NotInterestedReason,
-          ...(notInterestedReason === "Other" && { otherReason }),
-        }),
-      };
-
-      if (outcome === "interested" && selectedProduct && allocQty) {
-        const units = parseInt(allocQty);
-        if (selectedParty.underDistributorId) {
-          // Retailer under distributor — create indent, not allocation
-          const indent: Omit<RetailerIndent, "id"> = {
-            distributorId: selectedParty.underDistributorId,
-            distributorName: selectedParty.underDistributorName || "",
-            retailerId: selectedParty.id!,
-            retailerName: selectedParty.name,
-            productId: selectedProduct.id!,
-            productName: selectedProduct.name,
-            requestedPackets: units,
-            fulfilledPackets: 0,
-            status: "requested",
-            requestedBy: appUser!.uid,
-            requestedByName: appUser!.name,
-            requestedAt: Date.now(),
-          };
-          const ref = await addDoc(collection(db, "retailer_indents"), indent);
-          entry.productId = selectedProduct.id!;
-          entry.productName = selectedProduct.name;
-          entry.indentId = ref.id;
-          await updateDoc(doc(db, "parties", selectedParty.id!), {
-            status: "active",
-          });
-        } else {
-          const price =
-            parseFloat(allocPrice) || selectedProduct.defaultPricePerUnit;
-          const ref = await addDoc(collection(db, "allocations_v2"), {
-            partyId: selectedParty.id!,
-            partyName: selectedParty.name,
-            partyType: selectedParty.type,
-            productId: selectedProduct.id!,
-            productName: selectedProduct.name,
-            packets: units,
-            cartons: Math.floor(units / selectedProduct.unitsPerCarton),
-            pricePerPacket: price,
-            totalAmount: units * price,
-            paymentType: allocPayment,
-            plannedDate: allocDate,
-            status: "pending",
-            notes: "",
-            createdBy: appUser!.uid,
-            createdByName: appUser!.name,
-            createdAt: Date.now(),
-            month: allocDate.slice(0, 7),
-          });
-          entry.productId = selectedProduct.id!;
-          entry.productName = selectedProduct.name;
-          entry.allocationId = ref.id;
-          await updateDoc(doc(db, "parties", selectedParty.id!), {
-            status: "active",
-          });
-        }
-      }
-
-      if (outcome === "not_interested") {
-        await updateDoc(doc(db, "parties", selectedParty.id!), {
-          status: "prospect",
-          lastVisited: selectedDate,
-          lastVisitedBy: appUser!.name,
-          notInterestedReason,
-        });
-      }
-
-      const addedAudit = auditWrite('entry_added', entry, entry.outcome);
-      if (todayLog?.id) {
-        const isPastLog = selectedDate !== localDateStr();
-        await updateDoc(doc(db, "visit_logs", todayLog.id), {
-          visits: arrayUnion(entry),
-          totalVisited: increment(1),
-          ...(entry.outcome === "interested" && { totalInterested: increment(1) }),
-          ...(entry.outcome === "not_interested" && { totalNotInterested: increment(1) }),
-          auditLog: arrayUnion({ ...addedAudit, ...(isPastLog && { detail: `${entry.outcome} (past log edit)` }) }),
-          updatedAt: Date.now(),
-        });
-      } else {
-        await addDoc(collection(db, "visit_logs"), {
-          salesPersonId: appUser!.uid,
-          salesPersonName: appUser!.name,
-          date: selectedDate,
-          endOfDayNote: "",
-          createdAt: Date.now(),
-          visits: [entry],
-          totalVisited: 1,
-          totalInterested: entry.outcome === "interested" ? 1 : 0,
-          totalNotInterested: entry.outcome === "not_interested" ? 1 : 0,
-          updatedAt: Date.now(),
-          auditLog: [addedAudit],
-        });
-      }
-      resetVisit();
-      setShareRequestTargets([]);
-      setStep("home");
-    } catch (err) {
-      setSaveError(
-        err instanceof Error ? err.message : "Save failed. Try again.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const handleAddNewShop = async () => {
     if (!newShop.name.trim()) return;
@@ -916,7 +782,36 @@ export default function VisitLogger({ onBack, initialDate }: Props) {
         email: "",
       });
       setShowNewShopEmail(false);
-      setStep("markOutcome");
+      setIsNewParty(true);
+
+      // Log the new party immediately so it shows in My Activity
+      const newPartyEntry: VisitEntry = {
+        partyId: ref.id,
+        partyName: newShop.name.trim(),
+        isNew: true,
+        isRevisit: false,
+        loggedAt: Date.now(),
+      };
+      if (todayLog?.id) {
+        await updateDoc(doc(db, "visit_logs", todayLog.id), {
+          visits: [...(todayLog.visits || []), newPartyEntry],
+          totalVisited: increment(1),
+          updatedAt: Date.now(),
+        });
+      } else {
+        await addDoc(collection(db, "visit_logs"), {
+          salesPersonId: appUser!.uid,
+          salesPersonName: appUser!.name,
+          date: selectedDate,
+          visits: [newPartyEntry],
+          totalVisited: 1,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          auditLog: [],
+        });
+      }
+
+      setStep("revisit");
     } finally {
       setSaving(false);
     }
@@ -1154,18 +1049,10 @@ export default function VisitLogger({ onBack, initialDate }: Props) {
                     bg: t.bg3,
                   },
                   {
-                    label: "Interested",
-                    val: visits.filter((v) => v.outcome === "interested")
-                      .length,
+                    label: "Orders",
+                    val: todayRevisitLogs.filter((rl) => rl.actions?.some((a: any) => a.type === "new_order")).length,
                     color: "#16a34a",
                     bg: "rgba(22,163,74,0.1)",
-                  },
-                  {
-                    label: "Declined",
-                    val: visits.filter((v) => v.outcome === "not_interested")
-                      .length,
-                    color: "#dc2626",
-                    bg: "rgba(220,38,38,0.08)",
                   },
                 ].map((s) => (
                   <div
@@ -1316,15 +1203,9 @@ export default function VisitLogger({ onBack, initialDate }: Props) {
             {[
               { label: "Visited", val: visits.length, color: "#fff" },
               {
-                label: "Interested",
-                val: visits.filter((v) => v.outcome === "interested").length,
+                label: "Orders",
+                val: todayRevisitLogs.filter((rl) => rl.actions?.some((a: any) => a.type === "new_order")).length,
                 color: "#86efac",
-              },
-              {
-                label: "Not Int.",
-                val: visits.filter((v) => v.outcome === "not_interested")
-                  .length,
-                color: "#fca5a5",
               },
             ].map((s) => (
               <div
@@ -1654,40 +1535,52 @@ export default function VisitLogger({ onBack, initialDate }: Props) {
 
                 const renderEntries = (entries: VisitEntry[], canEdit = true) =>
                   entries.map((v, vi) => {
+                    const isNew = !!(v as any).isNew
                     const rl = v.revisitLogId
                       ? todayRevisitLogs.find((r) => r.id === v.revisitLogId)
                       : todayRevisitLogs.find((r) => r.partyId === v.partyId);
                     const timeStr = v.loggedAt
                       ? new Date(v.loggedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
                       : "";
-                    const outcomeEmoji = v.outcome === "interested" ? "✅" : v.outcome === "not_interested" ? "❌" : "🔄";
+                    const actions: any[] = (v.isRevisit || isNew) && rl?.actions ? rl.actions : [];
+                    const entryEmoji = actions.some((a) => a.type === "new_order") ? "📦"
+                      : actions.some((a) => a.type === "payment_collection") ? "💰"
+                      : actions.some((a) => a.type === "stock_update") ? "📊"
+                      : actions.some((a) => a.type === "no_longer_active") ? "⛔"
+                      : isNew ? "🆕"
+                      : v.isRevisit ? "🤝"
+                      : v.outcome === "interested" ? "✅"
+                      : v.outcome === "not_interested" ? "❌"
+                      : "🔄";
                     return (
                       <div
                         key={vi}
                         style={{
                           paddingLeft: 10,
-                          borderLeft: `2px solid ${t.border}`,
+                          borderLeft: `2px solid ${isNew ? "rgba(99,102,241,0.4)" : t.border}`,
                           marginBottom: vi < entries.length - 1 ? 10 : 0,
                           paddingBottom: vi < entries.length - 1 ? 8 : 0,
                         }}
                       >
                         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                          <span style={{ fontSize: 15 }}>{outcomeEmoji}</span>
+                          {isNew && <span style={{ fontSize: 10, fontWeight: 800, color: '#6366f1', background: 'rgba(99,102,241,0.12)', padding: '2px 7px', borderRadius: 99, letterSpacing: 1 }}>NEW</span>}
                           {timeStr && <span style={{ fontSize: 11, color: t.text3, fontWeight: 600 }}>{timeStr}</span>}
                           {canEdit && (
                             <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-                              <button
-                                onClick={() => {
-                                  if (v.isRevisit && rl) {
-                                    setEditRevisitTarget({ revisitLog: rl, visitEntry: v });
-                                    setSelectedParty(null);
-                                    setStep('revisit');
-                                  } else {
-                                    setEditSimpleEntry({ ...v });
-                                  }
-                                }}
-                                style={{ fontSize: 13, background: 'rgba(255,255,255,0.06)', border: `1px solid ${t.border}`, borderRadius: 6, padding: '2px 7px', color: t.text3, cursor: 'pointer' }}
-                              >✏️</button>
+                              {!isNew && (
+                                <button
+                                  onClick={() => {
+                                    if (v.isRevisit && rl) {
+                                      setEditRevisitTarget({ revisitLog: rl, visitEntry: v });
+                                      setSelectedParty(null);
+                                      setStep('revisit');
+                                    } else {
+                                      setEditSimpleEntry({ ...v });
+                                    }
+                                  }}
+                                  style={{ fontSize: 13, background: 'rgba(255,255,255,0.06)', border: `1px solid ${t.border}`, borderRadius: 6, padding: '2px 7px', color: t.text3, cursor: 'pointer' }}
+                                >✏️</button>
+                              )}
                               <button
                                 onClick={() => handleDeleteEntry(v)}
                                 style={{ fontSize: 13, background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.15)', borderRadius: 6, padding: '2px 7px', color: '#dc2626', cursor: 'pointer' }}
@@ -1695,24 +1588,40 @@ export default function VisitLogger({ onBack, initialDate }: Props) {
                             </div>
                           )}
                         </div>
-                        {v.isRevisit && rl?.actions?.map((action: any, ai: number) => {
+                        {(v.isRevisit || isNew) && rl?.actions?.map((action: any, ai: number) => {
+                          const liveAlloc = action.allocationId ? allocations.find((a: any) => a.id === action.allocationId) : null;
+                          const livePay = action.transactionId ? livePayments.find((p: any) => p.id === action.transactionId) : null;
+                          const displayQty = liveAlloc?.packets ?? action.quantity;
+                          const displayAmt = livePay?.amount ?? action.amount;
                           const label =
                             action.type === "stock_update" ? `📊 Stock Updated · Balance: ${action.balanceQty} pkts`
-                            : action.type === "new_order" ? `📦 New Order · ${action.quantity} ${action.productName}`
-                            : action.type === "payment_collection" ? `💰 Payment ₹${action.amount?.toLocaleString()}`
+                            : action.type === "new_order" ? `📦 New Order · ${displayQty} ${action.productName}`
+                            : action.type === "payment_collection" ? `💰 Payment ₹${displayAmt?.toLocaleString()}`
                             : action.type === "relationship_visit" ? `🤝 Relationship Visit${action.notes ? ` · ${action.notes}` : ""}`
                             : action.type === "no_longer_active" ? `⛔ No Longer Active · ${action.reason}`
-                            : action.type === "distribute_to_retailers" ? `📋 Distributed to Retailers`
                             : null;
-                          return label ? <div key={ai} style={{ fontSize: 13, color: t.text2, marginBottom: 2 }}>{label}</div> : null;
+                          if (!label) return null;
+                          const isOrder = action.type === "new_order" && !!action.allocationId && !!onViewAllocation;
+                          const isPayment = action.type === "payment_collection" && !!action.transactionId && !!onViewPayment;
+                          const isTappable = isOrder || isPayment;
+                          return (
+                            <div
+                              key={ai}
+                              onClick={isOrder ? () => onViewAllocation!(action.allocationId) : isPayment ? () => onViewPayment!(rl!.partyId, action.transactionId) : undefined}
+                              style={{ fontSize: 13, color: isTappable ? "#16a34a" : t.text2, marginBottom: 2, display: "flex", alignItems: "center", gap: 4, cursor: isTappable ? "pointer" : "default" }}
+                            >
+                              {label}
+                              {isTappable && <span style={{ fontSize: 11, color: "#16a34a" }}>↗</span>}
+                            </div>
+                          );
                         })}
-                        {!v.isRevisit && v.outcome === "interested" && v.productName && (
+                        {!v.isRevisit && !isNew && v.outcome === "interested" && v.productName && (
                           <div style={{ fontSize: 13, color: "#16a34a" }}>{v.productName} — allocation created</div>
                         )}
-                        {!v.isRevisit && v.outcome === "not_interested" && (
+                        {!v.isRevisit && !isNew && v.outcome === "not_interested" && (
                           <div style={{ fontSize: 13, color: "#dc2626" }}>{v.notInterestedReason}</div>
                         )}
-                        {!v.isRevisit && v.outcome === "follow_up" && (
+                        {!v.isRevisit && !isNew && v.outcome === "follow_up" && (
                           <div style={{ fontSize: 13, color: "#d97706" }}>Follow up needed</div>
                         )}
                       </div>
@@ -1720,15 +1629,21 @@ export default function VisitLogger({ onBack, initialDate }: Props) {
                   });
 
                 return renderGroups.map(({ partyId, entries, groupType }) => {
+                  // Hide new-party groups with no actions — they appear in My Activity only
+                  const allNew = entries.every(e => (e as any).isNew)
+                  const hasRevisitLog = todayRevisitLogs.some(rl => rl.partyId === partyId && rl.actions?.length > 0)
+                  if (allNew && !hasRevisitLog) return null
+
                   const vParty = parties.find((p) => p.id === partyId);
                   const typeLabel = vParty?.type === "distributor" ? "🚚 Distributor" : "🏪 Retailer";
-                  const hasInterested = entries.some((v) => v.outcome === "interested");
-                  const allNotInterested = entries.every((v) => v.outcome === "not_interested");
+                  const hasOrder = entries.some((v) => {
+                    const rl = v.revisitLogId ? todayRevisitLogs.find((r) => r.id === v.revisitLogId) : null;
+                    return rl?.actions?.some((a: any) => a.type === "new_order");
+                  });
                   const borderColor = groupType === 'new_after_share'
                     ? "rgba(245,158,11,0.2)"
-                    : hasInterested ? "rgba(22,163,74,0.25)"
-                    : allNotInterested ? "rgba(220,38,38,0.15)"
-                    : "rgba(217,119,6,0.2)";
+                    : hasOrder ? "rgba(22,163,74,0.25)"
+                    : "rgba(99,102,241,0.15)";
 
                   // ── Shared card ──
                   if (groupType === 'shared') {
@@ -1799,12 +1714,12 @@ export default function VisitLogger({ onBack, initialDate }: Props) {
                         </div>
                       </div>
                       {renderEntries(entries)}
-                      {vParty && (vParty as any).status === "active" && (
+                      {vParty && ((vParty as any).status === "active" || entries.some(e => (e as any).isNew)) && (
                         <button
                           onClick={() => { setSelectedParty(vParty); setStep("revisit"); }}
-                          style={{ marginTop: 10, width: "100%", background: "rgba(22,163,74,0.07)", border: `1px dashed rgba(22,163,74,0.35)`, borderRadius: 10, padding: "9px 14px", fontSize: 13, fontWeight: 700, color: "#16a34a", cursor: "pointer" }}
+                          style={{ marginTop: 10, width: "100%", background: entries.some(e => (e as any).isNew) ? "rgba(99,102,241,0.07)" : "rgba(22,163,74,0.07)", border: `1px dashed ${entries.some(e => (e as any).isNew) ? "rgba(99,102,241,0.35)" : "rgba(22,163,74,0.35)"}`, borderRadius: 10, padding: "9px 14px", fontSize: 13, fontWeight: 700, color: entries.some(e => (e as any).isNew) ? "#6366f1" : "#16a34a", cursor: "pointer" }}
                         >
-                          + Add More Log
+                          {entries.some(e => (e as any).isNew) ? "+ Log Actions for New Party" : "+ Add More Log"}
                         </button>
                       )}
                     </div>
@@ -1983,9 +1898,7 @@ export default function VisitLogger({ onBack, initialDate }: Props) {
               const p = parties.find((p) => p.id === v);
               if (!p) return;
               setSelectedParty(p);
-              setStep(
-                (p as any).status === "active" ? "revisit" : "markOutcome",
-              );
+              setStep("revisit");
             }}
             placeholder="🔍 Search by name, place, area..."
             options={partyOptions}
@@ -2306,458 +2219,6 @@ export default function VisitLogger({ onBack, initialDate }: Props) {
           >
             {saving ? "Saving..." : "Add & Continue →"}
           </button>
-        </div>
-      </div>
-    );
-
-  // ── MARK OUTCOME (prospect / first visit) ─────────────────────────────────
-  if (step === "markOutcome" && selectedParty)
-    return (
-      <div style={{ minHeight: "100vh", background: t.bg, paddingBottom: 40 }}>
-        <div
-          style={{
-            background: "linear-gradient(135deg,#0d3d2e,#1a5c42)",
-            padding: "20px 20px 20px",
-          }}
-        >
-          <button
-            onClick={() => {
-              setStep("selectShop");
-              resetVisit();
-            }}
-            style={{
-              background: "rgba(255,255,255,0.1)",
-              border: "none",
-              color: "#6ee7b7",
-              padding: "6px 14px",
-              borderRadius: 20,
-              fontSize: 13,
-              marginBottom: 14,
-            }}
-          >
-            ← Back
-          </button>
-          <div style={{ fontSize: 13, color: "#a7f3d0" }}>Prospect Visit</div>
-          <div style={{ fontSize: 22, fontWeight: 900, color: "#fff" }}>
-            {selectedParty.name}
-          </div>
-          <div style={{ fontSize: 13, color: "#a7f3d0", marginTop: 2 }}>
-            {selectedParty.place || selectedParty.address}
-          </div>
-        </div>
-
-        <div
-          style={{
-            padding: "16px 16px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 14,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 14,
-              color: t.text2,
-              fontWeight: 700,
-              letterSpacing: 1,
-              textTransform: "uppercase",
-            }}
-          >
-            Visit Outcome
-          </div>
-
-          {[
-            {
-              val: "interested",
-              emoji: "✅",
-              label: "Yes, Interested!",
-              sub: "Will take our product — create allocation",
-              color: "#16a34a",
-            },
-            {
-              val: "not_interested",
-              emoji: "❌",
-              label: "Not Interested",
-              sub: "Select reason below",
-              color: "#dc2626",
-            },
-            {
-              val: "follow_up",
-              emoji: "🔄",
-              label: "Follow Up Later",
-              sub: "Needs more time to decide",
-              color: "#d97706",
-            },
-          ].map((o) => (
-            <button
-              key={o.val}
-              onClick={() => setOutcome(o.val as VisitOutcome)}
-              style={{
-                background: outcome === o.val ? `${o.color}22` : t.card,
-                border: `2px solid ${outcome === o.val ? o.color : t.border}`,
-                borderRadius: 14,
-                padding: "17px 18px",
-                display: "flex",
-                alignItems: "center",
-                gap: 14,
-                textAlign: "left",
-              }}
-            >
-              <span style={{ fontSize: 28 }}>{o.emoji}</span>
-              <div>
-                <div
-                  style={{
-                    fontWeight: 800,
-                    fontSize: 16,
-                    color: outcome === o.val ? o.color : t.text,
-                  }}
-                >
-                  {o.label}
-                </div>
-                <div style={{ fontSize: 13, color: t.text2, marginTop: 2 }}>
-                  {o.sub}
-                </div>
-              </div>
-            </button>
-          ))}
-
-          {outcome === "not_interested" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ fontSize: 14, color: t.text2, fontWeight: 700 }}>
-                Why not interested?
-              </div>
-              {NOT_INTERESTED_REASONS.map((r) => (
-                <button
-                  key={r}
-                  onClick={() => setNotInterestedReason(r)}
-                  style={{
-                    background:
-                      notInterestedReason === r
-                        ? "rgba(220,38,38,0.12)"
-                        : t.bg3,
-                    color: notInterestedReason === r ? "#dc2626" : t.text2,
-                    border: `1.5px solid ${notInterestedReason === r ? "#dc2626" : t.border}`,
-                    borderRadius: 10,
-                    padding: "12px 14px",
-                    fontSize: 14,
-                    textAlign: "left",
-                    fontWeight: notInterestedReason === r ? 700 : 400,
-                  }}
-                >
-                  {notInterestedReason === r ? "● " : "○ "}
-                  {r}
-                </button>
-              ))}
-              {notInterestedReason === "Other" && (
-                <textarea
-                  value={otherReason}
-                  onChange={(e) => setOtherReason(e.target.value)}
-                  placeholder="Please specify..."
-                  rows={2}
-                  style={{
-                    width: "100%",
-                    background: t.bg3,
-                    border: `1.5px solid ${t.border2}`,
-                    borderRadius: 10,
-                    padding: "12px",
-                    fontSize: 14,
-                    color: t.text,
-                    outline: "none",
-                    resize: "none",
-                    boxSizing: "border-box",
-                  }}
-                />
-              )}
-            </div>
-          )}
-
-          {outcome === "interested" && selectedParty.underDistributorId && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <div
-                style={{
-                  background: "rgba(217,119,6,0.08)",
-                  border: "1px solid rgba(217,119,6,0.2)",
-                  borderRadius: 12,
-                  padding: "12px 14px",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 800,
-                    color: "#d97706",
-                    marginBottom: 4,
-                  }}
-                >
-                  Indent via {selectedParty.underDistributorName}
-                </div>
-                <div
-                  style={{ fontSize: 12, color: "#fbbf24", lineHeight: 1.5 }}
-                >
-                  Stock flows through the distributor. An indent will be raised
-                  — distributor fulfills it.
-                </div>
-              </div>
-              <div style={{ fontSize: 14, color: t.text2, fontWeight: 700 }}>
-                Which Product?
-              </div>
-              {products.length === 0 ? (
-                <div
-                  style={{
-                    background: "rgba(220,38,38,0.08)",
-                    borderRadius: 10,
-                    padding: 14,
-                    fontSize: 14,
-                    color: "#dc2626",
-                  }}
-                >
-                  No active products. Ask admin to add products first.
-                </div>
-              ) : (
-                products.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => setSelectedProduct(p)}
-                    style={{
-                      background:
-                        selectedProduct?.id === p.id
-                          ? "rgba(22,163,74,0.12)"
-                          : t.bg3,
-                      border: `1.5px solid ${selectedProduct?.id === p.id ? "#16a34a" : t.border}`,
-                      borderRadius: 12,
-                      padding: "14px 16px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
-                      textAlign: "left",
-                    }}
-                  >
-                    <span style={{ fontSize: 20 }}>📦</span>
-                    <div style={{ flex: 1 }}>
-                      <div
-                        style={{
-                          fontWeight: 700,
-                          fontSize: 15,
-                          color:
-                            selectedProduct?.id === p.id ? "#16a34a" : t.text,
-                        }}
-                      >
-                        {p.name}
-                      </div>
-                      <div style={{ fontSize: 13, color: t.text2 }}>
-                        ₹{p.defaultPricePerUnit}/{p.unitLabel}
-                      </div>
-                    </div>
-                    {selectedProduct?.id === p.id && (
-                      <span style={{ color: "#16a34a", fontSize: 18 }}>✓</span>
-                    )}
-                  </button>
-                ))
-              )}
-              {selectedProduct && (
-                <input
-                  type="number"
-                  value={allocQty}
-                  onChange={(e) => setAllocQty(e.target.value)}
-                  placeholder={`Qty (${selectedProduct.unitLabel})`}
-                  style={inputStyle}
-                />
-              )}
-            </div>
-          )}
-
-          {outcome === "interested" && !selectedParty.underDistributorId && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <div style={{ fontSize: 14, color: t.text2, fontWeight: 700 }}>
-                Which Product?
-              </div>
-              {products.length === 0 ? (
-                <div
-                  style={{
-                    background: "rgba(220,38,38,0.08)",
-                    borderRadius: 10,
-                    padding: 14,
-                    fontSize: 14,
-                    color: "#dc2626",
-                  }}
-                >
-                  ⚠️ No active products found. Ask admin to add products first.
-                </div>
-              ) : (
-                products.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => setSelectedProduct(p)}
-                    style={{
-                      background:
-                        selectedProduct?.id === p.id
-                          ? "rgba(22,163,74,0.12)"
-                          : t.bg3,
-                      border: `1.5px solid ${selectedProduct?.id === p.id ? "#16a34a" : t.border}`,
-                      borderRadius: 12,
-                      padding: "14px 16px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
-                      textAlign: "left",
-                    }}
-                  >
-                    <span style={{ fontSize: 22 }}>📦</span>
-                    <div style={{ flex: 1 }}>
-                      <div
-                        style={{
-                          fontWeight: 700,
-                          fontSize: 15,
-                          color:
-                            selectedProduct?.id === p.id ? "#16a34a" : t.text,
-                        }}
-                      >
-                        {p.name}
-                      </div>
-                      <div style={{ fontSize: 13, color: t.text2 }}>
-                        ₹{p.defaultPricePerUnit}/{p.unitLabel}
-                      </div>
-                    </div>
-                    {selectedProduct?.id === p.id && (
-                      <span style={{ color: "#16a34a", fontSize: 20 }}>✓</span>
-                    )}
-                  </button>
-                ))
-              )}
-              {selectedProduct && (
-                <>
-                  <input
-                    type="number"
-                    value={allocQty}
-                    onChange={(e) => setAllocQty(e.target.value)}
-                    placeholder={`Qty (${selectedProduct.unitLabel})`}
-                    style={inputStyle}
-                  />
-                  <input
-                    type="number"
-                    value={allocPrice}
-                    onChange={(e) => setAllocPrice(e.target.value)}
-                    placeholder={`Price per ${selectedProduct.unitLabel} (₹)`}
-                    style={inputStyle}
-                  />
-                  {allocQty && allocPrice && (
-                    <div
-                      style={{
-                        fontSize: 14,
-                        color: "#6ee7b7",
-                        fontWeight: 600,
-                      }}
-                    >
-                      Total: ₹
-                      {(
-                        parseInt(allocQty) * parseFloat(allocPrice)
-                      ).toLocaleString()}
-                    </div>
-                  )}
-                  <div style={{ display: "flex", gap: 8 }}>
-                    {(
-                      [
-                        ["cash", "💵 Cash"],
-                        ["credit", "📋 Credit"],
-                      ] as const
-                    ).map(([val, label]) => (
-                      <button
-                        key={val}
-                        onClick={() => setAllocPayment(val)}
-                        style={{
-                          flex: 1,
-                          background:
-                            allocPayment === val
-                              ? val === "cash"
-                                ? "rgba(22,163,74,0.15)"
-                                : "rgba(217,119,6,0.15)"
-                              : t.bg3,
-                          color:
-                            allocPayment === val
-                              ? val === "cash"
-                                ? "#16a34a"
-                                : "#d97706"
-                              : t.text2,
-                          border: `1.5px solid ${allocPayment === val ? (val === "cash" ? "#16a34a" : "#d97706") : t.border}`,
-                          borderRadius: 12,
-                          padding: "12px",
-                          fontSize: 14,
-                          fontWeight: 800,
-                        }}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: t.text2,
-                        marginBottom: 6,
-                        letterSpacing: 1,
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Planned Delivery Date
-                    </div>
-                    <input
-                      type="date"
-                      value={allocDate}
-                      onChange={(e) => setAllocDate(e.target.value)}
-                      style={inputStyle}
-                    />
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {saveError && (
-            <div
-              style={{
-                background: "rgba(220,38,38,0.1)",
-                border: "1px solid rgba(220,38,38,0.3)",
-                borderRadius: 10,
-                padding: "10px 14px",
-                fontSize: 13,
-                color: "#dc2626",
-              }}
-            >
-              ⚠️ {saveError}
-            </div>
-          )}
-
-          {/* Save button */}
-          {outcome && (
-            <button
-              onClick={handleAddVisit}
-              disabled={
-                saving ||
-                (outcome === "not_interested" && !notInterestedReason) ||
-                (outcome === "interested" && (!selectedProduct || !allocQty))
-              }
-              style={{
-                background: saving
-                  ? "#475569"
-                  : "linear-gradient(135deg,#0d3d2e,#1a5c42)",
-                color: "#fff",
-                border: "none",
-                borderRadius: 14,
-                padding: 18,
-                fontSize: 16,
-                fontWeight: 800,
-                marginTop: 4,
-                opacity:
-                  (outcome === "not_interested" && !notInterestedReason) ||
-                  (outcome === "interested" && (!selectedProduct || !allocQty))
-                    ? 0.4
-                    : 1,
-              }}
-            >
-              {saving ? "Saving..." : "Save Visit ✅"}
-            </button>
-          )}
         </div>
       </div>
     );

@@ -13,6 +13,7 @@ import { INDIAN_STATES } from '../../data'
 interface Props { onBack: () => void }
 
 const CATEGORIES: PartyCategory[] = ['FMCG', 'Pharma', 'General Store', 'Supermarket', 'Online', 'Other']
+const PARTY_PAGE_SIZE = 5
 
 function validatePhone(p: string) { return /^[6-9]\d{9}$/.test(p.trim()) }
 
@@ -56,6 +57,7 @@ export default function PartyManager({ onBack }: Props) {
   const [tab, setTab] = useState<'list' | 'add' | 'allocations' | 'import'>('list')
   const [dispatches, setDispatches] = useState<Dispatch[]>([])
   const [expandedDispatch, setExpandedDispatch] = useState<string | null>(null)
+  const [expandedRetailAlloc, setExpandedRetailAlloc] = useState<string | null>(null)
   const [typeFilter, setTypeFilter] = useState<'all' | 'distributor' | 'retailer'>('all')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'prospect' | 'inactive'>('all')
   const [categoryFilter, setCategoryFilter] = useState<'all' | PartyCategory>('all')
@@ -71,6 +73,7 @@ export default function PartyManager({ onBack }: Props) {
   const [focusParent, setFocusParent] = useState(false)
   const [showEmail, setShowEmail] = useState(false)
   const [showAllocation, setShowAllocation] = useState(false)
+  const [partyPage, setPartyPage] = useState(0)
 
   const isAdmin = appUser?.role === 'super_admin' || appUser?.role === 'admin'
   const distributors = parties.filter(p => p.type === 'distributor')
@@ -90,6 +93,8 @@ export default function PartyManager({ onBack }: Props) {
     })
     return () => { u1(); u2(); u3(); u4() }
   }, [])
+
+  useEffect(() => { setPartyPage(0) }, [typeFilter, statusFilter, categoryFilter, distributorFilter, placeSearch, districtFilter])
 
   const filtered = parties.filter(p => {
     if (typeFilter !== 'all' && p.type !== typeFilter) return false
@@ -375,7 +380,7 @@ export default function PartyManager({ onBack }: Props) {
                   <div style={{ fontWeight: 700 }}>No entries found</div>
                   <div style={{ fontSize: 13, marginTop: 6 }}>Try different filters or add a new entry</div>
                 </div>
-              ) : filtered.map(p => (
+              ) : filtered.slice(partyPage * PARTY_PAGE_SIZE, (partyPage + 1) * PARTY_PAGE_SIZE).map(p => (
                 <div key={p.id} style={{ background: '#161b22', borderRadius: 14, padding: 16, border: '1px solid rgba(255,255,255,0.06)' }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                     <div style={{ width: 42, height: 42, background: p.type === 'distributor' ? 'rgba(8,145,178,0.2)' : 'rgba(22,163,74,0.2)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
@@ -430,32 +435,71 @@ export default function PartyManager({ onBack }: Props) {
                       })()}
                       <div style={{ fontSize: 10, color: '#475569', marginTop: 4 }}>Added by {p.addedByName}</div>
 
-                      {/* Dispatch log toggle */}
-                      <button onClick={e => { e.stopPropagation(); setExpandedDispatch(expandedDispatch === p.id ? null : p.id!) }}
-                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '5px 10px', fontSize: 11, color: '#64748b', marginTop: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                        {expandedDispatch === p.id ? '▲' : '▼'} Last dispatches
-                      </button>
-
-                      {expandedDispatch === p.id && (() => {
-                        const pd = dispatches.filter(d => d.partyId === p.id).slice(0, 3)
-                        return pd.length === 0 ? (
-                          <div style={{ fontSize: 11, color: '#475569', marginTop: 8, padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>No dispatches yet</div>
-                        ) : (
-                          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            {pd.map(d => (
-                              <div key={d.id} style={{ fontSize: 11, background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '8px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div>
-                                  <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{toDisplay(d.packets, config.packetsPerCarton)}</div>
-                                  <div style={{ color: '#475569', fontSize: 10 }}>{new Date(d.dispatchedAt || d.createdAt).toLocaleDateString('en-IN')}</div>
+                      {/* Dispatch log toggle — distributors only */}
+                      {p.type === 'distributor' && (<>
+                        <button onClick={e => { e.stopPropagation(); setExpandedDispatch(expandedDispatch === p.id ? null : p.id!) }}
+                          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '5px 10px', fontSize: 11, color: '#64748b', marginTop: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                          {expandedDispatch === p.id ? '▲' : '▼'} Last dispatches
+                        </button>
+                        {expandedDispatch === p.id && (() => {
+                          const pd = dispatches.filter(d => d.partyId === p.id).slice(0, 3)
+                          return pd.length === 0 ? (
+                            <div style={{ fontSize: 11, color: '#475569', marginTop: 8, padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>No dispatches yet</div>
+                          ) : (
+                            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              {pd.map(d => (
+                                <div key={d.id} style={{ fontSize: 11, background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '8px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <div>
+                                    <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{toDisplay(d.packets, config.packetsPerCarton)}</div>
+                                    <div style={{ color: '#475569', fontSize: 10 }}>{new Date(d.dispatchedAt || d.createdAt).toLocaleDateString('en-IN')}</div>
+                                  </div>
+                                  <span style={{ fontSize: 10, color: d.paymentType === 'cash' ? '#16a34a' : '#d97706', background: d.paymentType === 'cash' ? 'rgba(22,163,74,0.1)' : 'rgba(217,119,6,0.1)', padding: '2px 8px', borderRadius: 99 }}>
+                                    {d.paymentType === 'cash' ? '💵 Cash' : '📋 Credit'}
+                                  </span>
                                 </div>
-                                <span style={{ fontSize: 10, color: d.paymentType === 'cash' ? '#16a34a' : '#d97706', background: d.paymentType === 'cash' ? 'rgba(22,163,74,0.1)' : 'rgba(217,119,6,0.1)', padding: '2px 8px', borderRadius: 99 }}>
-                                  {d.paymentType === 'cash' ? '💵 Cash' : '📋 Credit'}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        )
-                      })()}
+                              ))}
+                            </div>
+                          )
+                        })()}
+                      </>)}
+
+                      {/* Allocation log toggle — retailers only */}
+                      {p.type === 'retailer' && (<>
+                        <button onClick={e => { e.stopPropagation(); setExpandedRetailAlloc(expandedRetailAlloc === p.id ? null : p.id!) }}
+                          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '5px 10px', fontSize: 11, color: '#64748b', marginTop: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                          {expandedRetailAlloc === p.id ? '▲' : '▼'} Last allocations
+                        </button>
+                        {expandedRetailAlloc === p.id && (() => {
+                          const statusOrder: Record<string, number> = { overdue: 0, pending: 1, sent: 2, paid: 3 }
+                          const pa = allocations
+                            .filter(a => a.partyId === p.id && a.status !== 'cancelled')
+                            .sort((a, b) => (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9))
+                            .slice(0, 5)
+                          const statusStyle = (s: string): React.CSSProperties => {
+                            if (s === 'pending') return { color: '#d97706', background: 'rgba(217,119,6,0.12)' }
+                            if (s === 'overdue') return { color: '#dc2626', background: 'rgba(220,38,38,0.12)' }
+                            if (s === 'sent') return { color: '#0891b2', background: 'rgba(8,145,178,0.12)' }
+                            return { color: '#16a34a', background: 'rgba(22,163,74,0.12)' }
+                          }
+                          return pa.length === 0 ? (
+                            <div style={{ fontSize: 11, color: '#475569', marginTop: 8, padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>No allocations yet</div>
+                          ) : (
+                            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              {pa.map(a => (
+                                <div key={a.id} style={{ fontSize: 11, background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '8px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <div>
+                                    <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{toDisplay(a.packets, config.packetsPerCarton)}</div>
+                                    <div style={{ color: '#475569', fontSize: 10 }}>{a.plannedDate}</div>
+                                  </div>
+                                  <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 99, textTransform: 'uppercase', fontWeight: 700, ...statusStyle(a.status) }}>
+                                    {a.status === 'overdue' ? 'Cut Off' : a.status}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )
+                        })()}
+                      </>)}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       <button onClick={() => startEdit(p)}
@@ -473,6 +517,21 @@ export default function PartyManager({ onBack }: Props) {
                 </div>
               ))}
             </div>
+            {filtered.length > PARTY_PAGE_SIZE && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 12 }}>
+                <button onClick={() => setPartyPage(p => Math.max(0, p - 1))} disabled={partyPage === 0}
+                  style={{ background: partyPage === 0 ? 'rgba(255,255,255,0.04)' : 'rgba(8,145,178,0.15)', color: partyPage === 0 ? '#475569' : '#0891b2', border: `1px solid ${partyPage === 0 ? 'rgba(255,255,255,0.06)' : 'rgba(8,145,178,0.3)'}`, borderRadius: 10, padding: '8px 18px', fontSize: 13, fontWeight: 700 }}>
+                  ← Prev
+                </button>
+                <span style={{ fontSize: 12, color: '#64748b' }}>
+                  {partyPage + 1} of {Math.ceil(filtered.length / PARTY_PAGE_SIZE)} pages
+                </span>
+                <button onClick={() => setPartyPage(p => Math.min(Math.ceil(filtered.length / PARTY_PAGE_SIZE) - 1, p + 1))} disabled={partyPage >= Math.ceil(filtered.length / PARTY_PAGE_SIZE) - 1}
+                  style={{ background: partyPage >= Math.ceil(filtered.length / PARTY_PAGE_SIZE) - 1 ? 'rgba(255,255,255,0.04)' : 'rgba(8,145,178,0.15)', color: partyPage >= Math.ceil(filtered.length / PARTY_PAGE_SIZE) - 1 ? '#475569' : '#0891b2', border: `1px solid ${partyPage >= Math.ceil(filtered.length / PARTY_PAGE_SIZE) - 1 ? 'rgba(255,255,255,0.06)' : 'rgba(8,145,178,0.3)'}`, borderRadius: 10, padding: '8px 18px', fontSize: 13, fontWeight: 700 }}>
+                  Next →
+                </button>
+              </div>
+            )}
           </>
         )}
 

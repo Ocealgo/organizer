@@ -8,6 +8,8 @@ import {
   updateDoc,
   getDoc,
   setDoc,
+  getDocs,
+  writeBatch,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { usePostStatuses } from "../../hooks/useFirebase";
@@ -63,6 +65,10 @@ export default function AdminDashboard() {
   const [visitLogs, setVisitLogs] = useState<any[]>([]);
   const [revisitLogs, setRevisitLogs] = useState<any[]>([]);
   const [pendingPayments, setPendingPayments] = useState<any[]>([]);
+  const [allAdminPayments, setAllAdminPayments] = useState<any[]>([])
+  const [allExpenses, setAllExpenses] = useState<any[]>([])
+  const [expandedAdminDays, setExpandedAdminDays] = useState<Set<string>>(new Set([localDateStr()]))
+  const [collapsedAdminSections, setCollapsedAdminSections] = useState<Set<string>>(new Set())
   const [leaveRecords, setLeaveRecords] = useState<LeaveRecord[]>([]);
   const [parties, setParties] = useState<Party[]>([]);
   const [mainTab, setMainTab] = useState<MainTab>("overview");
@@ -74,9 +80,8 @@ export default function AdminDashboard() {
   const [salesUsers, setSalesUsers] = useState<AppUser[]>([]);
   const [selectedUser, setSelectedUser] = useState<string>("all");
   const [dateMode, setDateMode] = useState<"day" | "month" | "period">("day");
-  const [expandedAllocPerson, setExpandedAllocPerson] = useState<string | null>(
-    null,
-  );
+  const [expandedAllocPerson, setExpandedAllocPerson] = useState<string | null>(null);
+  const [expandedPaymentPerson, setExpandedPaymentPerson] = useState<string | null>(null);
   const [visitPartyType, setVisitPartyType] = useState<
     "all" | "distributor" | "retailer"
   >("all");
@@ -92,6 +97,11 @@ export default function AdminDashboard() {
   const [settingsMapperLink, setSettingsMapperLink] = useState('');
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [dangerSelected, setDangerSelected] = useState<Set<string>>(new Set())
+  const [dangerConfirm, setDangerConfirm] = useState('')
+  const [dangerClearing, setDangerClearing] = useState(false)
+  const [dangerStep, setDangerStep] = useState<'idle' | 'confirm'>('idle')
+  const [dangerDone, setDangerDone] = useState<string[]>([])
 
   useEffect(() => {
     const u0 = onSnapshot(collection(db, "parties"), (snap) => {
@@ -123,13 +133,14 @@ export default function AdminDashboard() {
         snap.docs.map((d) => ({ id: d.id, ...d.data() }) as LeaveRecord),
       );
     });
+    const u7 = onSnapshot(collection(db, "payment_transactions"), (snap) =>
+      setAllAdminPayments(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+    );
+    const u8 = onSnapshot(collection(db, "expense_entries"), (snap) =>
+      setAllExpenses(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+    );
     return () => {
-      u0();
-      u3();
-      u4();
-      u5();
-      u5b();
-      u6();
+      u0(); u3(); u4(); u5(); u5b(); u6(); u7(); u8();
     };
   }, []);
 
@@ -340,6 +351,128 @@ export default function AdminDashboard() {
             {settingsSaving ? 'Saving...' : settingsSaved ? '✅ Saved' : 'Save'}
           </button>
         </div>
+
+        {/* ── Danger Zone ── */}
+        {(() => {
+          const CLEARABLE = [
+            { id: 'revisit_logs',         label: 'Visit Logs',              desc: 'All field visit & activity logs' },
+            { id: 'visit_logs',           label: 'Check-in Logs',           desc: 'Daily check-in records' },
+            { id: 'allocations_v2',       label: 'Allocations',             desc: 'All stock allocation records' },
+            { id: 'payment_transactions', label: 'Payments',                desc: 'All credit payment records' },
+            { id: 'dispatches',           label: 'Dispatches',              desc: 'Dispatch audit trail' },
+            { id: 'expense_entries',      label: 'Expenses',                desc: 'All expense entries' },
+            { id: 'parties',              label: 'Parties',                 desc: 'Retailers, distributors & their stock' },
+            { id: 'leave_records',        label: 'Leave Records',           desc: 'All leave requests & approvals' },
+            { id: 'users',                label: 'Users',                   desc: 'All accounts except super admins' },
+          ]
+
+          const toggleAll = (checked: boolean) =>
+            setDangerSelected(checked ? new Set(CLEARABLE.map(c => c.id)) : new Set())
+
+          const handleClear = async () => {
+            setDangerClearing(true)
+            try {
+              for (const colId of Array.from(dangerSelected)) {
+                const snap = await getDocs(collection(db, colId))
+                const docs = colId === 'users'
+                  ? snap.docs.filter(d => (d.data() as any).role !== 'super_admin')
+                  : snap.docs
+                for (let i = 0; i < docs.length; i += 499) {
+                  const batch = writeBatch(db)
+                  docs.slice(i, i + 499).forEach(d => batch.delete(d.ref))
+                  await batch.commit()
+                }
+              }
+              setDangerDone(Array.from(dangerSelected))
+              setDangerSelected(new Set())
+              setDangerConfirm('')
+              setDangerStep('idle')
+            } finally {
+              setDangerClearing(false)
+            }
+          }
+
+          return (
+            <div style={{ background: 'rgba(220,38,38,0.05)', borderRadius: 16, padding: 20, border: '1.5px solid rgba(220,38,38,0.25)' }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#dc2626', marginBottom: 4 }}>⚠️ Danger Zone</div>
+              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16, lineHeight: 1.5 }}>
+                Permanently delete data from Firestore. This cannot be undone. User accounts are never affected.
+              </div>
+
+              {dangerDone.length > 0 && (
+                <div style={{ background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(22,163,74,0.25)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#6ee7b7' }}>
+                  ✅ Cleared: {dangerDone.join(', ')}
+                </div>
+              )}
+
+              {/* Collection checkboxes */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', paddingBottom: 8, borderBottom: '1px solid rgba(220,38,38,0.15)' }}>
+                  <input type="checkbox"
+                    checked={dangerSelected.size === CLEARABLE.length}
+                    onChange={e => toggleAll(e.target.checked)}
+                    style={{ width: 16, height: 16, accentColor: '#dc2626' }} />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#dc2626' }}>Select all</span>
+                </label>
+                {CLEARABLE.map(c => (
+                  <label key={c.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                    <input type="checkbox"
+                      checked={dangerSelected.has(c.id)}
+                      onChange={e => {
+                        const next = new Set(dangerSelected)
+                        e.target.checked ? next.add(c.id) : next.delete(c.id)
+                        setDangerSelected(next)
+                        setDangerStep('idle')
+                        setDangerDone([])
+                      }}
+                      style={{ width: 16, height: 16, marginTop: 2, accentColor: '#dc2626' }} />
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>{c.label}</div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>{c.desc}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+
+              {dangerSelected.size > 0 && dangerStep === 'idle' && (
+                <button
+                  onClick={() => setDangerStep('confirm')}
+                  style={{ width: '100%', background: 'rgba(220,38,38,0.12)', border: '1.5px solid rgba(220,38,38,0.35)', color: '#dc2626', borderRadius: 12, padding: '12px', fontSize: 14, fontWeight: 800, cursor: 'pointer' }}>
+                  Delete {dangerSelected.size} collection{dangerSelected.size > 1 ? 's' : ''} →
+                </button>
+              )}
+
+              {dangerStep === 'confirm' && (
+                <div style={{ background: 'rgba(220,38,38,0.08)', border: '1.5px solid rgba(220,38,38,0.3)', borderRadius: 12, padding: 16 }}>
+                  <div style={{ fontSize: 12, color: '#f87171', marginBottom: 10, lineHeight: 1.5 }}>
+                    You are about to permanently delete all data from:<br />
+                    <strong>{Array.from(dangerSelected).join(', ')}</strong><br /><br />
+                    Type <strong>DELETE</strong> below to confirm.
+                  </div>
+                  <input
+                    value={dangerConfirm}
+                    onChange={e => setDangerConfirm(e.target.value)}
+                    placeholder="Type DELETE to confirm"
+                    style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(220,38,38,0.4)', borderRadius: 10, padding: '12px 14px', fontSize: 14, color: '#fff', outline: 'none', marginBottom: 10 }}
+                  />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      onClick={() => { setDangerStep('idle'); setDangerConfirm('') }}
+                      style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleClear}
+                      disabled={dangerConfirm !== 'DELETE' || dangerClearing}
+                      style={{ flex: 2, background: dangerConfirm === 'DELETE' ? '#dc2626' : 'rgba(220,38,38,0.2)', border: 'none', color: '#fff', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 800, cursor: dangerConfirm === 'DELETE' ? 'pointer' : 'not-allowed', opacity: dangerClearing ? 0.6 : 1 }}>
+                      {dangerClearing ? '⏳ Clearing...' : '🗑️ Confirm Delete'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })()}
       </div>
     </div>
   );
@@ -1764,37 +1897,396 @@ export default function AdminDashboard() {
                   );
                 })()}
 
-                {/* Visit log list */}
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: t.text3,
-                    fontWeight: 700,
-                    letterSpacing: 1,
-                    textTransform: "uppercase",
-                  }}
-                >
-                  {filteredLogsWithVisits.length + fullDayLeaveCards.length}{" "}
-                  {filteredLogsWithVisits.length + fullDayLeaveCards.length !==
-                  1
-                    ? "entries"
-                    : "entry"}{" "}
-                  logged
-                </div>
-
-                {filteredLogsWithVisits.length === 0 &&
-                fullDayLeaveCards.length === 0 ? (
-                  <div
-                    style={{ textAlign: "center", padding: 32, color: t.text3 }}
-                  >
-                    <div style={{ fontSize: 32, marginBottom: 10 }}>📋</div>
-                    <div style={{ fontWeight: 700 }}>
-                      No visit logs for this filter
+                {/* Payments Collected per sales person */}
+                {(() => {
+                  const byPerson: Record<string, { count: number; total: number; payments: any[] }> = {};
+                  allAdminPayments
+                    .filter((p: any) => {
+                      if (!p.collectedByName) return false;
+                      if (selectedUser !== 'all' && p.collectedByName !== selectedUser) return false;
+                      if (dateMode === 'day') return p.date === dateDay;
+                      if (dateMode === 'month') return p.date?.startsWith(dateMonth);
+                      if (dateMode === 'period') return p.date >= datePeriodFrom && p.date <= datePeriodTo;
+                      return true;
+                    })
+                    .forEach((p: any) => {
+                      const name = p.collectedByName || 'Unknown';
+                      if (!byPerson[name]) byPerson[name] = { count: 0, total: 0, payments: [] };
+                      byPerson[name].count++;
+                      byPerson[name].total += p.amount || 0;
+                      byPerson[name].payments.push(p);
+                    });
+                  const entries = Object.entries(byPerson);
+                  if (entries.length === 0) return null;
+                  const statusColor = (s: string) => s === 'approved' ? '#16a34a' : s === 'rejected' ? '#dc2626' : '#d97706';
+                  const statusLabel = (s: string) => s === 'approved' ? 'Approved ✓' : s === 'rejected' ? 'Rejected' : 'Pending';
+                  const methodLabel: Record<string, string> = { cash: '💵 Cash', cheque: '📄 Cheque', bank_transfer: '🏦 Bank Transfer', upi: '📱 UPI' };
+                  return (
+                    <div style={{ background: t.card, borderRadius: 14, border: '1px solid rgba(22,163,74,0.15)', overflow: 'hidden' }}>
+                      <div style={{ fontSize: 13, color: '#16a34a', padding: '12px 14px 10px', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', borderBottom: '1px solid rgba(22,163,74,0.1)' }}>
+                        Payments Collected
+                      </div>
+                      {entries.map(([name, data]) => {
+                        const isExpanded = expandedPaymentPerson === name;
+                        return (
+                          <div key={name} style={{ borderBottom: `1px solid ${t.border}` }}>
+                            <button
+                              onClick={() => setExpandedPaymentPerson(isExpanded ? null : name)}
+                              style={{ width: '100%', background: 'none', border: 'none', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', textAlign: 'left' }}
+                            >
+                              <div style={{ width: 32, height: 32, background: 'rgba(22,163,74,0.12)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 14, flexShrink: 0, color: '#16a34a' }}>
+                                {name[0]}
+                              </div>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{name}</div>
+                                <div style={{ fontSize: 12, color: t.text3 }}>{data.count} payment{data.count > 1 ? 's' : ''}</div>
+                              </div>
+                              <div style={{ fontSize: 14, fontWeight: 900, color: '#16a34a', marginRight: 6 }}>₹{data.total.toLocaleString()}</div>
+                              <span style={{ color: t.text3, fontSize: 13 }}>{isExpanded ? '▲' : '▼'}</span>
+                            </button>
+                            {isExpanded && (
+                              <div style={{ padding: '0 14px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                {data.payments.sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0)).map((p: any, i: number) => (
+                                  <div key={p.id || i} style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 10, padding: '10px 12px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                                      <span style={{ fontSize: 14 }}>{p.partyType === 'distributor' ? '🚚' : '🏪'}</span>
+                                      <div style={{ flex: 1 }}>
+                                        <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{p.partyName || '—'}</div>
+                                        <div style={{ fontSize: 12, color: t.text2 }}>{methodLabel[p.paymentMethod] || p.paymentMethod}</div>
+                                      </div>
+                                      <span style={{ fontSize: 11, fontWeight: 700, color: statusColor(p.status), background: `${statusColor(p.status)}20`, padding: '2px 8px', borderRadius: 99 }}>
+                                        {statusLabel(p.status)}
+                                      </span>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                                      <span style={{ fontSize: 14, fontWeight: 900, color: '#16a34a' }}>₹{(p.amount || 0).toLocaleString()}</span>
+                                      {p.date && <span style={{ fontSize: 12, color: t.text3 }}>📅 {p.date}</span>}
+                                      {p.notes && <span style={{ fontSize: 12, color: t.text3 }}>· {p.notes}</span>}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
-                  </div>
-                ) : (
-                  <>
-                    {/* Full day leave-only cards (no visit log) */}
+                  );
+                })()}
+
+                {/* Activity log — ActivityScreen style */}
+                {(() => {
+                  const rangeStart = dateMode === 'day' ? dateDay : dateMode === 'month' ? dateMonth + '-01' : datePeriodFrom
+                  const rangeEnd   = dateMode === 'day' ? dateDay : dateMode === 'month' ? dateMonth + '-31' : datePeriodTo
+                  const inRange = (d: string) => !!d && d >= rangeStart && d <= rangeEnd
+                  const tsToDate = (ts: number) => new Date(ts).toLocaleDateString('en-CA')
+
+                  const aStyle = (s: string) => ({ pending: { label: 'Pending', color: '#d97706', bg: 'rgba(217,119,6,0.12)' }, sent: { label: 'Sent ✓', color: '#2563eb', bg: 'rgba(37,99,235,0.10)' }, paid: { label: 'Paid ✓', color: '#16a34a', bg: 'rgba(22,163,74,0.10)' }, overdue: { label: 'Overdue', color: '#dc2626', bg: 'rgba(220,38,38,0.10)' }, cancelled: { label: 'Cancelled', color: '#6b7280', bg: 'rgba(107,114,128,0.10)' } } as any)[s] ?? { label: s, color: '#6b7280', bg: 'rgba(107,114,128,0.10)' }
+                  const pStyle = (s: string) => ({ pending_approval: { label: 'Pending approval', color: '#d97706' }, approved: { label: 'Approved ✓', color: '#16a34a' }, rejected: { label: 'Rejected', color: '#dc2626' } } as any)[s] ?? { label: s, color: '#6b7280' }
+
+                  type PersonData = { visitLog: any; revisitLogs: any[]; allocations: any[]; payments: any[]; expenses: any[] }
+                  const dayPersonMap: Record<string, Record<string, PersonData>> = {}
+                  const ensure = (date: string, uid: string): PersonData => {
+                    if (!dayPersonMap[date]) dayPersonMap[date] = {}
+                    if (!dayPersonMap[date][uid]) dayPersonMap[date][uid] = { visitLog: null, revisitLogs: [], allocations: [], payments: [], expenses: [] }
+                    return dayPersonMap[date][uid]
+                  }
+
+                  visitLogs.forEach((log: any) => {
+                    if (!inRange(log.date)) return
+                    if (selectedUser !== 'all' && log.salesPersonName !== selectedUser) return
+                    ensure(log.date, log.salesPersonId).visitLog = log
+                  })
+                  revisitLogs.forEach((rl: any) => {
+                    if (!inRange(rl.date)) return
+                    const u = salesUsers.find(u => u.uid === rl.salesPersonId)
+                    if (!u) return
+                    if (selectedUser !== 'all' && u.name !== selectedUser) return
+                    ensure(rl.date, rl.salesPersonId).revisitLogs.push(rl)
+                  })
+                  // Shared visits: Rep B's visit_log references Rep A's revisit_logs via revisitLogId
+                  visitLogs.forEach((log: any) => {
+                    if (!inRange(log.date)) return
+                    if (selectedUser !== 'all' && log.salesPersonName !== selectedUser) return
+                    ;(log.visits || []).forEach((v: any) => {
+                      if (!v.isRevisit || !v.revisitLogId) return
+                      const rl = revisitLogs.find((r: any) => r.id === v.revisitLogId)
+                      if (!rl || rl.salesPersonId === log.salesPersonId) return
+                      const pd = ensure(log.date, log.salesPersonId)
+                      if (!pd.revisitLogs.some((r: any) => r.id === rl.id)) pd.revisitLogs.push(rl)
+                    })
+                  })
+                  allocations.forEach((a: any) => {
+                    const d = tsToDate(a.createdAt)
+                    if (!inRange(d)) return
+                    const u = salesUsers.find(u => u.uid === a.createdBy)
+                    if (!u) return
+                    if (selectedUser !== 'all' && u.name !== selectedUser) return
+                    ensure(d, a.createdBy).allocations.push(a)
+                  })
+                  allAdminPayments.forEach((p: any) => {
+                    if (!inRange(p.date || '')) return
+                    if (!p.collectedBy) return
+                    if (selectedUser !== 'all') {
+                      const u = salesUsers.find(u => u.uid === p.collectedBy)
+                      if (!u || u.name !== selectedUser) return
+                    }
+                    ensure(p.date, p.collectedBy).payments.push(p)
+                  })
+                  allExpenses.forEach((e: any) => {
+                    if (!inRange(e.date || '')) return
+                    const u = salesUsers.find(u => u.uid === e.userId)
+                    if (!u) return
+                    if (selectedUser !== 'all' && u.name !== selectedUser) return
+                    ensure(e.date, e.userId).expenses.push(e)
+                  })
+                  fullDayLeaveCards.forEach((l: any) => {
+                    const u = salesUsers.find(u => u.uid === l.uid)
+                    if (!u) return
+                    if (selectedUser !== 'all' && u.name !== selectedUser) return
+                    ensure(l.date, l.uid)
+                  })
+
+                  const sortedDates = Object.keys(dayPersonMap).sort((a, b) => b.localeCompare(a))
+                  if (sortedDates.length === 0) return (
+                    <div style={{ textAlign: 'center', padding: 32, color: t.text3 }}>
+                      <div style={{ fontSize: 32, marginBottom: 10 }}>📋</div>
+                      <div style={{ fontWeight: 700 }}>No activity for this filter</div>
+                    </div>
+                  )
+
+                  const dFmt = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })
+                  const toggleDay = (d: string) => setExpandedAdminDays(prev => { const n = new Set(prev); n.has(d) ? n.delete(d) : n.add(d); return n })
+                  const toggleSec = (k: string) => setCollapsedAdminSections(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n })
+                  const secOpen = (k: string) => !collapsedAdminSections.has(k)
+
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {sortedDates.map(date => {
+                        const personMap = dayPersonMap[date]
+                        const personIds = Object.keys(personMap)
+                        const isExpanded = expandedAdminDays.has(date)
+                        const totalVisits = personIds.reduce((s, uid) => s + personMap[uid].revisitLogs.filter(rl => !rl.actions?.every((a: any) => a.removed || a.type === 'relationship_visit' || a.type === 'no_longer_active')).length, 0)
+                        const totalAct = personIds.reduce((s, uid) => s + personMap[uid].allocations.length + personMap[uid].payments.length, 0)
+                        const totalExp = personIds.reduce((s, uid) => s + personMap[uid].expenses.reduce((es: number, e: any) => es + e.amount, 0), 0)
+                        const isToday = date === todayStr
+
+                        return (
+                          <div key={date} style={{ background: t.card, borderRadius: 16, border: `1px solid ${isToday ? 'rgba(16,185,129,0.35)' : t.border}`, overflow: 'hidden' }}>
+                            <button onClick={() => toggleDay(date)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'none', border: 'none', cursor: 'pointer' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                {isToday && <span style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 99 }}>TODAY</span>}
+                                <span style={{ fontSize: 15, fontWeight: 800, color: t.text }}>{dFmt(date)}</span>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div style={{ display: 'flex', gap: 6 }}>
+                                  {totalVisits > 0 && <span style={{ fontSize: 11, color: '#0891b2' }}>🗺️ {totalVisits}</span>}
+                                  {totalAct > 0 && <span style={{ fontSize: 11, color: '#d97706' }}>📦 {totalAct}</span>}
+                                  {totalExp > 0 && <span style={{ fontSize: 11, color: '#16a34a' }}>💸 ₹{totalExp.toLocaleString('en-IN')}</span>}
+                                </div>
+                                <span style={{ fontSize: 16, color: t.text3 }}>{isExpanded ? '▾' : '▸'}</span>
+                              </div>
+                            </button>
+
+                            {isExpanded && (
+                              <div style={{ borderTop: `1px solid ${t.border}`, padding: '0 16px 12px' }}>
+                                {personIds.map(uid => {
+                                  const data = personMap[uid]
+                                  const person = salesUsers.find(u => u.uid === uid)
+                                  const personName = data.visitLog?.salesPersonName || person?.name || uid
+                                  const isOnLeave = fullDayLeaveCards.some((l: any) => l.uid === uid && l.date === date)
+                                  const halfDayLeave = leaveRecords.find(l => l.uid === uid && l.date === date && l.leaveType === 'half_day' && (l.status === 'active' || l.status === 'pending_approval' || l.status === 'unmark_requested'))
+                                  const newPartyEntries = data.visitLog?.visits?.filter((v: any) => v.isNew) ?? []
+                                  const visitCount = data.revisitLogs.filter(rl => !rl.actions?.every((a: any) => a.removed || a.type === 'relationship_visit' || a.type === 'no_longer_active')).length
+                                  const actCount = newPartyEntries.length + data.allocations.length + data.payments.length
+                                  const expTotal = data.expenses.reduce((s: number, e: any) => s + e.amount, 0)
+                                  const pk = `${date}-${uid}`
+                                  const vKey = `${pk}-v`, aKey = `${pk}-a`, eKey = `${pk}-e`, npKey = `${pk}-np`
+
+                                  const secHdr = (label: string, key: string, count: number) => (
+                                    <button onClick={() => toggleSec(key)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', padding: '10px 0 6px', cursor: 'pointer' }}>
+                                      <span style={{ fontSize: 12, fontWeight: 800, color: t.text3, letterSpacing: 1, textTransform: 'uppercase' as const }}>{label} ({count})</span>
+                                      <span style={{ fontSize: 13, color: t.text3 }}>{secOpen(key) ? '▾' : '▸'}</span>
+                                    </button>
+                                  )
+
+                                  return (
+                                    <div key={uid} style={{ marginTop: 12, background: theme === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)', borderRadius: 12, padding: '10px 12px', border: `1px solid ${t.border}` }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                                        <div style={{ width: 28, height: 28, background: 'linear-gradient(135deg,#0891b2,#0e7490)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 12, color: '#fff', flexShrink: 0 }}>
+                                          {personName?.[0] || '?'}
+                                        </div>
+                                        <span style={{ fontSize: 14, fontWeight: 800, color: t.text }}>{personName}</span>
+                                        {isOnLeave && <span style={{ fontSize: 10, fontWeight: 800, background: 'rgba(245,158,11,0.2)', color: '#d97706', padding: '2px 8px', borderRadius: 99 }}>🏖️ On Leave</span>}
+                                        {halfDayLeave && <span style={{ fontSize: 10, fontWeight: 800, background: 'rgba(59,130,246,0.15)', color: '#3b82f6', padding: '2px 8px', borderRadius: 99 }}>🌤️ Half Day</span>}
+                                        {data.visitLog && <span style={{ marginLeft: 'auto', fontSize: 11, color: t.text3 }}>{data.visitLog.totalVisited || 0} visits</span>}
+                                      </div>
+
+                                      {isOnLeave && visitCount === 0 && actCount === 0 && data.expenses.length === 0 && (
+                                        <div style={{ fontSize: 12, color: '#d97706', paddingLeft: 36 }}>Full Day Leave · no activity logged</div>
+                                      )}
+
+                                      {visitCount > 0 && (
+                                        <>
+                                          {secHdr('Visits', vKey, visitCount)}
+                                          {secOpen(vKey) && (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 8 }}>
+                                              {data.revisitLogs.map((rl: any) => {
+                                                const allInvis = rl.actions?.every((a: any) => a.removed || a.type === 'relationship_visit' || a.type === 'no_longer_active')
+                                                if (allInvis) return null
+                                                return (
+                                                  <div key={rl.id} style={{ background: t.bg3, borderRadius: 12, border: `1px solid ${t.border}` }}>
+                                                    <div style={{ padding: '12px 14px 8px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                      <span style={{ fontSize: 10, fontWeight: 800, color: '#0891b2', background: 'rgba(8,145,178,0.1)', padding: '2px 8px', borderRadius: 99 }}>REVISIT</span>
+                                                      <span style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{rl.partyName}</span>
+                                                    </div>
+                                                    <div style={{ padding: '0 14px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                                      {rl.actions?.map((action: any, ai: number) => {
+                                                        if (action.removed) return null
+                                                        if (action.type === 'relationship_visit') return <div key={ai} style={{ fontSize: 12, color: t.text2 }}>🤝 Relationship Visit{action.notes ? ` · ${action.notes}` : ''}</div>
+                                                        if (action.type === 'no_longer_active') return <div key={ai} style={{ fontSize: 12, color: '#dc2626' }}>⛔ No Longer Active{action.reason ? ` · ${action.reason}` : ''}</div>
+                                                        const liveAlloc = action.allocationId ? allocations.find((a: any) => a.id === action.allocationId) : null
+                                                        const livePay = action.transactionId ? allAdminPayments.find((p: any) => p.id === action.transactionId) : null
+                                                        if (action.type === 'stock_update') return (
+                                                          <div key={ai} style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)', borderRadius: 8, padding: '10px 12px', border: `1px solid ${t.border}` }}>
+                                                            <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 4 }}>📦 Stock Update · {action.productName}</div>
+                                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px' }}>
+                                                              {([['Opening', action.openingQty], ['Purchased', action.purchasedQty], ['Sold', action.soldQty], ['Balance', `${action.balanceQty} pkts`]] as [string,any][]).map(([lbl, val]) => (
+                                                                <div key={lbl} style={{ fontSize: 12 }}><span style={{ color: t.text3 }}>{lbl} </span><span style={{ fontWeight: 700, color: t.text }}>{val}</span></div>
+                                                              ))}
+                                                            </div>
+                                                          </div>
+                                                        )
+                                                        if (action.type === 'new_order') {
+                                                          const displayPkts = liveAlloc?.packets ?? action.quantity
+                                                          const displayTotal = liveAlloc ? liveAlloc.totalAmount : (action.totalAmount || 0)
+                                                          const s = liveAlloc ? aStyle(liveAlloc.status) : null
+                                                          return (
+                                                            <div key={ai} style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)', borderRadius: 8, padding: '10px 12px', border: `1px solid ${t.border}` }}>
+                                                              <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 4 }}>🛒 New Order · {action.productName}</div>
+                                                              <div style={{ fontSize: 12, color: t.text2 }}>{displayPkts} pkts · ₹{displayTotal.toLocaleString('en-IN')} · <span style={{ color: action.paymentType === 'credit' ? '#d97706' : '#16a34a' }}>{action.paymentType}</span></div>
+                                                              {s && <span style={{ marginTop: 6, display: 'inline-block', fontSize: 11, fontWeight: 700, color: s.color, background: s.bg, borderRadius: 99, padding: '2px 8px' }}>{s.label}</span>}
+                                                            </div>
+                                                          )
+                                                        }
+                                                        if (action.type === 'payment_collection') {
+                                                          const displayAmt = livePay?.amount ?? action.amount
+                                                          const displayStatus = livePay?.status ?? action.status
+                                                          return (
+                                                            <div key={ai} style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)', borderRadius: 8, padding: '10px 12px', border: `1px solid ${t.border}` }}>
+                                                              <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 4 }}>💰 Payment Collected · {rl.partyName}</div>
+                                                              <div style={{ fontSize: 12, color: t.text2 }}>₹{displayAmt?.toLocaleString('en-IN')} · <span style={{ color: displayStatus === 'pending_approval' ? '#d97706' : '#16a34a' }}>{displayStatus === 'pending_approval' ? '⏳ Pending' : '✅ Approved'}</span></div>
+                                                            </div>
+                                                          )
+                                                        }
+                                                        return null
+                                                      })}
+                                                    </div>
+                                                  </div>
+                                                )
+                                              })}
+                                            </div>
+                                          )}
+                                        </>
+                                      )}
+
+                                      {newPartyEntries.length > 0 && (
+                                        <>
+                                          {secHdr('New Parties', npKey, newPartyEntries.length)}
+                                          {secOpen(npKey) && (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                                              {newPartyEntries.map((v: any, i: number) => (
+                                                <div key={i} style={{ background: t.bg3, borderRadius: 12, border: `1px solid ${t.border}`, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                  <span style={{ fontSize: 10, fontWeight: 800, color: '#6366f1', background: 'rgba(99,102,241,0.12)', padding: '2px 8px', borderRadius: 99 }}>NEW PARTY</span>
+                                                  <span style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{v.partyName}</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </>
+                                      )}
+
+                                      {(data.allocations.length > 0 || data.payments.length > 0) && (
+                                        <>
+                                          {secHdr('Activity', aKey, data.allocations.length + data.payments.length)}
+                                          {secOpen(aKey) && (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                                              {data.allocations.map((a: any) => {
+                                                const s = aStyle(a.status)
+                                                return (
+                                                  <div key={a.id} style={{ background: t.bg3, borderRadius: 12, padding: '12px 14px', border: `1px solid ${t.border}` }}>
+                                                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                                                      <div style={{ flex: 1 }}>
+                                                        <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>📦 Allocation · {a.partyName}</div>
+                                                        <div style={{ fontSize: 12, color: t.text2, marginTop: 3 }}>{a.productName} · {a.packets} pkts · ₹{a.totalAmount.toLocaleString('en-IN')}</div>
+                                                        <div style={{ fontSize: 11, color: t.text3, marginTop: 2 }}>{a.paymentType === 'credit' ? '💳 Credit' : '💵 Cash'}</div>
+                                                      </div>
+                                                      <span style={{ fontSize: 11, fontWeight: 700, color: s.color, background: s.bg, borderRadius: 99, padding: '3px 10px', flexShrink: 0 }}>{s.label}</span>
+                                                    </div>
+                                                  </div>
+                                                )
+                                              })}
+                                              {data.payments.map((p: any) => {
+                                                const s = pStyle(p.status)
+                                                return (
+                                                  <div key={p.id} style={{ background: t.bg3, borderRadius: 12, padding: '12px 14px', border: `1px solid ${t.border}` }}>
+                                                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                                                      <div style={{ flex: 1 }}>
+                                                        <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>💰 Payment · {p.partyName}</div>
+                                                        <div style={{ fontSize: 12, color: t.text2, marginTop: 3 }}>₹{p.amount.toLocaleString('en-IN')} · {p.paymentMethod?.replace('_', ' ')}</div>
+                                                        {p.notes && <div style={{ fontSize: 11, color: t.text3, marginTop: 2 }}>{p.notes}</div>}
+                                                      </div>
+                                                      <span style={{ fontSize: 11, fontWeight: 700, color: s.color, flexShrink: 0 }}>{s.label}</span>
+                                                    </div>
+                                                  </div>
+                                                )
+                                              })}
+                                            </div>
+                                          )}
+                                        </>
+                                      )}
+
+                                      {data.expenses.length > 0 && (
+                                        <>
+                                          {secHdr(`Expense · ₹${expTotal.toLocaleString('en-IN')}`, eKey, data.expenses.length)}
+                                          {secOpen(eKey) && (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                                              {data.expenses.map((e: any) => (
+                                                <div key={e.id} style={{ background: t.bg3, borderRadius: 10, padding: '10px 12px', border: `1px solid ${t.border}` }}>
+                                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                    <div>
+                                                      <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>{e.category || 'Expense'}</div>
+                                                      {e.description && <div style={{ fontSize: 12, color: t.text2, marginTop: 2 }}>{e.description}</div>}
+                                                    </div>
+                                                    <div style={{ fontSize: 15, fontWeight: 800, color: '#16a34a' }}>₹{e.amount.toLocaleString('en-IN')}</div>
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </>
+                                      )}
+
+                                      {data.visitLog?.endOfDayNote && (
+                                        <div style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 8, padding: '8px 10px', marginTop: 4 }}>
+                                          <div style={{ fontSize: 11, color: t.text3, marginBottom: 2 }}>📝 End of day note</div>
+                                          <div style={{ fontSize: 13, color: t.text2 }}>{data.visitLog.endOfDayNote}</div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
+
+                {false && (<>
+                    {/* removed — replaced by ActivityScreen-style display above */}
                     {fullDayLeaveCards.map((leave) => (
                       <div
                         key={leave.id}

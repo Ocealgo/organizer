@@ -76,7 +76,7 @@ export default function VisitHistoryScreen({ onBack }: Props) {
   }, [appUser, filterMode, selectedDay, selectedMonth, periodFrom, periodTo])
 
   const totalVisits = logs.reduce((s, l) => s + l.totalVisited, 0)
-  const totalInterested = logs.reduce((s, l) => s + l.totalInterested, 0)
+  const totalInterested = logs.reduce((s, l) => s + (l.totalInterested ?? 0), 0)
 
   const inputStyle: React.CSSProperties = {
     background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.25)',
@@ -182,7 +182,7 @@ export default function VisitHistoryScreen({ onBack }: Props) {
                     )}
                   </div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    {log.totalInterested > 0 && (
+                    {(log.totalInterested ?? 0) > 0 && (
                       <span style={{ fontSize: 11, background: 'rgba(22,163,74,0.15)', color: '#16a34a', padding: '3px 10px', borderRadius: 99, fontWeight: 700 }}>
                         ✅ {log.totalInterested}
                       </span>

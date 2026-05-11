@@ -139,6 +139,8 @@ export interface StockMovement {
   fromName: string               // 'Ocealgo' | party name
   toPartyId: string
   toPartyName: string
+  productId?: string
+  productName?: string
   packets: number; cartons: number
   pricePerPacket: number; totalAmount: number
   paymentType: PaymentType; notes: string
@@ -342,7 +344,7 @@ export interface VisitEntry {
   partyId: string
   partyName: string
   isNew: boolean
-  outcome: VisitOutcome
+  outcome?: VisitOutcome
   isRevisit?: boolean
   revisitLogId?: string          // points to revisit_logs doc — set on save
   notInterestedReason?: NotInterestedReason
@@ -389,8 +391,8 @@ export interface DailyVisitLog {
   visits: VisitEntry[]
   endOfDayNote: string
   totalVisited: number
-  totalInterested: number
-  totalNotInterested: number
+  totalInterested?: number
+  totalNotInterested?: number
   createdAt: number
   updatedAt: number
   isNoEntry?: boolean
@@ -462,6 +464,15 @@ export interface StockUpdateAction {
   balanceValue: number
   photoUrl?: string
   aiRead: boolean
+  editedAt?: number
+  editedBy?: string
+  editedByName?: string
+  correctionNote?: string
+  originalValues?: { openingQty: number; purchasedQty: number; soldQty: number; balanceQty: number; balanceValue: number }
+  removed?: boolean
+  removedAt?: number
+  removedBy?: string
+  removedByName?: string
 }
 
 export interface NewOrderAction {
