@@ -38,9 +38,13 @@ function AppContent() {
   const { theme, toggle, t } = useTheme();
   const [authScreen, setAuthScreen] = useState<"login" | "signup">("login");
 
+  // Only admins may write `products` (see firestore.rules). Running this for a
+  // sales rep would fail with a permission error on every app load.
   useEffect(() => {
-    seedDefaultProducts();
-  }, []);
+    const role = appUser?.role;
+    if (role !== "admin" && role !== "super_admin") return;
+    seedDefaultProducts().catch(() => {});
+  }, [appUser?.role]);
   const [showUserMgmt, setShowUserMgmt] = useState(false);
 
   if (loading)

@@ -1,0 +1,7 @@
+{
+  "projects": {
+    "default": "ocealgo-team",
+    "dev": "ocealgo-team",
+    "prod": "ocealgo-organiser"
+  }
+}

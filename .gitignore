@@ -6,3 +6,13 @@ dist
 .env.local
 .DS_Store
 *.log
+
+# Firebase emulator artifacts
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# NEVER commit service account keys — they bypass all security rules
+*serviceAccount*.json
+*-firebase-adminsdk-*.json
