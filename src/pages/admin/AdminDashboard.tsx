@@ -22,6 +22,7 @@ import {
 import { CheckIn, AppUser, Party, LeaveRecord, Permission, Product } from "../../types";
 import { can, isAdminRole } from "../../auth/permissions";
 import SalesReport from "../reports/SalesReport";
+import { Eyebrow, StatGrid, StatCard, EmptyState, GhostButton } from "../../components/ui";
 import StockManager from "../stock/StockManager";
 import WorkspaceDashboard from "../workspace/WorkspaceDashboard";
 import PartyManager from "../distributors/PartyManager";
@@ -300,14 +301,14 @@ export default function AdminDashboard() {
           ← Back
         </button>
         <div style={{ color: '#6ee7b7', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Super Admin</div>
-        <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', marginBottom: 2 }}>Settings</div>
+        <div style={{ fontSize: 22, fontWeight: 500, color: '#fff', marginBottom: 2 }}>Settings</div>
         <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>App configuration & links</div>
       </div>
 
       <div style={{ padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
         {/* Mapper Link */}
         <div style={{ background: t.card, borderRadius: 16, padding: 20, border: `1px solid ${t.border}` }}>
-          <div style={{ fontSize: 13, fontWeight: 800, color: t.text, marginBottom: 4 }}>🔗 Mapper Link</div>
+          <div style={{ fontSize: 13, fontWeight: 500, color: t.text, marginBottom: 4 }}>Mapper link</div>
           <div style={{ fontSize: 12, color: t.text3, marginBottom: 14, lineHeight: 1.5 }}>
             The mapper converts Zoho's export format into the format the importer expects. This link will appear as a clickable step in the Import screen.
           </div>
@@ -330,7 +331,7 @@ export default function AdminDashboard() {
           />
           {settingsMapperLink && !isValidUrl(settingsMapperLink) && (
             <div style={{ fontSize: 12, color: '#dc2626', marginTop: 6 }}>
-              ⚠️ Enter a valid URL starting with https://
+              Enter a URL starting with https://
             </div>
           )}
           {settingsMapperLink && isValidUrl(settingsMapperLink) && (
@@ -356,11 +357,11 @@ export default function AdminDashboard() {
               color: settingsSaved ? '#6ee7b7' : '#fff',
               border: settingsSaved ? '1px solid rgba(22,163,74,0.3)' : 'none',
               borderRadius: 12, padding: '14px',
-              fontSize: 14, fontWeight: 800,
+              fontSize: 14, fontWeight: 500,
               opacity: (settingsSaving || (!!settingsMapperLink && !isValidUrl(settingsMapperLink))) ? 0.5 : 1,
             }}
           >
-            {settingsSaving ? 'Saving...' : settingsSaved ? '✅ Saved' : 'Save'}
+            {settingsSaving ? 'Saving...' : settingsSaved ? 'Saved' : 'Save'}
           </button>
         </div>
 
@@ -406,14 +407,14 @@ export default function AdminDashboard() {
 
           return (
             <div style={{ background: 'rgba(220,38,38,0.05)', borderRadius: 16, padding: 20, border: '1.5px solid rgba(220,38,38,0.25)' }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: '#dc2626', marginBottom: 4 }}>⚠️ Danger Zone</div>
+              <div style={{ fontSize: 13, fontWeight: 500, color: t.warn, marginBottom: 4 }}>Danger zone</div>
               <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16, lineHeight: 1.5 }}>
                 Permanently delete data from Firestore. This cannot be undone. User accounts are never affected.
               </div>
 
               {dangerDone.length > 0 && (
                 <div style={{ background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(22,163,74,0.25)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#6ee7b7' }}>
-                  ✅ Cleared: {dangerDone.join(', ')}
+                  Cleared: {dangerDone.join(', ')}
                 </div>
               )}
 
@@ -424,7 +425,7 @@ export default function AdminDashboard() {
                     checked={dangerSelected.size === CLEARABLE.length}
                     onChange={e => toggleAll(e.target.checked)}
                     style={{ width: 16, height: 16, accentColor: '#dc2626' }} />
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#dc2626' }}>Select all</span>
+                  <span style={{ fontSize: 12, fontWeight: 500, color: '#dc2626' }}>Select all</span>
                 </label>
                 {CLEARABLE.map(c => (
                   <label key={c.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
@@ -439,7 +440,7 @@ export default function AdminDashboard() {
                       }}
                       style={{ width: 16, height: 16, marginTop: 2, accentColor: '#dc2626' }} />
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>{c.label}</div>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: '#e2e8f0' }}>{c.label}</div>
                       <div style={{ fontSize: 11, color: '#64748b' }}>{c.desc}</div>
                     </div>
                   </label>
@@ -449,7 +450,7 @@ export default function AdminDashboard() {
               {dangerSelected.size > 0 && dangerStep === 'idle' && (
                 <button
                   onClick={() => setDangerStep('confirm')}
-                  style={{ width: '100%', background: 'rgba(220,38,38,0.12)', border: '1.5px solid rgba(220,38,38,0.35)', color: '#dc2626', borderRadius: 12, padding: '12px', fontSize: 14, fontWeight: 800, cursor: 'pointer' }}>
+                  style={{ width: '100%', background: 'rgba(220,38,38,0.12)', border: '1.5px solid rgba(220,38,38,0.35)', color: '#dc2626', borderRadius: 12, padding: '12px', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>
                   Delete {dangerSelected.size} collection{dangerSelected.size > 1 ? 's' : ''} →
                 </button>
               )}
@@ -470,14 +471,14 @@ export default function AdminDashboard() {
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button
                       onClick={() => { setDangerStep('idle'); setDangerConfirm('') }}
-                      style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                      style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
                       Cancel
                     </button>
                     <button
                       onClick={handleClear}
                       disabled={dangerConfirm !== 'DELETE' || dangerClearing}
-                      style={{ flex: 2, background: dangerConfirm === 'DELETE' ? '#dc2626' : 'rgba(220,38,38,0.2)', border: 'none', color: '#fff', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 800, cursor: dangerConfirm === 'DELETE' ? 'pointer' : 'not-allowed', opacity: dangerClearing ? 0.6 : 1 }}>
-                      {dangerClearing ? '⏳ Clearing...' : '🗑️ Confirm Delete'}
+                      style={{ flex: 2, background: dangerConfirm === 'DELETE' ? '#dc2626' : 'rgba(220,38,38,0.2)', border: 'none', color: '#fff', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 500, cursor: dangerConfirm === 'DELETE' ? 'pointer' : 'not-allowed', opacity: dangerClearing ? 0.6 : 1 }}>
+                      {dangerClearing ? 'Clearing…' : 'Confirm delete'}
                     </button>
                   </div>
                 </div>
@@ -699,6 +700,24 @@ export default function AdminDashboard() {
   ].filter(
     (m) => m.screen === "settings" || can(appUser, SCREEN_PERMISSION[m.screen]),
   );
+
+  const allocWord = (s: string) =>
+    ({ pending: "Pending", sent: "Sent", paid: "Paid", overdue: "Overdue", cancelled: "Cancelled" } as Record<string, string>)[s] ?? s;
+  const payWord = (s: string) =>
+    ({ pending_approval: "Pending approval", approved: "Approved", rejected: "Rejected" } as Record<string, string>)[s] ?? s;
+
+  // Neutral filter chip — selection is shown by border and text weight, not colour.
+  const chipStyle = (active: boolean) => ({
+    background: "none",
+    border: `0.5px solid ${active ? t.text2 : t.border}`,
+    borderRadius: 99,
+    padding: "6px 13px",
+    fontSize: 12,
+    fontWeight: 400 as const,
+    color: active ? t.text : t.text3,
+    cursor: "pointer",
+    whiteSpace: "nowrap" as const,
+  });
 
   // An inline link on a number in the attention line.
   const numLink = (label: ReactNode, to: SubScreen) => (
@@ -1075,21 +1094,10 @@ export default function AdminDashboard() {
         {mainTab === "sales" && (
           <div
             className="fade-in"
-            style={{ display: "flex", flexDirection: "column", gap: 12 }}
+            style={{ display: "flex", flexDirection: "column", gap: 24 }}
           >
-            {/* Offline | Online sub-tabs */}
-            <div
-              style={{
-                display: "flex",
-                background:
-                  theme === "dark"
-                    ? "rgba(255,255,255,0.04)"
-                    : "rgba(0,0,0,0.03)",
-                borderRadius: 12,
-                padding: 4,
-                gap: 4,
-              }}
-            >
+            {/* Offline | Online */}
+            <div style={{ display: "flex", gap: 6 }}>
               {(
                 [
                   ["offline", "Offline"],
@@ -1098,190 +1106,67 @@ export default function AdminDashboard() {
               ).map(([val, label]) => (
                 <button
                   key={val}
+                  className="oc-action"
                   onClick={() => setSalesTab(val)}
-                  style={{
-                    flex: 1,
-                    background: salesTab === val ? t.card : "transparent",
-                    color: salesTab === val ? t.text : t.text3,
-                    border:
-                      salesTab === val
-                        ? `1px solid ${t.border2}`
-                        : "1px solid transparent",
-                    borderRadius: 8,
-                    padding: "9px",
-                    fontSize: 13,
-                    fontWeight: 700,
-                  }}
+                  style={chipStyle(salesTab === val)}
                 >
                   {label}
                 </button>
               ))}
             </div>
 
-            {/* Online Sales — placeholder */}
             {salesTab === "online" && (
-              <div
-                style={{ padding: "44px 0", maxWidth: 420 }}
-              >
-                <div
-                  style={{ fontSize: 17, fontWeight: 500, color: t.text, marginBottom: 6 }}
-                >
-                  Online sales
-                </div>
-                <div
-                  style={{ fontSize: 14, color: t.text3, lineHeight: 1.6, marginBottom: 18 }}
-                >
-                  E-commerce orders and digital campaigns will land here.
-                  Offline sales is where the activity is today.
-                </div>
-                <button
-                  className="oc-action"
-                  onClick={() => setSalesTab("offline")}
-                  style={{
-                    background: "none",
-                    border: `0.5px solid ${t.border2}`,
-                    borderRadius: 6,
-                    padding: "9px 14px",
-                    fontSize: 13,
-                    fontWeight: 400,
-                    color: t.text,
-                    cursor: "pointer",
-                  }}
-                >
-                  View offline sales
-                </button>
-              </div>
+              <EmptyState
+                title="Online sales"
+                body="E-commerce orders and digital campaigns will land here. Offline sales is where the activity is today."
+                actionLabel="View offline sales"
+                onAction={() => setSalesTab("offline")}
+              />
             )}
 
             {/* Offline Sales — filters + check-ins */}
             {salesTab === "offline" && (
               <>
                 {/* Filters */}
-                <div
-                  style={{
-                    background: t.card,
-                    borderRadius: 14,
-                    padding: 14,
-                    border: `1px solid ${t.border}`,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 13,
-                      color: t.text3,
-                      marginBottom: 8,
-                      letterSpacing: 1,
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Filters
-                  </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
-                  {/* User filter */}
-                  <div style={{ marginBottom: 10 }}>
-                    <div
-                      style={{ fontSize: 13, color: t.text3, marginBottom: 6 }}
-                    >
-                      Team Member
-                    </div>
+                  {/* Who */}
+                  <div>
+                    <div style={{ marginBottom: 8 }}><Eyebrow>Who</Eyebrow></div>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      <button
-                        onClick={() => setSelectedUser("all")}
-                        style={{
-                          background:
-                            selectedUser === "all"
-                              ? "#0891b2"
-                              : theme === "dark"
-                                ? "rgba(255,255,255,0.04)"
-                                : "rgba(0,0,0,0.03)",
-                          color: selectedUser === "all" ? "#fff" : t.text3,
-                          border: `1px solid ${selectedUser === "all" ? "#0891b2" : t.border}`,
-                          borderRadius: 20,
-                          padding: "5px 14px",
-                          fontSize: 13,
-                          fontWeight: 700,
-                        }}
-                      >
-                        All
+                      <button className="oc-action" onClick={() => setSelectedUser("all")}
+                        style={chipStyle(selectedUser === "all")}>
+                        Everyone
                       </button>
                       {salesUsers.map((u) => {
                         const onLeave = leaveRecords.some(
-                          (l) =>
-                            l.uid === u.uid &&
-                            l.date === todayStr &&
+                          (l) => l.uid === u.uid && l.date === todayStr &&
                             (l.status === "active" || l.status === "unmark_requested"),
                         );
                         return (
-                          <button
-                            key={u.uid}
+                          <button key={u.uid} className="oc-action"
                             onClick={() => setSelectedUser(u.name)}
-                            style={{
-                              background:
-                                selectedUser === u.name
-                                  ? "#0891b2"
-                                  : theme === "dark"
-                                    ? "rgba(255,255,255,0.04)"
-                                    : "rgba(0,0,0,0.03)",
-                              color: selectedUser === u.name ? "#fff" : t.text3,
-                              border: `1px solid ${selectedUser === u.name ? "#0891b2" : t.border}`,
-                              borderRadius: 20,
-                              padding: "5px 14px",
-                              fontSize: 13,
-                              fontWeight: 700,
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 5,
-                            }}
-                          >
-                            {u.name}
-                            {onLeave && (
-                              <span
-                                style={{ fontSize: 12 }}
-                                title="On leave today"
-                              >
-                                🏖️
-                              </span>
-                            )}
+                            style={chipStyle(selectedUser === u.name)}>
+                            {u.name}{onLeave ? " · out today" : ""}
                           </button>
                         );
                       })}
                     </div>
                   </div>
 
-                  {/* Date mode */}
+                  {/* When */}
                   <div>
-                    <div
-                      style={{ fontSize: 13, color: t.text3, marginBottom: 6 }}
-                    >
-                      Date Filter
-                    </div>
-                    <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                    <div style={{ marginBottom: 8 }}><Eyebrow>When</Eyebrow></div>
+                    <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
                       {(
                         [
                           ["day", "Day"],
                           ["month", "Month"],
-                          ["period", "Period"],
+                          ["period", "Range"],
                         ] as [typeof dateMode, string][]
                       ).map(([val, label]) => (
-                        <button
-                          key={val}
-                          onClick={() => setDateMode(val)}
-                          style={{
-                            flex: 1,
-                            background:
-                              dateMode === val
-                                ? "rgba(217,119,6,0.2)"
-                                : theme === "dark"
-                                  ? "rgba(255,255,255,0.04)"
-                                  : "rgba(0,0,0,0.03)",
-                            color: dateMode === val ? "#d97706" : t.text3,
-                            border: `1px solid ${dateMode === val ? "rgba(217,119,6,0.3)" : t.border}`,
-                            borderRadius: 8,
-                            padding: "7px",
-                            fontSize: 13,
-                            fontWeight: 700,
-                          }}
-                        >
+                        <button key={val} className="oc-action" onClick={() => setDateMode(val)}
+                          style={chipStyle(dateMode === val)}>
                           {label}
                         </button>
                       ))}
@@ -1289,369 +1174,155 @@ export default function AdminDashboard() {
 
                     {dateMode === "day" && (
                       <>
-                        {/* Last 7 days quick strip */}
-                        <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+                        {/* Last seven days */}
+                        <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
                           {Array.from({ length: 7 }, (_, i) => {
-                            const offset = 6 - i
-                            const d = new Date()
-                            d.setDate(d.getDate() - offset)
-                            const dateStr = localDateStr(d)
-                            const dayName = d.toLocaleDateString('en-IN', { weekday: 'short' })
-                            const isSunday = d.getDay() === 0
-                            const isSelected = dateDay === dateStr
-                            const label = `${d.getDate()} ${d.toLocaleDateString('en-IN', { month: 'short' })}`
+                            const offset = 6 - i;
+                            const d = new Date();
+                            d.setDate(d.getDate() - offset);
+                            const dateStr = localDateStr(d);
+                            const dayName = d.toLocaleDateString("en-IN", { weekday: "short" });
+                            const isSunday = d.getDay() === 0;
+                            const isSelected = dateDay === dateStr;
                             return (
-                              <button key={dateStr} onClick={() => setDateDay(dateStr)} style={{
-                                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-                                padding: '6px 2px', cursor: 'pointer',
-                                background: isSelected ? 'rgba(217,119,6,0.2)' : theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
-                                border: `1px solid ${isSelected ? 'rgba(217,119,6,0.3)' : isSunday ? 'rgba(239,68,68,0.2)' : t.border}`,
-                                borderRadius: 8,
-                              }}>
-                                <span style={{ fontSize: 11, fontWeight: 800, color: isSunday ? '#ef4444' : isSelected ? '#d97706' : t.text }}>
-                                  {offset === 0 ? 'Today' : dayName}
+                              <button key={dateStr} className="oc-row"
+                                onClick={() => setDateDay(dateStr)}
+                                style={{
+                                  flex: 1, display: "flex", flexDirection: "column",
+                                  alignItems: "center", gap: 2, padding: "8px 2px",
+                                  background: isSelected ? t.tint : "none",
+                                  border: `0.5px solid ${isSelected ? t.text2 : t.border}`,
+                                  borderRadius: 4, cursor: "pointer",
+                                }}>
+                                <span style={{
+                                  fontSize: 11,
+                                  fontWeight: isSelected ? 500 : 400,
+                                  color: isSelected ? t.text : t.text2,
+                                }}>
+                                  {offset === 0 ? "Today" : dayName}
                                 </span>
-                                <span style={{ fontSize: 10, marginTop: 1, color: isSunday ? '#ef4444' : isSelected ? '#d97706' : t.text3 }}>
-                                  {isSunday ? 'Off' : label}
+                                <span style={{ fontSize: 10, color: t.text3 }}>
+                                  {isSunday ? "Off" : d.getDate()}
                                 </span>
                               </button>
-                            )
+                            );
                           })}
                         </div>
-                        {/* Sunday indicator */}
-                        {new Date(dateDay + 'T00:00:00').getDay() === 0 && (
-                          <div style={{ marginBottom: 8 }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.1)', padding: '3px 10px', borderRadius: 99 }}>
-                              🔴 Sunday · Off Day
-                            </span>
+                        {new Date(dateDay + "T00:00:00").getDay() === 0 && (
+                          <div style={{ fontSize: 12, color: t.text3, marginBottom: 10 }}>
+                            Sunday — a scheduled off day, so nothing is expected.
                           </div>
                         )}
                         <DateInput type="date" value={dateDay} onChange={setDateDay} />
                       </>
                     )}
+
                     {dateMode === "month" && (
-                      <DateInput
-                        type="month"
-                        value={dateMonth}
-                        onChange={setDateMonth}
-                      />
+                      <DateInput type="month" value={dateMonth} onChange={setDateMonth} />
                     )}
+
                     {dateMode === "period" && (
                       <div style={{ display: "flex", gap: 8 }}>
                         <div style={{ flex: 1 }}>
-                          <div
-                            style={{
-                              fontSize: 12,
-                              color: t.text3,
-                              marginBottom: 4,
-                            }}
-                          >
-                            From
-                          </div>
-                          <DateInput
-                            type="date"
-                            value={datePeriodFrom}
-                            onChange={setDatePeriodFrom}
-                          />
+                          <div style={{ fontSize: 12, color: t.text3, marginBottom: 5 }}>From</div>
+                          <DateInput type="date" value={datePeriodFrom} onChange={setDatePeriodFrom} />
                         </div>
                         <div style={{ flex: 1 }}>
-                          <div
-                            style={{
-                              fontSize: 12,
-                              color: t.text3,
-                              marginBottom: 4,
-                            }}
-                          >
-                            To
-                          </div>
-                          <DateInput
-                            type="date"
-                            value={datePeriodTo}
-                            onChange={setDatePeriodTo}
-                          />
+                          <div style={{ fontSize: 12, color: t.text3, marginBottom: 5 }}>To</div>
+                          <DateInput type="date" value={datePeriodTo} onChange={setDatePeriodTo} />
                         </div>
                       </div>
                     )}
                   </div>
 
-                  {/* Party type filter */}
-                  <div style={{ marginTop: 12 }}>
-                    <div
-                      style={{ fontSize: 13, color: t.text3, marginBottom: 6 }}
-                    >
-                      Party Type
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 6,
-                        marginBottom: visitPartyType === "retailer" ? 8 : 0,
-                      }}
-                    >
+                  {/* Which accounts */}
+                  <div>
+                    <div style={{ marginBottom: 8 }}><Eyebrow>Which accounts</Eyebrow></div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       {(
                         [
-                          ["all", "All"],
-                          ["distributor", "🚚 Dist."],
-                          ["retailer", "🏪 Retailers"],
+                          ["all", "All types"],
+                          ["distributor", "Distributors"],
+                          ["retailer", "Retailers"],
                         ] as [string, string][]
                       ).map(([val, label]) => (
-                        <button
-                          key={val}
-                          onClick={() => {
-                            setVisitPartyType(val as any);
-                            setVisitDistSub("all");
-                          }}
-                          style={{
-                            flex: 1,
-                            background:
-                              visitPartyType === val
-                                ? "rgba(8,145,178,0.2)"
-                                : theme === "dark"
-                                  ? "rgba(255,255,255,0.04)"
-                                  : "rgba(0,0,0,0.03)",
-                            color: visitPartyType === val ? "#0891b2" : t.text3,
-                            border: `1px solid ${visitPartyType === val ? "rgba(8,145,178,0.3)" : t.border}`,
-                            borderRadius: 8,
-                            padding: "7px 4px",
-                            fontSize: 13,
-                            fontWeight: 700,
-                          }}
-                        >
+                        <button key={val} className="oc-action"
+                          onClick={() => { setVisitPartyType(val as any); setVisitDistSub("all"); }}
+                          style={chipStyle(visitPartyType === val)}>
                           {label}
                         </button>
                       ))}
                     </div>
-                    {visitPartyType === "retailer" && (
-                      <CustomSelect
-                        value={visitDistSub}
-                        onChange={setVisitDistSub}
-                        placeholder="All retailers"
-                        options={[
-                          { value: "all", label: "📋 All retailers" },
-                          {
-                            value: "independent",
-                            label: "🟢 Independent retailers",
-                          },
-                          ...distributorList.map((d) => ({
-                            value: d.id!,
-                            label: `🚚 ${d.name}`,
-                            sub: d.place || d.address,
-                          })),
-                        ]}
-                      />
-                    )}
-                  </div>
 
-                  {/* Party status filter */}
-                  <div style={{ marginTop: 12 }}>
-                    <div
-                      style={{ fontSize: 13, color: t.text3, marginBottom: 6 }}
-                    >
-                      Status
-                    </div>
-                    <div style={{ display: "flex", gap: 6 }}>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
                       {(
                         [
-                          ["all", "All"],
-                          ["active", "✅ Active"],
-                          ["prospect", "🔵 Prospect"],
-                          ["inactive", "⛔ Inactive"],
+                          ["all", "Any status"],
+                          ["active", "Active"],
+                          ["prospect", "Prospect"],
+                          ["inactive", "Inactive"],
                         ] as [string, string][]
                       ).map(([val, label]) => (
-                        <button
-                          key={val}
+                        <button key={val} className="oc-action"
                           onClick={() => setVisitPartyStatus(val as any)}
-                          style={{
-                            flex: 1,
-                            background:
-                              visitPartyStatus === val
-                                ? "rgba(22,163,74,0.15)"
-                                : theme === "dark"
-                                  ? "rgba(255,255,255,0.04)"
-                                  : "rgba(0,0,0,0.03)",
-                            color:
-                              visitPartyStatus === val ? "#16a34a" : t.text3,
-                            border: `1px solid ${visitPartyStatus === val ? "rgba(22,163,74,0.25)" : t.border}`,
-                            borderRadius: 8,
-                            padding: "6px 2px",
-                            fontSize: 12,
-                            fontWeight: 700,
-                          }}
-                        >
+                          style={chipStyle(visitPartyStatus === val)}>
                           {label}
                         </button>
                       ))}
                     </div>
+
+                    {visitPartyType === "retailer" && (
+                      <div style={{ marginTop: 10 }}>
+                        <CustomSelect
+                          value={visitDistSub}
+                          onChange={setVisitDistSub}
+                          placeholder="All retailers"
+                          options={[
+                            { value: "all", label: "All retailers" },
+                            { value: "independent", label: "Independent retailers" },
+                            ...distributorList.map((d) => ({
+                              value: d.id!,
+                              label: d.name,
+                              sub: d.place || d.address,
+                            })),
+                          ]}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Summary pills */}
+                {/* Summary */}
                 {filteredLogsWithVisits.length > 0 && (
-                  <>
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr 1fr 1fr",
-                        gap: 8,
-                      }}
-                    >
-                      {[
-                        {
-                          label: "Days",
-                          val: filteredLogsWithVisits.length,
-                          color: "#6ee7b7",
-                        },
-                        {
-                          label: "Visits",
-                          val: allFV.length,
-                          color: "#0891b2",
-                        },
-                        {
-                          label: "Interested",
-                          val: fvInterested,
-                          color: "#16a34a",
-                        },
-                      ].map((s) => (
-                        <div
-                          key={s.label}
-                          style={{
-                            background: t.card,
-                            borderRadius: 12,
-                            padding: "12px 10px",
-                            textAlign: "center",
-                            border: `1px solid ${t.border}`,
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontSize: 20,
-                              fontWeight: 900,
-                              color: s.color,
-                            }}
-                          >
-                            {s.val}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: 12,
-                              color: t.text3,
-                              marginTop: 2,
-                            }}
-                          >
-                            {s.label}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {(fvDistCount > 0 || fvRetailCount > 0) && (
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1fr 1fr",
-                          gap: 8,
-                        }}
-                      >
-                        <div
-                          style={{
-                            background: "rgba(8,145,178,0.08)",
-                            borderRadius: 12,
-                            padding: "10px",
-                            textAlign: "center",
-                            border: "1px solid rgba(8,145,178,0.15)",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontSize: 18,
-                              fontWeight: 900,
-                              color: "#0891b2",
-                            }}
-                          >
-                            {fvDistCount}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: 12,
-                              color: t.text3,
-                              marginTop: 2,
-                            }}
-                          >
-                            🚚 Unique Distributors
-                          </div>
-                        </div>
-                        <div
-                          style={{
-                            background: "rgba(22,163,74,0.08)",
-                            borderRadius: 12,
-                            padding: "10px",
-                            textAlign: "center",
-                            border: "1px solid rgba(22,163,74,0.15)",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontSize: 18,
-                              fontWeight: 900,
-                              color: "#16a34a",
-                            }}
-                          >
-                            {fvRetailCount}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: 12,
-                              color: t.text3,
-                              marginTop: 2,
-                            }}
-                          >
-                            🏪 Unique Retailers
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </>
+                  <StatGrid>
+                    <StatCard value={allFV.length} label="Visits"
+                      context={`Across ${filteredLogsWithVisits.length} ${filteredLogsWithVisits.length === 1 ? "day" : "days"}`} />
+                    <StatCard value={fvInterested} label="Interested"
+                      context={allFV.length > 0 ? `${Math.round((fvInterested / allFV.length) * 100)}% of visits` : undefined} />
+                    <StatCard value={fvDistCount + fvRetailCount} label="Unique accounts"
+                      context={`${fvDistCount} distributors, ${fvRetailCount} retailers`} />
+                  </StatGrid>
                 )}
 
-                {/* Allocation per sales person */}
+                {/* Allocations created, by person */}
                 {(() => {
                   const byPerson: Record<
                     string,
-                    {
-                      count: number;
-                      total: number;
-                      packets: number;
-                      allocs: any[];
-                    }
+                    { count: number; total: number; packets: number; allocs: any[] }
                   > = {};
                   allocations
                     .filter((a: any) => {
-                      if (
-                        selectedUser !== "all" &&
-                        a.createdByName !== selectedUser
-                      )
-                        return false;
-                      const createdDate = a.createdAt
-                        ? localDateStr(new Date(a.createdAt))
-                        : "";
+                      if (selectedUser !== "all" && a.createdByName !== selectedUser) return false;
+                      const createdDate = a.createdAt ? localDateStr(new Date(a.createdAt)) : "";
                       if (dateMode === "day") return createdDate === dateDay;
-                      if (dateMode === "month")
-                        return createdDate.startsWith(dateMonth);
+                      if (dateMode === "month") return createdDate.startsWith(dateMonth);
                       if (dateMode === "period")
-                        return (
-                          createdDate >= datePeriodFrom &&
-                          createdDate <= datePeriodTo
-                        );
+                        return createdDate >= datePeriodFrom && createdDate <= datePeriodTo;
                       return true;
                     })
                     .forEach((a: any) => {
                       const name = a.createdByName || "Unknown";
-                      if (!byPerson[name])
-                        byPerson[name] = {
-                          count: 0,
-                          total: 0,
-                          packets: 0,
-                          allocs: [],
-                        };
+                      if (!byPerson[name]) byPerson[name] = { count: 0, total: 0, packets: 0, allocs: [] };
                       byPerson[name].count++;
                       byPerson[name].total += a.totalAmount || 0;
                       byPerson[name].packets += a.packets || 0;
@@ -1659,259 +1330,95 @@ export default function AdminDashboard() {
                     });
                   const entries = Object.entries(byPerson);
                   if (entries.length === 0) return null;
+
                   return (
-                    <div
-                      style={{
-                        background: t.card,
-                        borderRadius: 14,
-                        border: "1px solid rgba(217,119,6,0.15)",
-                        overflow: "hidden",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 13,
-                          color: "#d97706",
-                          padding: "12px 14px 10px",
-                          fontWeight: 700,
-                          letterSpacing: 1,
-                          textTransform: "uppercase",
-                          borderBottom: "1px solid rgba(217,119,6,0.1)",
-                        }}
-                      >
-                        Allocations Created
-                      </div>
-                      {entries.map(([name, data]) => {
-                        const isExpanded = expandedAllocPerson === name;
-                        return (
-                          <div
-                            key={name}
-                            style={{ borderBottom: `1px solid ${t.border}` }}
-                          >
-                            <button
-                              onClick={() =>
-                                setExpandedAllocPerson(isExpanded ? null : name)
-                              }
-                              style={{
-                                width: "100%",
-                                background: "none",
-                                border: "none",
-                                padding: "12px 14px",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 10,
-                                cursor: "pointer",
-                                textAlign: "left",
-                              }}
-                            >
-                              <div
+                    <div>
+                      <div style={{ marginBottom: 12 }}><Eyebrow>Allocations created</Eyebrow></div>
+                      <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+                        {entries.map(([name, data]) => {
+                          const isExpanded = expandedAllocPerson === name;
+                          return (
+                            <div key={name} style={{ borderTop: `0.5px solid ${t.border}` }}>
+                              <button className="oc-row"
+                                onClick={() => setExpandedAllocPerson(isExpanded ? null : name)}
+                                aria-expanded={isExpanded}
                                 style={{
-                                  width: 32,
-                                  height: 32,
-                                  background: "rgba(217,119,6,0.15)",
-                                  borderRadius: "50%",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  fontWeight: 900,
-                                  fontSize: 14,
-                                  flexShrink: 0,
-                                  color: "#d97706",
-                                }}
-                              >
-                                {name[0]}
-                              </div>
-                              <div style={{ flex: 1 }}>
-                                <div
-                                  style={{
-                                    fontSize: 14,
-                                    fontWeight: 700,
-                                    color: t.text,
-                                  }}
-                                >
-                                  {name}
-                                </div>
-                                <div style={{ fontSize: 12, color: t.text3 }}>
-                                  {data.count} allocation
-                                  {data.count > 1 ? "s" : ""} • {data.packets}{" "}
-                                  pkts
-                                </div>
-                              </div>
-                              <div
-                                style={{
-                                  fontSize: 14,
-                                  fontWeight: 900,
-                                  color: "#d97706",
-                                  marginRight: 6,
-                                }}
-                              >
-                                ₹{data.total.toLocaleString()}
-                              </div>
-                              <span style={{ color: t.text3, fontSize: 13 }}>
-                                {isExpanded ? "▲" : "▼"}
-                              </span>
-                            </button>
-                            {isExpanded && (
-                              <div
-                                style={{
-                                  padding: "0 14px 12px",
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  gap: 6,
-                                }}
-                              >
-                                {data.allocs
-                                  .sort(
-                                    (a: any, b: any) =>
-                                      (b.createdAt || 0) - (a.createdAt || 0),
-                                  )
-                                  .map((a: any, i: number) => {
-                                    const statusColor =
-                                      a.status === "dispatched"
-                                        ? "#16a34a"
-                                        : a.status === "approved"
-                                          ? "#0891b2"
-                                          : a.status === "cancelled"
-                                            ? "#dc2626"
-                                            : "#d97706";
-                                    const partyEmoji =
-                                      a.partyType === "distributor"
-                                        ? "🚚"
-                                        : "🏪";
-                                    return (
-                                      <div
-                                        key={a.id || i}
+                                  width: "100%", display: "flex", alignItems: "baseline", gap: 16,
+                                  background: "none", border: "none", padding: "15px 10px",
+                                  textAlign: "left", cursor: "pointer",
+                                }}>
+                                <span style={{ flex: 1, minWidth: 0 }}>
+                                  <span style={{ display: "block", fontSize: 15, fontWeight: 500, color: t.text }}>
+                                    {name}
+                                  </span>
+                                  <span style={{ display: "block", fontSize: 13, color: t.text3, marginTop: 3 }}>
+                                    {data.count} {data.count === 1 ? "allocation" : "allocations"} · {data.packets} pkts
+                                  </span>
+                                </span>
+                                <span style={{ fontSize: 14, color: t.text2, whiteSpace: "nowrap" }}>
+                                  {inr(data.total)}
+                                </span>
+                              </button>
+
+                              {isExpanded && (
+                                <div style={{ padding: "0 10px 14px" }}>
+                                  {data.allocs
+                                    .sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0))
+                                    .map((a: any, i: number) => (
+                                      <div key={a.id || i}
                                         style={{
-                                          background:
-                                            theme === "dark"
-                                              ? "rgba(255,255,255,0.04)"
-                                              : "rgba(0,0,0,0.03)",
-                                          borderRadius: 10,
-                                          padding: "10px 12px",
-                                        }}
-                                      >
-                                        <div
-                                          style={{
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: 8,
-                                            marginBottom: 6,
-                                          }}
-                                        >
-                                          <span style={{ fontSize: 14 }}>
-                                            {partyEmoji}
+                                          display: "flex", alignItems: "baseline",
+                                          justifyContent: "space-between", gap: 12,
+                                          padding: "10px 0", borderTop: `0.5px solid ${t.border}`,
+                                        }}>
+                                        <span style={{ minWidth: 0 }}>
+                                          <span style={{ display: "block", fontSize: 14, color: t.text }}>
+                                            {a.partyName || "—"}
                                           </span>
-                                          <div style={{ flex: 1 }}>
-                                            <div
-                                              style={{
-                                                fontSize: 14,
-                                                fontWeight: 700,
-                                                color: t.text,
-                                              }}
-                                            >
-                                              {a.partyName || "—"}
-                                            </div>
-                                            <div
-                                              style={{
-                                                fontSize: 12,
-                                                color: t.text2,
-                                              }}
-                                            >
-                                              {a.productName || "—"}
-                                            </div>
-                                          </div>
-                                          <span
-                                            style={{
-                                              fontSize: 11,
-                                              fontWeight: 700,
-                                              color: statusColor,
-                                              background: `${statusColor}20`,
-                                              padding: "2px 8px",
-                                              borderRadius: 99,
-                                              textTransform: "uppercase",
-                                            }}
-                                          >
-                                            {a.status || "pending"}
+                                          <span style={{ display: "block", fontSize: 12, color: t.text3, marginTop: 2 }}>
+                                            {a.productName || "—"} · {a.packets} pkts ·{" "}
+                                            {a.paymentType === "credit" ? "Credit" : "Cash"}
+                                            {a.plannedDate ? ` · ${a.plannedDate}` : ""}
                                           </span>
-                                        </div>
-                                        <div
-                                          style={{
-                                            display: "flex",
-                                            gap: 8,
-                                            flexWrap: "wrap",
-                                          }}
-                                        >
-                                          <span
-                                            style={{
-                                              fontSize: 12,
-                                              color: t.text2,
-                                            }}
-                                          >
-                                            📦 {a.packets} pkts
+                                        </span>
+                                        <span style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                                          <span style={{ display: "block", fontSize: 13, color: t.text }}>
+                                            {inr(a.totalAmount || 0)}
                                           </span>
-                                          <span
-                                            style={{
-                                              fontSize: 12,
-                                              color: "#d97706",
-                                              fontWeight: 700,
-                                            }}
-                                          >
-                                            ₹
-                                            {(
-                                              a.totalAmount || 0
-                                            ).toLocaleString()}
+                                          <span style={{
+                                            display: "block", fontSize: 12, marginTop: 2,
+                                            color: a.status === "pending" || a.status === "overdue" ? t.warn : t.text3,
+                                          }}>
+                                            {allocWord(a.status)}
                                           </span>
-                                          <span
-                                            style={{
-                                              fontSize: 12,
-                                              color: t.text3,
-                                            }}
-                                          >
-                                            {a.paymentType === "cash"
-                                              ? "💵 Cash"
-                                              : a.paymentType === "credit"
-                                                ? "📝 Credit"
-                                                : a.paymentType === "upi"
-                                                  ? "📱 UPI"
-                                                  : a.paymentType || ""}
-                                          </span>
-                                          {a.plannedDate && (
-                                            <span
-                                              style={{
-                                                fontSize: 12,
-                                                color: t.text3,
-                                              }}
-                                            >
-                                              📅 {a.plannedDate}
-                                            </span>
-                                          )}
-                                        </div>
+                                        </span>
                                       </div>
-                                    );
-                                  })}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                                    ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   );
                 })()}
 
-                {/* Payments Collected per sales person */}
+                {/* Payments collected, by person */}
                 {(() => {
                   const byPerson: Record<string, { count: number; total: number; payments: any[] }> = {};
                   allAdminPayments
                     .filter((p: any) => {
                       if (!p.collectedByName) return false;
-                      if (selectedUser !== 'all' && p.collectedByName !== selectedUser) return false;
-                      if (dateMode === 'day') return p.date === dateDay;
-                      if (dateMode === 'month') return p.date?.startsWith(dateMonth);
-                      if (dateMode === 'period') return p.date >= datePeriodFrom && p.date <= datePeriodTo;
+                      if (selectedUser !== "all" && p.collectedByName !== selectedUser) return false;
+                      if (dateMode === "day") return p.date === dateDay;
+                      if (dateMode === "month") return p.date?.startsWith(dateMonth);
+                      if (dateMode === "period")
+                        return p.date >= datePeriodFrom && p.date <= datePeriodTo;
                       return true;
                     })
                     .forEach((p: any) => {
-                      const name = p.collectedByName || 'Unknown';
+                      const name = p.collectedByName || "Unknown";
                       if (!byPerson[name]) byPerson[name] = { count: 0, total: 0, payments: [] };
                       byPerson[name].count++;
                       byPerson[name].total += p.amount || 0;
@@ -1919,58 +1426,81 @@ export default function AdminDashboard() {
                     });
                   const entries = Object.entries(byPerson);
                   if (entries.length === 0) return null;
-                  const statusColor = (s: string) => s === 'approved' ? '#16a34a' : s === 'rejected' ? '#dc2626' : '#d97706';
-                  const statusLabel = (s: string) => s === 'approved' ? 'Approved ✓' : s === 'rejected' ? 'Rejected' : 'Pending';
-                  const methodLabel: Record<string, string> = { cash: '💵 Cash', cheque: '📄 Cheque', bank_transfer: '🏦 Bank Transfer', upi: '📱 UPI' };
+
+                  const methodLabel: Record<string, string> = {
+                    cash: "Cash", cheque: "Cheque",
+                    bank_transfer: "Bank transfer", upi: "UPI",
+                  };
+
                   return (
-                    <div style={{ background: t.card, borderRadius: 14, border: '1px solid rgba(22,163,74,0.15)', overflow: 'hidden' }}>
-                      <div style={{ fontSize: 13, color: '#16a34a', padding: '12px 14px 10px', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', borderBottom: '1px solid rgba(22,163,74,0.1)' }}>
-                        Payments Collected
-                      </div>
-                      {entries.map(([name, data]) => {
-                        const isExpanded = expandedPaymentPerson === name;
-                        return (
-                          <div key={name} style={{ borderBottom: `1px solid ${t.border}` }}>
-                            <button
-                              onClick={() => setExpandedPaymentPerson(isExpanded ? null : name)}
-                              style={{ width: '100%', background: 'none', border: 'none', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', textAlign: 'left' }}
-                            >
-                              <div style={{ width: 32, height: 32, background: 'rgba(22,163,74,0.12)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 14, flexShrink: 0, color: '#16a34a' }}>
-                                {name[0]}
-                              </div>
-                              <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{name}</div>
-                                <div style={{ fontSize: 12, color: t.text3 }}>{data.count} payment{data.count > 1 ? 's' : ''}</div>
-                              </div>
-                              <div style={{ fontSize: 14, fontWeight: 900, color: '#16a34a', marginRight: 6 }}>₹{data.total.toLocaleString()}</div>
-                              <span style={{ color: t.text3, fontSize: 13 }}>{isExpanded ? '▲' : '▼'}</span>
-                            </button>
-                            {isExpanded && (
-                              <div style={{ padding: '0 14px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                {data.payments.sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0)).map((p: any, i: number) => (
-                                  <div key={p.id || i} style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 10, padding: '10px 12px' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                                      <span style={{ fontSize: 14 }}>{p.partyType === 'distributor' ? '🚚' : '🏪'}</span>
-                                      <div style={{ flex: 1 }}>
-                                        <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{p.partyName || '—'}</div>
-                                        <div style={{ fontSize: 12, color: t.text2 }}>{methodLabel[p.paymentMethod] || p.paymentMethod}</div>
+                    <div>
+                      <div style={{ marginBottom: 12 }}><Eyebrow>Payments collected</Eyebrow></div>
+                      <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+                        {entries.map(([name, data]) => {
+                          const isExpanded = expandedPaymentPerson === name;
+                          return (
+                            <div key={name} style={{ borderTop: `0.5px solid ${t.border}` }}>
+                              <button className="oc-row"
+                                onClick={() => setExpandedPaymentPerson(isExpanded ? null : name)}
+                                aria-expanded={isExpanded}
+                                style={{
+                                  width: "100%", display: "flex", alignItems: "baseline", gap: 16,
+                                  background: "none", border: "none", padding: "15px 10px",
+                                  textAlign: "left", cursor: "pointer",
+                                }}>
+                                <span style={{ flex: 1, minWidth: 0 }}>
+                                  <span style={{ display: "block", fontSize: 15, fontWeight: 500, color: t.text }}>
+                                    {name}
+                                  </span>
+                                  <span style={{ display: "block", fontSize: 13, color: t.text3, marginTop: 3 }}>
+                                    {data.count} {data.count === 1 ? "payment" : "payments"}
+                                  </span>
+                                </span>
+                                <span style={{ fontSize: 14, color: t.text2, whiteSpace: "nowrap" }}>
+                                  {inr(data.total)}
+                                </span>
+                              </button>
+
+                              {isExpanded && (
+                                <div style={{ padding: "0 10px 14px" }}>
+                                  {data.payments
+                                    .sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0))
+                                    .map((p: any, i: number) => (
+                                      <div key={p.id || i}
+                                        style={{
+                                          display: "flex", alignItems: "baseline",
+                                          justifyContent: "space-between", gap: 12,
+                                          padding: "10px 0", borderTop: `0.5px solid ${t.border}`,
+                                        }}>
+                                        <span style={{ minWidth: 0 }}>
+                                          <span style={{ display: "block", fontSize: 14, color: t.text }}>
+                                            {p.partyName || "—"}
+                                          </span>
+                                          <span style={{ display: "block", fontSize: 12, color: t.text3, marginTop: 2 }}>
+                                            {methodLabel[p.paymentMethod] || p.paymentMethod}
+                                            {p.date ? ` · ${p.date}` : ""}
+                                            {p.notes ? ` · ${p.notes}` : ""}
+                                          </span>
+                                        </span>
+                                        <span style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                                          <span style={{ display: "block", fontSize: 13, color: t.text }}>
+                                            {inr(p.amount || 0)}
+                                          </span>
+                                          <span style={{
+                                            display: "block", fontSize: 12, marginTop: 2,
+                                            color: p.status === "pending_approval" ? t.warn : t.text3,
+                                          }}>
+                                            {payWord(p.status)}
+                                          </span>
+                                        </span>
                                       </div>
-                                      <span style={{ fontSize: 11, fontWeight: 700, color: statusColor(p.status), background: `${statusColor(p.status)}20`, padding: '2px 8px', borderRadius: 99 }}>
-                                        {statusLabel(p.status)}
-                                      </span>
-                                    </div>
-                                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                                      <span style={{ fontSize: 14, fontWeight: 900, color: '#16a34a' }}>₹{(p.amount || 0).toLocaleString()}</span>
-                                      {p.date && <span style={{ fontSize: 12, color: t.text3 }}>📅 {p.date}</span>}
-                                      {p.notes && <span style={{ fontSize: 12, color: t.text3 }}>· {p.notes}</span>}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                                    ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   );
                 })()}
@@ -1982,8 +1512,8 @@ export default function AdminDashboard() {
                   const inRange = (d: string) => !!d && d >= rangeStart && d <= rangeEnd
                   const tsToDate = (ts: number) => new Date(ts).toLocaleDateString('en-CA')
 
-                  const aStyle = (s: string) => ({ pending: { label: 'Pending', color: '#d97706', bg: 'rgba(217,119,6,0.12)' }, sent: { label: 'Sent ✓', color: '#2563eb', bg: 'rgba(37,99,235,0.10)' }, paid: { label: 'Paid ✓', color: '#16a34a', bg: 'rgba(22,163,74,0.10)' }, overdue: { label: 'Overdue', color: '#dc2626', bg: 'rgba(220,38,38,0.10)' }, cancelled: { label: 'Cancelled', color: '#6b7280', bg: 'rgba(107,114,128,0.10)' } } as any)[s] ?? { label: s, color: '#6b7280', bg: 'rgba(107,114,128,0.10)' }
-                  const pStyle = (s: string) => ({ pending_approval: { label: 'Pending approval', color: '#d97706' }, approved: { label: 'Approved ✓', color: '#16a34a' }, rejected: { label: 'Rejected', color: '#dc2626' } } as any)[s] ?? { label: s, color: '#6b7280' }
+                  const aStyle = (s: string) => ({ pending: { label: 'Pending', color: t.warn }, sent: { label: 'Sent', color: t.text3 }, paid: { label: 'Paid', color: t.text3 }, overdue: { label: 'Overdue', color: t.warn }, cancelled: { label: 'Cancelled', color: t.text3 } } as any)[s] ?? { label: s, color: t.text3 }
+                  const pStyle = (s: string) => ({ pending_approval: { label: 'Pending approval', color: t.warn }, approved: { label: 'Approved', color: t.text3 }, rejected: { label: 'Rejected', color: t.text3 } } as any)[s] ?? { label: s, color: t.text3 }
 
                   type PersonData = { visitLog: any; revisitLogs: any[]; allocations: any[]; payments: any[]; expenses: any[] }
                   const dayPersonMap: Record<string, Record<string, PersonData>> = {}
@@ -2096,14 +1626,14 @@ export default function AdminDashboard() {
                           <div key={date} style={{ background: t.card, borderRadius: 16, border: `1px solid ${isToday ? 'rgba(16,185,129,0.35)' : t.border}`, overflow: 'hidden' }}>
                             <button onClick={() => toggleDay(date)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'none', border: 'none', cursor: 'pointer' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                {isToday && <span style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 99 }}>TODAY</span>}
-                                <span style={{ fontSize: 15, fontWeight: 800, color: t.text }}>{dFmt(date)}</span>
+                                {isToday && <span style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', fontSize: 10, fontWeight: 500, padding: '2px 8px', borderRadius: 99 }}>TODAY</span>}
+                                <span style={{ fontSize: 15, fontWeight: 500, color: t.text }}>{dFmt(date)}</span>
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <div style={{ display: 'flex', gap: 6 }}>
-                                  {totalVisits > 0 && <span style={{ fontSize: 11, color: '#0891b2' }}>🗺️ {totalVisits}</span>}
-                                  {totalAct > 0 && <span style={{ fontSize: 11, color: '#d97706' }}>📦 {totalAct}</span>}
-                                  {totalExp > 0 && <span style={{ fontSize: 11, color: '#16a34a' }}>💸 ₹{totalExp.toLocaleString('en-IN')}</span>}
+                                  {totalVisits > 0 && <span style={{ fontSize: 11, color: t.text3 }}>{totalVisits}</span>}
+                                  {totalAct > 0 && <span style={{ fontSize: 11, color: t.text3 }}>{totalAct}</span>}
+                                  {totalExp > 0 && <span style={{ fontSize: 11, color: t.text3 }}>₹{totalExp.toLocaleString('en-IN')}</span>}
                                 </div>
                                 <span style={{ fontSize: 16, color: t.text3 }}>{isExpanded ? '▾' : '▸'}</span>
                               </div>
@@ -2126,7 +1656,7 @@ export default function AdminDashboard() {
 
                                   const secHdr = (label: string, key: string, count: number) => (
                                     <button onClick={() => toggleSec(key)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', padding: '10px 0 6px', cursor: 'pointer' }}>
-                                      <span style={{ fontSize: 12, fontWeight: 800, color: t.text3, letterSpacing: 1, textTransform: 'uppercase' as const }}>{label} ({count})</span>
+                                      <span style={{ fontSize: 12, fontWeight: 500, color: t.text3, letterSpacing: 1, textTransform: 'uppercase' as const }}>{label} ({count})</span>
                                       <span style={{ fontSize: 13, color: t.text3 }}>{secOpen(key) ? '▾' : '▸'}</span>
                                     </button>
                                   )
@@ -2134,17 +1664,17 @@ export default function AdminDashboard() {
                                   return (
                                     <div key={uid} style={{ marginTop: 12, background: theme === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)', borderRadius: 12, padding: '10px 12px', border: `1px solid ${t.border}` }}>
                                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                                        <div style={{ width: 28, height: 28, background: 'linear-gradient(135deg,#0891b2,#0e7490)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 12, color: '#fff', flexShrink: 0 }}>
+                                        <div style={{ width: 28, height: 28, background: 'linear-gradient(135deg,#0891b2,#0e7490)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 500, fontSize: 12, color: '#fff', flexShrink: 0 }}>
                                           {personName?.[0] || '?'}
                                         </div>
-                                        <span style={{ fontSize: 14, fontWeight: 800, color: t.text }}>{personName}</span>
-                                        {isOnLeave && <span style={{ fontSize: 10, fontWeight: 800, background: 'rgba(245,158,11,0.2)', color: '#d97706', padding: '2px 8px', borderRadius: 99 }}>🏖️ On Leave</span>}
-                                        {halfDayLeave && <span style={{ fontSize: 10, fontWeight: 800, background: 'rgba(59,130,246,0.15)', color: '#3b82f6', padding: '2px 8px', borderRadius: 99 }}>🌤️ Half Day</span>}
+                                        <span style={{ fontSize: 14, fontWeight: 500, color: t.text }}>{personName}</span>
+                                        {isOnLeave && <span style={{ fontSize: 10, fontWeight: 500, background: 'transparent', color: t.warn, border: `0.5px solid ${t.border}`, padding: '2px 8px', borderRadius: 99 }}>On leave</span>}
+                                        {halfDayLeave && <span style={{ fontSize: 10, fontWeight: 500, background: 'transparent', color: t.text3, border: `0.5px solid ${t.border}`, padding: '2px 8px', borderRadius: 99 }}>Half day</span>}
                                         {data.visitLog && <span style={{ marginLeft: 'auto', fontSize: 11, color: t.text3 }}>{data.visitLog.totalVisited || 0} visits</span>}
                                       </div>
 
                                       {isOnLeave && visitCount === 0 && actCount === 0 && data.expenses.length === 0 && (
-                                        <div style={{ fontSize: 12, color: '#d97706', paddingLeft: 36 }}>Full Day Leave · no activity logged</div>
+                                        <div style={{ fontSize: 12, color: t.text3, paddingLeft: 36 }}>Full day leave — nothing logged</div>
                                       )}
 
                                       {visitCount > 0 && (
@@ -2158,22 +1688,22 @@ export default function AdminDashboard() {
                                                 return (
                                                   <div key={rl.id} style={{ background: t.bg3, borderRadius: 12, border: `1px solid ${t.border}` }}>
                                                     <div style={{ padding: '12px 14px 8px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                      <span style={{ fontSize: 10, fontWeight: 800, color: '#0891b2', background: 'rgba(8,145,178,0.1)', padding: '2px 8px', borderRadius: 99 }}>REVISIT</span>
-                                                      <span style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{rl.partyName}</span>
+                                                      <span style={{ fontSize: 10, fontWeight: 500, color: t.text3, background: 'transparent', border: `0.5px solid ${t.border}`, padding: '2px 8px', borderRadius: 99 }}>Revisit</span>
+                                                      <span style={{ fontSize: 14, fontWeight: 500, color: t.text }}>{rl.partyName}</span>
                                                     </div>
                                                     <div style={{ padding: '0 14px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                                                       {rl.actions?.map((action: any, ai: number) => {
                                                         if (action.removed) return null
-                                                        if (action.type === 'relationship_visit') return <div key={ai} style={{ fontSize: 12, color: t.text2 }}>🤝 Relationship Visit{action.notes ? ` · ${action.notes}` : ''}</div>
-                                                        if (action.type === 'no_longer_active') return <div key={ai} style={{ fontSize: 12, color: '#dc2626' }}>⛔ No Longer Active{action.reason ? ` · ${action.reason}` : ''}</div>
+                                                        if (action.type === 'relationship_visit') return <div key={ai} style={{ fontSize: 12, color: t.text2 }}>Relationship visit{action.notes ? ` · ${action.notes}` : ''}</div>
+                                                        if (action.type === 'no_longer_active') return <div key={ai} style={{ fontSize: 12, color: t.text3 }}>No longer active{action.reason ? ` · ${action.reason}` : ''}</div>
                                                         const liveAlloc = action.allocationId ? allocations.find((a: any) => a.id === action.allocationId) : null
                                                         const livePay = action.transactionId ? allAdminPayments.find((p: any) => p.id === action.transactionId) : null
                                                         if (action.type === 'stock_update') return (
                                                           <div key={ai} style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)', borderRadius: 8, padding: '10px 12px', border: `1px solid ${t.border}` }}>
-                                                            <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 4 }}>📦 Stock Update · {action.productName}</div>
+                                                            <div style={{ fontSize: 13, fontWeight: 500, color: t.text, marginBottom: 4 }}>Stock update · {action.productName}</div>
                                                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px' }}>
                                                               {([['Opening', action.openingQty], ['Purchased', action.purchasedQty], ['Sold', action.soldQty], ['Balance', `${action.balanceQty} pkts`]] as [string,any][]).map(([lbl, val]) => (
-                                                                <div key={lbl} style={{ fontSize: 12 }}><span style={{ color: t.text3 }}>{lbl} </span><span style={{ fontWeight: 700, color: t.text }}>{val}</span></div>
+                                                                <div key={lbl} style={{ fontSize: 12 }}><span style={{ color: t.text3 }}>{lbl} </span><span style={{ fontWeight: 500, color: t.text }}>{val}</span></div>
                                                               ))}
                                                             </div>
                                                           </div>
@@ -2184,9 +1714,9 @@ export default function AdminDashboard() {
                                                           const s = liveAlloc ? aStyle(liveAlloc.status) : null
                                                           return (
                                                             <div key={ai} style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)', borderRadius: 8, padding: '10px 12px', border: `1px solid ${t.border}` }}>
-                                                              <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 4 }}>🛒 New Order · {action.productName}</div>
-                                                              <div style={{ fontSize: 12, color: t.text2 }}>{displayPkts} pkts · ₹{displayTotal.toLocaleString('en-IN')} · <span style={{ color: action.paymentType === 'credit' ? '#d97706' : '#16a34a' }}>{action.paymentType}</span></div>
-                                                              {s && <span style={{ marginTop: 6, display: 'inline-block', fontSize: 11, fontWeight: 700, color: s.color, background: s.bg, borderRadius: 99, padding: '2px 8px' }}>{s.label}</span>}
+                                                              <div style={{ fontSize: 13, fontWeight: 500, color: t.text, marginBottom: 4 }}>New order · {action.productName}</div>
+                                                              <div style={{ fontSize: 12, color: t.text2 }}>{displayPkts} pkts · ₹{displayTotal.toLocaleString('en-IN')} · <span style={{ color: t.text3 }}>{action.paymentType}</span></div>
+                                                              {s && <span style={{ marginTop: 6, display: 'inline-block', fontSize: 11, fontWeight: 500, color: s.color, borderRadius: 0, padding: 0 }}>{s.label}</span>}
                                                             </div>
                                                           )
                                                         }
@@ -2195,8 +1725,8 @@ export default function AdminDashboard() {
                                                           const displayStatus = livePay?.status ?? action.status
                                                           return (
                                                             <div key={ai} style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)', borderRadius: 8, padding: '10px 12px', border: `1px solid ${t.border}` }}>
-                                                              <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 4 }}>💰 Payment Collected · {rl.partyName}</div>
-                                                              <div style={{ fontSize: 12, color: t.text2 }}>₹{displayAmt?.toLocaleString('en-IN')} · <span style={{ color: displayStatus === 'pending_approval' ? '#d97706' : '#16a34a' }}>{displayStatus === 'pending_approval' ? '⏳ Pending' : '✅ Approved'}</span></div>
+                                                              <div style={{ fontSize: 13, fontWeight: 500, color: t.text, marginBottom: 4 }}>Payment collected · {rl.partyName}</div>
+                                                              <div style={{ fontSize: 12, color: t.text2 }}>₹{displayAmt?.toLocaleString('en-IN')} · <span style={{ color: displayStatus === 'pending_approval' ? t.warn : t.text3 }}>{displayStatus === 'pending_approval' ? 'Pending' : 'Approved'}</span></div>
                                                             </div>
                                                           )
                                                         }
@@ -2213,13 +1743,13 @@ export default function AdminDashboard() {
 
                                       {newPartyEntries.length > 0 && (
                                         <>
-                                          {secHdr('New Parties', npKey, newPartyEntries.length)}
+                                          {secHdr('New parties', npKey, newPartyEntries.length)}
                                           {secOpen(npKey) && (
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
                                               {newPartyEntries.map((v: any, i: number) => (
                                                 <div key={i} style={{ background: t.bg3, borderRadius: 12, border: `1px solid ${t.border}`, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                  <span style={{ fontSize: 10, fontWeight: 800, color: '#6366f1', background: 'rgba(99,102,241,0.12)', padding: '2px 8px', borderRadius: 99 }}>NEW PARTY</span>
-                                                  <span style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{v.partyName}</span>
+                                                  <span style={{ fontSize: 10, fontWeight: 500, color: t.text3, background: 'transparent', border: `0.5px solid ${t.border}`, padding: '2px 8px', borderRadius: 99 }}>New party</span>
+                                                  <span style={{ fontSize: 14, fontWeight: 500, color: t.text }}>{v.partyName}</span>
                                                 </div>
                                               ))}
                                             </div>
@@ -2238,11 +1768,11 @@ export default function AdminDashboard() {
                                                   <div key={a.id} style={{ background: t.bg3, borderRadius: 12, padding: '12px 14px', border: `1px solid ${t.border}` }}>
                                                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
                                                       <div style={{ flex: 1 }}>
-                                                        <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>📦 Allocation · {a.partyName}</div>
+                                                        <div style={{ fontSize: 13, fontWeight: 500, color: t.text }}>Allocation · {a.partyName}</div>
                                                         <div style={{ fontSize: 12, color: t.text2, marginTop: 3 }}>{a.productName} · {a.packets} pkts · ₹{a.totalAmount.toLocaleString('en-IN')}</div>
-                                                        <div style={{ fontSize: 11, color: t.text3, marginTop: 2 }}>{a.paymentType === 'credit' ? '💳 Credit' : '💵 Cash'}</div>
+                                                        <div style={{ fontSize: 11, color: t.text3, marginTop: 2 }}>{a.paymentType === 'credit' ? 'Credit' : 'Cash'}</div>
                                                       </div>
-                                                      <span style={{ fontSize: 11, fontWeight: 700, color: s.color, background: s.bg, borderRadius: 99, padding: '3px 10px', flexShrink: 0 }}>{s.label}</span>
+                                                      <span style={{ fontSize: 11, fontWeight: 500, color: s.color, borderRadius: 0, padding: 0, flexShrink: 0 }}>{s.label}</span>
                                                     </div>
                                                   </div>
                                                 )
@@ -2253,11 +1783,11 @@ export default function AdminDashboard() {
                                                   <div key={p.id} style={{ background: t.bg3, borderRadius: 12, padding: '12px 14px', border: `1px solid ${t.border}` }}>
                                                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
                                                       <div style={{ flex: 1 }}>
-                                                        <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>💰 Payment · {p.partyName}</div>
+                                                        <div style={{ fontSize: 13, fontWeight: 500, color: t.text }}>Payment · {p.partyName}</div>
                                                         <div style={{ fontSize: 12, color: t.text2, marginTop: 3 }}>₹{p.amount.toLocaleString('en-IN')} · {p.paymentMethod?.replace('_', ' ')}</div>
                                                         {p.notes && <div style={{ fontSize: 11, color: t.text3, marginTop: 2 }}>{p.notes}</div>}
                                                       </div>
-                                                      <span style={{ fontSize: 11, fontWeight: 700, color: s.color, flexShrink: 0 }}>{s.label}</span>
+                                                      <span style={{ fontSize: 11, fontWeight: 500, color: s.color, flexShrink: 0 }}>{s.label}</span>
                                                     </div>
                                                   </div>
                                                 )
@@ -2276,10 +1806,10 @@ export default function AdminDashboard() {
                                                 <div key={e.id} style={{ background: t.bg3, borderRadius: 10, padding: '10px 12px', border: `1px solid ${t.border}` }}>
                                                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                                     <div>
-                                                      <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>{e.category || 'Expense'}</div>
+                                                      <div style={{ fontSize: 13, fontWeight: 500, color: t.text }}>{e.category || 'Expense'}</div>
                                                       {e.description && <div style={{ fontSize: 12, color: t.text2, marginTop: 2 }}>{e.description}</div>}
                                                     </div>
-                                                    <div style={{ fontSize: 15, fontWeight: 800, color: '#16a34a' }}>₹{e.amount.toLocaleString('en-IN')}</div>
+                                                    <div style={{ fontSize: 15, fontWeight: 500, color: t.text3 }}>₹{e.amount.toLocaleString('en-IN')}</div>
                                                   </div>
                                                 </div>
                                               ))}
@@ -2290,7 +1820,7 @@ export default function AdminDashboard() {
 
                                       {data.visitLog?.endOfDayNote && (
                                         <div style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 8, padding: '8px 10px', marginTop: 4 }}>
-                                          <div style={{ fontSize: 11, color: t.text3, marginBottom: 2 }}>📝 End of day note</div>
+                                          <div style={{ fontSize: 11, color: t.text3, marginBottom: 2 }}>End of day note</div>
                                           <div style={{ fontSize: 13, color: t.text2 }}>{data.visitLog.endOfDayNote}</div>
                                         </div>
                                       )}
@@ -2306,455 +1836,6 @@ export default function AdminDashboard() {
                   )
                 })()}
 
-                {false && (<>
-                    {/* removed — replaced by ActivityScreen-style display above */}
-                    {fullDayLeaveCards.map((leave) => (
-                      <div
-                        key={leave.id}
-                        style={{
-                          background: "rgba(245,158,11,0.06)",
-                          borderRadius: 14,
-                          padding: 14,
-                          border: "1.5px solid rgba(245,158,11,0.2)",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 10,
-                          }}
-                        >
-                          <div
-                            style={{
-                              width: 40,
-                              height: 40,
-                              background:
-                                "linear-gradient(135deg,#d97706,#f59e0b)",
-                              borderRadius: "50%",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              fontWeight: 900,
-                              fontSize: 16,
-                              flexShrink: 0,
-                            }}
-                          >
-                            {leave.name?.[0] || "?"}
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 6,
-                              }}
-                            >
-                              <div
-                                style={{
-                                  fontWeight: 800,
-                                  fontSize: 14,
-                                  color: t.text,
-                                }}
-                              >
-                                {leave.name}
-                              </div>
-                              <span
-                                style={{
-                                  fontSize: 10,
-                                  fontWeight: 800,
-                                  background: "rgba(245,158,11,0.2)",
-                                  color: "#d97706",
-                                  padding: "2px 8px",
-                                  borderRadius: 99,
-                                }}
-                              >
-                                Full Day Leave
-                                {leave.status === "unmark_requested"
-                                  ? " ⏳"
-                                  : ""}
-                              </span>
-                            </div>
-                            <div style={{ fontSize: 12, color: t.text3 }}>
-                              {leave.date} · marked at{" "}
-                              {new Date(leave.markedAt).toLocaleTimeString(
-                                "en-IN",
-                                { hour: "2-digit", minute: "2-digit" },
-                              )}
-                            </div>
-                          </div>
-                          <div
-                            style={{
-                              textAlign: "center",
-                              background: "rgba(245,158,11,0.1)",
-                              borderRadius: 8,
-                              padding: "8px 12px",
-                            }}
-                          >
-                            <div style={{ fontSize: 22 }}>🏖️</div>
-                            <div
-                              style={{
-                                fontSize: 11,
-                                color: "#d97706",
-                                fontWeight: 700,
-                              }}
-                            >
-                              On Leave
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-
-                    {/* Visit log cards */}
-                    {filteredLogsWithVisits.map((log: any) => {
-                      const fv: any[] = log._fv;
-                      const fvInt = fv.filter(
-                        (v: any) => v.outcome === "interested",
-                      ).length;
-                      const fvNot = fv.filter(
-                        (v: any) => v.outcome === "not_interested",
-                      ).length;
-                      const halfDayLeave = leaveRecords.find(
-                        (l) =>
-                          l.uid === log.salesPersonId &&
-                          l.date === log.date &&
-                          l.leaveType === "half_day" &&
-                          (l.status === "active" ||
-                            l.status === "pending_approval" ||
-                            l.status === "unmark_requested"),
-                      );
-                      return (
-                        <div
-                          key={log.id}
-                          style={{
-                            background: halfDayLeave
-                              ? "rgba(59,130,246,0.04)"
-                              : t.card,
-                            borderRadius: 14,
-                            padding: 14,
-                            border: halfDayLeave
-                              ? "1.5px solid rgba(59,130,246,0.18)"
-                              : `1px solid ${t.border}`,
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 10,
-                              marginBottom: 10,
-                            }}
-                          >
-                            <div
-                              style={{
-                                width: 40,
-                                height: 40,
-                                background:
-                                  "linear-gradient(135deg,#0891b2,#0e7490)",
-                                borderRadius: "50%",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                fontWeight: 900,
-                                fontSize: 16,
-                                flexShrink: 0,
-                                color: "#fff",
-                              }}
-                            >
-                              {log.salesPersonName?.[0] || "?"}
-                            </div>
-                            <div style={{ flex: 1 }}>
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 6,
-                                  flexWrap: "wrap",
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    fontWeight: 800,
-                                    fontSize: 14,
-                                    color: t.text,
-                                  }}
-                                >
-                                  {log.salesPersonName}
-                                </div>
-                                {halfDayLeave && (
-                                  <span
-                                    style={{
-                                      fontSize: 10,
-                                      fontWeight: 800,
-                                      background: "rgba(59,130,246,0.15)",
-                                      color: "#3b82f6",
-                                      padding: "2px 8px",
-                                      borderRadius: 99,
-                                    }}
-                                  >
-                                    🌤️ Half Day Leave
-                                  </span>
-                                )}
-                              </div>
-                              <div style={{ fontSize: 12, color: t.text3 }}>
-                                {log.date}
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", gap: 6 }}>
-                              <div
-                                style={{
-                                  textAlign: "center",
-                                  background: "rgba(8,145,178,0.1)",
-                                  borderRadius: 8,
-                                  padding: "6px 10px",
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    fontWeight: 900,
-                                    fontSize: 16,
-                                    color: "#0891b2",
-                                  }}
-                                >
-                                  {fv.length}
-                                </div>
-                                <div style={{ fontSize: 11, color: t.text3 }}>
-                                  visited
-                                </div>
-                              </div>
-                              <div
-                                style={{
-                                  textAlign: "center",
-                                  background: "rgba(22,163,74,0.1)",
-                                  borderRadius: 8,
-                                  padding: "6px 10px",
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    fontWeight: 900,
-                                    fontSize: 16,
-                                    color: "#16a34a",
-                                  }}
-                                >
-                                  {fvInt}
-                                </div>
-                                <div style={{ fontSize: 11, color: t.text3 }}>
-                                  interested
-                                </div>
-                              </div>
-                              <div
-                                style={{
-                                  textAlign: "center",
-                                  background: "rgba(220,38,38,0.1)",
-                                  borderRadius: 8,
-                                  padding: "6px 10px",
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    fontWeight: 900,
-                                    fontSize: 16,
-                                    color: "#dc2626",
-                                  }}
-                                >
-                                  {fvNot}
-                                </div>
-                                <div style={{ fontSize: 11, color: t.text3 }}>
-                                  declined
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                          {(() => {
-                            const partyGroups = new Map<string, any[]>()
-                            fv.forEach((v: any) => {
-                              const grp = partyGroups.get(v.partyId) || []
-                              partyGroups.set(v.partyId, [...grp, v])
-                            })
-                            return Array.from(partyGroups.entries()).map(([partyId, entries]) => {
-                              const party = partyMap.get(partyId) as any
-                              const typeEmoji = party?.type === 'distributor' ? '🚚' : '🏪'
-                              return (
-                                <div key={partyId} style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 10, padding: '10px 12px', marginBottom: 6 }}>
-                                  {/* Party header — shown once */}
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                                    <span style={{ fontSize: 13 }}>{typeEmoji}</span>
-                                    <span style={{ fontSize: 14, fontWeight: 800, color: t.text }}>{entries[0].partyName}</span>
-                                    {entries[0].isNew && <span style={{ fontSize: 10, background: 'rgba(99,102,241,0.18)', color: '#818cf8', padding: '1px 7px', borderRadius: 99, fontWeight: 800 }}>NEW</span>}
-                                    {party?.underDistributorName && party.type === 'retailer' && (
-                                      <span style={{ fontSize: 11, color: t.text3 }}>· {party.underDistributorName}</span>
-                                    )}
-                                    {entries.length > 1 && (
-                                      <span style={{ fontSize: 11, color: t.text3, marginLeft: 'auto', fontWeight: 700 }}>{entries.length} visits</span>
-                                    )}
-                                  </div>
-                                  {/* Split entries into own and shared sections */}
-                                  {(() => {
-                                    const ownEntries = entries.filter((v: any) =>
-                                      !(v.sharedWith || []).some((id: string) => id !== log.salesPersonId)
-                                    )
-                                    const sharedEntries = entries.filter((v: any) =>
-                                      (v.sharedWith || []).some((id: string) => id !== log.salesPersonId)
-                                    )
-                                    const sharedWithNames = Array.from(new Set(
-                                      sharedEntries.flatMap((v: any) =>
-                                        (v.sharedWith || []).filter((id: string) => id !== log.salesPersonId)
-                                      )
-                                    )).map((id: any) => salesUsers.find((u: any) => u.uid === id)?.name || id)
-
-                                    const renderEntry = (v: any, vi: number, list: any[]) => {
-                                      const revisitLog = v.isRevisit
-                                        ? (v.revisitLogId
-                                            ? revisitLogs.find((rl: any) => rl.id === v.revisitLogId)
-                                            : revisitLogs.find((rl: any) => rl.partyId === v.partyId && rl.salesPersonId === log.salesPersonId && rl.date === log.date))
-                                        : null
-                                      const outcomeEmoji = v.outcome === 'interested' ? '✅' : v.outcome === 'not_interested' ? '❌' : '🔄'
-                                      const timeStr = v.loggedAt
-                                        ? new Date(v.loggedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-                                        : ''
-                                      return (
-                                        <div key={vi} style={{ paddingLeft: 10, borderLeft: `2px solid ${theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`, marginBottom: vi < list.length - 1 ? 10 : 0, paddingBottom: vi < list.length - 1 ? 8 : 0 }}>
-                                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                                            <span style={{ fontSize: 14 }}>{outcomeEmoji}</span>
-                                            {timeStr && <span style={{ fontSize: 11, color: t.text3, fontWeight: 600 }}>{timeStr}</span>}
-                                          </div>
-                                          {revisitLog?.actions?.map((action: any, ai: number) => {
-                                            if (action.type === 'stock_update') return (
-                                              <div key={ai} style={{ fontSize: 12, color: t.text2, marginBottom: 3 }}>
-                                                📊 <span style={{ fontWeight: 700 }}>Stock Updated</span>
-                                                {' · '}Opening: {action.openingQty} · Sold: {action.soldQty}
-                                                {' · '}<span style={{ fontWeight: 700, color: '#0891b2' }}>Balance: {action.balanceQty} pkts</span>
-                                                {action.balanceValue > 0 && <span style={{ color: t.text3 }}> (₹{action.balanceValue.toLocaleString()})</span>}
-                                              </div>
-                                            )
-                                            if (action.type === 'new_order') return (
-                                              <div key={ai} style={{ fontSize: 12, color: t.text2, marginBottom: 3 }}>
-                                                📦 <span style={{ fontWeight: 700 }}>New Order</span>
-                                                {' · '}{action.quantity} {action.productName}
-                                                {action.totalAmount > 0 && <span> · <span style={{ fontWeight: 700, color: '#16a34a' }}>₹{action.totalAmount?.toLocaleString()}</span></span>}
-                                                {' · '}<span style={{ color: action.paymentType === 'credit' ? '#f59e0b' : t.text3 }}>{action.paymentType}</span>
-                                                {action.plannedDate && <span style={{ color: t.text3 }}> · dispatch {action.plannedDate}</span>}
-                                              </div>
-                                            )
-                                            if (action.type === 'payment_collection') return (
-                                              <div key={ai} style={{ fontSize: 12, color: t.text2, marginBottom: 3 }}>
-                                                💰 <span style={{ fontWeight: 700 }}>Payment Collected</span>
-                                                {' · '}<span style={{ fontWeight: 700, color: '#16a34a' }}>₹{action.amount?.toLocaleString()}</span>
-                                                {' · '}<span style={{ color: action.status === 'pending_approval' ? '#f59e0b' : t.text3 }}>
-                                                  {action.status === 'pending_approval' ? '⏳ Pending approval' : '✅ Approved'}
-                                                </span>
-                                                {action.notes && <span style={{ color: t.text3 }}> · {action.notes}</span>}
-                                              </div>
-                                            )
-                                            if (action.type === 'relationship_visit') return (
-                                              <div key={ai} style={{ fontSize: 12, color: t.text2, marginBottom: 3 }}>
-                                                🤝 <span style={{ fontWeight: 700 }}>Relationship Visit</span>
-                                                {action.notes && <span style={{ color: t.text3 }}> · {action.notes}</span>}
-                                              </div>
-                                            )
-                                            if (action.type === 'no_longer_active') return (
-                                              <div key={ai} style={{ fontSize: 12, color: '#dc2626', marginBottom: 3 }}>
-                                                ⛔ <span style={{ fontWeight: 700 }}>No Longer Active</span>
-                                                {action.reason && <span> · {action.reason}</span>}
-                                              </div>
-                                            )
-                                            return null
-                                          })}
-                                          {revisitLog?.notes && (
-                                            <div style={{ fontSize: 12, color: t.text3, marginTop: 2 }}>📝 {revisitLog.notes}</div>
-                                          )}
-                                          {!v.isRevisit && v.outcome === 'interested' && (
-                                            <div style={{ fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
-                                              Interested{v.productName ? ` · ${v.productName}` : ''}
-                                            </div>
-                                          )}
-                                          {!v.isRevisit && v.outcome === 'not_interested' && (
-                                            <div style={{ fontSize: 12, color: '#dc2626' }}>
-                                              Not Interested · {v.notInterestedReason === 'Other' && v.otherReason ? v.otherReason : v.notInterestedReason}
-                                            </div>
-                                          )}
-                                          {!v.isRevisit && v.outcome === 'follow_up' && (
-                                            <div style={{ fontSize: 12, color: '#f59e0b', fontWeight: 600 }}>Follow up needed</div>
-                                          )}
-                                          {v.notes && <div style={{ fontSize: 12, color: t.text3, marginTop: 2 }}>📝 {v.notes}</div>}
-                                        </div>
-                                      )
-                                    }
-
-                                    return (
-                                      <>
-                                        {ownEntries.map((v: any, vi: number) => renderEntry(v, vi, ownEntries))}
-                                        {sharedEntries.length > 0 && (
-                                          <>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 0 8px' }}>
-                                              <div style={{ flex: 1, height: 1, background: theme === 'dark' ? 'rgba(14,165,233,0.2)' : 'rgba(14,165,233,0.15)' }} />
-                                              <span style={{ fontSize: 11, color: '#0ea5e9', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                                                Shared with {sharedWithNames.join(', ')}
-                                              </span>
-                                              <div style={{ flex: 1, height: 1, background: theme === 'dark' ? 'rgba(14,165,233,0.2)' : 'rgba(14,165,233,0.15)' }} />
-                                            </div>
-                                            {sharedEntries.map((v: any, vi: number) => renderEntry(v, vi, sharedEntries))}
-                                          </>
-                                        )}
-                                      </>
-                                    )
-                                  })()}
-                                </div>
-                              )
-                            })
-                          })()}
-                          {log.endOfDayNote && (
-                            <div
-                              style={{
-                                background:
-                                  theme === "dark"
-                                    ? "rgba(255,255,255,0.04)"
-                                    : "rgba(0,0,0,0.03)",
-                                borderRadius: 8,
-                                padding: "8px 10px",
-                                marginTop: 4,
-                              }}
-                            >
-                              <div style={{ fontSize: 11, color: t.text3, marginBottom: 2 }}>📝 End of day note</div>
-                              <div style={{ fontSize: 13, color: t.text2 }}>{log.endOfDayNote}</div>
-                            </div>
-                          )}
-                          {/* Audit trail */}
-                          {(log.auditLog?.length ?? 0) > 0 && (() => {
-                            const actionEmoji: Record<string, string> = {
-                              entry_added: '➕', entry_edited: '✏️', entry_deleted: '🗑️',
-                              stock_updated: '📊', order_placed: '📦', order_edited: '📦', order_cancelled: '🚫',
-                              payment_collected: '💰', payment_edited: '💰', payment_deleted: '🗑️',
-                              log_submitted: '✅', log_edited_after_submit: '⚠️',
-                            };
-                            return (
-                              <details style={{ marginTop: 8 }}>
-                                <summary style={{ fontSize: 11, color: t.text3, fontWeight: 700, cursor: 'pointer', userSelect: 'none', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                  <span>📋</span> Activity Log ({log.auditLog.length})
-                                </summary>
-                                <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                  {[...(log.auditLog || [])].sort((a: any, b: any) => a.at - b.at).map((entry: any, i: number) => (
-                                    <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', fontSize: 11 }}>
-                                      <span style={{ flexShrink: 0 }}>{actionEmoji[entry.action] ?? '•'}</span>
-                                      <span style={{ color: t.text2, fontWeight: 600 }}>{entry.action.replace(/_/g, ' ')}</span>
-                                      {entry.partyName && <span style={{ color: t.text3 }}>· {entry.partyName}</span>}
-                                      {entry.detail && <span style={{ color: t.text3 }}>· {entry.detail}</span>}
-                                      <span style={{ marginLeft: 'auto', color: t.text3, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                                        {entry.byName?.split(' ')[0]} · {new Date(entry.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </details>
-                            );
-                          })()}
-                        </div>
-                      );
-                    })}
-                  </>
-                )}
               </>
             )}
           </div>
@@ -2799,7 +1880,7 @@ export default function AdminDashboard() {
                     borderRadius: 8,
                     padding: "9px",
                     fontSize: 13,
-                    fontWeight: 700,
+                    fontWeight: 500,
                   }}
                 >
                   {label}
@@ -2866,7 +1947,7 @@ export default function AdminDashboard() {
                     <div
                       style={{
                         fontSize: 24,
-                        fontWeight: 900,
+                        fontWeight: 500,
                         color: "#16a34a",
                       }}
                     >
@@ -2889,7 +1970,7 @@ export default function AdminDashboard() {
                     <div
                       style={{
                         fontSize: 24,
-                        fontWeight: 900,
+                        fontWeight: 500,
                         color: missed > 0 ? "#dc2626" : "#16a34a",
                       }}
                     >
@@ -2917,7 +1998,7 @@ export default function AdminDashboard() {
                           marginBottom: 8,
                         }}
                       >
-                        <span style={{ fontWeight: 800, fontSize: 14 }}>
+                        <span style={{ fontWeight: 500, fontSize: 14 }}>
                           Week {w.week}
                         </span>
                         <div
@@ -2937,13 +2018,13 @@ export default function AdminDashboard() {
                                 borderRadius: 99,
                               }}
                             >
-                              ❌ {w.missed}
+                              {w.missed} missed
                             </span>
                           )}
                           <span
                             style={{
                               color: "#6ee7b7",
-                              fontWeight: 800,
+                              fontWeight: 500,
                               fontSize: 13,
                             }}
                           >
@@ -3021,7 +2102,7 @@ export default function AdminDashboard() {
                           background: sc.bg,
                           color: sc.color,
                           fontSize: 11,
-                          fontWeight: 700,
+                          fontWeight: 500,
                           padding: "2px 8px",
                           borderRadius: 99,
                           border: `1px solid ${sc.color}44`,
