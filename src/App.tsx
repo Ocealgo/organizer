@@ -13,39 +13,20 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 import UserManagement from "./pages/admin/UserManagement";
 import NotificationBell from "./components/NotificationBell";
 
-// Seed default product only if Baby Wet Wipes doesn't exist yet
-async function seedDefaultProducts() {
-  const { getDocs, collection, addDoc, query, where } =
-    await import("firebase/firestore");
-  const { db } = await import("./firebase");
-  const snap = await getDocs(
-    query(collection(db, "products"), where("name", "==", "Baby Wet Wipes")),
-  );
-  if (snap.empty) {
-    await addDoc(collection(db, "products"), {
-      name: "Baby Wet Wipes",
-      unitLabel: "packets",
-      defaultPricePerUnit: 45,
-      unitsPerCarton: 12,
-      active: true,
-      createdBy: "system",
-      createdAt: Date.now(),
-    });
-  }
-}
+// Nothing is auto-seeded any more.
+//
+// There used to be a seedDefaultProducts() here that recreated "Baby Wet Wipes"
+// whenever it was absent, on every admin app load. It meant a deleted product
+// silently reappeared on the next refresh — the delete worked, the seed undid
+// it. A convenience that fires forever to handle a first-run case once, and
+// quietly resurrects data somebody deliberately removed, is not worth having.
+// Products are added from the Products screen.
 
 function AppContent() {
   const { firebaseUser, appUser, loading } = useAuth();
   const { theme, toggle, t } = useTheme();
   const [authScreen, setAuthScreen] = useState<"login" | "signup">("login");
 
-  // Only admins may write `products` (see firestore.rules). Running this for a
-  // sales rep would fail with a permission error on every app load.
-  useEffect(() => {
-    const role = appUser?.role;
-    if (role !== "admin" && role !== "super_admin") return;
-    seedDefaultProducts().catch(() => {});
-  }, [appUser?.role]);
   const [showUserMgmt, setShowUserMgmt] = useState(false);
 
   if (loading)

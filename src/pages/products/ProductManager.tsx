@@ -94,13 +94,33 @@ export default function ProductManager({ onBack }: Props) {
     } finally { setSaving(false) }
   }
 
+  // A rejected write used to do nothing at all, which is indistinguishable
+  // from a button that does not work.
+  const report = async (what: string, e: any) => {
+    console.error(`[ProductManager] ${what} failed`, e)
+    await showDanger(
+      `Could not ${what}`,
+      e?.code === 'permission-denied'
+        ? 'Firestore rejected this. Managing products needs an admin account, or the manage_products permission.'
+        : e?.message || 'Something went wrong. Please try again.',
+      'OK',
+    )
+  }
+
   const toggleActive = async (p: Product) => {
-    await updateDoc(doc(db, 'products', p.id!), { active: !p.active })
+    try {
+      await updateDoc(doc(db, 'products', p.id!), { active: !p.active })
+    } catch (e) { await report('change that product', e) }
   }
 
   const handleDelete = async (p: Product) => {
-    if (!await showDanger(`Delete "${p.name}"?`, 'This cannot be undone.')) return
-    await deleteDoc(doc(db, 'products', p.id!))
+    if (!await showDanger(
+      `Delete "${p.name}"?`,
+      'Past allocations and stock records keep their own copy of the name, so history is not affected. This cannot be undone.',
+    )) return
+    try {
+      await deleteDoc(doc(db, 'products', p.id!))
+    } catch (e) { await report('delete that product', e) }
   }
 
   const cancelEdit = () => {

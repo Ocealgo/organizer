@@ -258,6 +258,30 @@ describe('parties', () => {
     await assertFails(setDoc(doc(asUser(U.rep), 'parties', 'p_new'), party({ addedBy: U.rep2 })))
   })
 
+  it('a rep CAN update a party — status, stock, coordinates, details', async () => {
+    await seed((db) => setDoc(doc(db, 'parties', 'p1'), party()))
+    await assertSucceeds(updateDoc(doc(asUser(U.rep), 'parties', 'p1'), {
+      status: 'active', 'stock.prod1': 40,
+      coordinates: { lat: 9.9, lng: 76.2, accuracy: 20, capturedAt: 1 },
+    }))
+  })
+
+  it('a rep CANNOT change what a party is charged', async () => {
+    await seed((db) => setDoc(doc(db, 'parties', 'p1'), party()))
+    await assertFails(updateDoc(doc(asUser(U.rep), 'parties', 'p1'), { pricePerPacket: 1 }))
+  })
+
+  it('a rep CANNOT change a party credit limit', async () => {
+    await seed((db) => setDoc(doc(db, 'parties', 'p1'), party()))
+    await assertFails(updateDoc(doc(asUser(U.rep), 'parties', 'p1'), { creditLimit: 999999 }))
+  })
+
+  it('an admin CAN set the commercial terms', async () => {
+    await seed((db) => setDoc(doc(db, 'parties', 'p1'), party()))
+    await assertSucceeds(updateDoc(doc(asUser(U.admin), 'parties', 'p1'),
+      { pricePerPacket: 45, creditLimit: 100000 }))
+  })
+
   it('a rep CANNOT delete a party', async () => {
     await seed((db) => setDoc(doc(db, 'parties', 'p1'), party()))
     await assertFails(deleteDoc(doc(asUser(U.rep), 'parties', 'p1')))
