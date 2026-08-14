@@ -18,7 +18,7 @@ type Tab = 'pending' | 'active' | 'deactivated'
 export default function UserManagement({ onBack }: Props) {
   const { appUser } = useAuth()
   const { t } = useTheme()
-  const { modal, showDanger } = useConfirm()
+  const { modal, showDanger, showAlert } = useConfirm()
   const [users, setUsers] = useState<AppUser[]>([])
   const [tab, setTab] = useState<Tab>('pending')
   const [updating, setUpdating] = useState<string | null>(null)
@@ -39,61 +39,77 @@ export default function UserManagement({ onBack }: Props) {
   const active      = users.filter(u => u.status === 'approved' || u.status === 'rejected')
   const deactivated = users.filter(u => u.status === 'deactivated')
 
-  const approveUser = async (uid: string, role: UserRole) => {
-    if (!assignableRoles.includes(role)) return
+  // Every write goes through here. Without it a rejected write fails silently
+  // and the card just sits there, which is indistinguishable from "nothing
+  // happened" — the failure has to be visible.
+  const run = async (uid: string, what: string, fn: () => Promise<unknown>) => {
     setUpdating(uid)
-    await updateDoc(doc(db, 'users', uid), {
-      status: 'approved',
-      role,
-      approvedAt: Date.now(),
-      approvedBy: appUser!.uid,
-      approvedByName: appUser!.name,
-      // A new sales manager starts with full visibility and no money actions.
-      ...(role === 'sales_manager' ? { permissions: DEFAULT_SALES_MANAGER_PERMISSIONS } : {}),
-    })
-    setUpdating(null)
+    try {
+      await fn()
+    } catch (e: any) {
+      const denied = e?.code === 'permission-denied'
+      await showAlert(
+        `Could not ${what}`,
+        denied
+          ? 'Firestore turned this write down. Check that your own account has the admin or super admin role and an approved status, and that the deployed rules are current.'
+          : e?.message || 'Something went wrong. Please try again.',
+      )
+      console.error(`[UserManagement] ${what} failed`, e)
+    } finally {
+      setUpdating(null)
+    }
   }
 
-  const rejectUser = async (uid: string) => {
-    setUpdating(uid)
-    await updateDoc(doc(db, 'users', uid), { status: 'rejected' })
-    setUpdating(null)
+  const approveUser = async (uid: string, role: UserRole) => {
+    if (!assignableRoles.includes(role)) {
+      await showAlert('That role is not yours to assign', `You cannot approve someone as ${ROLE_LABELS_PLAIN[role]}.`)
+      return
+    }
+    await run(uid, 'approve this account', () =>
+      updateDoc(doc(db, 'users', uid), {
+        status: 'approved',
+        role,
+        approvedAt: Date.now(),
+        approvedBy: appUser!.uid,
+        approvedByName: appUser!.name,
+        // A new sales manager starts with full visibility and no money actions.
+        ...(role === 'sales_manager' ? { permissions: DEFAULT_SALES_MANAGER_PERMISSIONS } : {}),
+      }))
   }
+
+  const rejectUser = async (uid: string) =>
+    run(uid, 'turn down this request', () =>
+      updateDoc(doc(db, 'users', uid), { status: 'rejected' }))
 
   // Deactivate instead of delete — keeps the Firebase Auth account intact
   const deactivateUser = async (uid: string, name: string) => {
     if (!await showDanger('Deactivate this account?', `${name} will not be able to log in. You can bring them back at any time.`, 'Deactivate')) return
-    setUpdating(uid)
-    await updateDoc(doc(db, 'users', uid), { status: 'deactivated' })
-    setUpdating(null)
+    await run(uid, 'deactivate this account', () =>
+      updateDoc(doc(db, 'users', uid), { status: 'deactivated' }))
   }
 
-  const reactivateUser = async (uid: string, role: UserRole) => {
-    setUpdating(uid)
-    await updateDoc(doc(db, 'users', uid), {
-      status: 'approved',
-      role,
-      ...(role === 'sales_manager' ? { permissions: DEFAULT_SALES_MANAGER_PERMISSIONS } : {}),
-    })
-    setUpdating(null)
-  }
+  const reactivateUser = async (uid: string, role: UserRole) =>
+    run(uid, 'bring this account back', () =>
+      updateDoc(doc(db, 'users', uid), {
+        status: 'approved',
+        role,
+        ...(role === 'sales_manager' ? { permissions: DEFAULT_SALES_MANAGER_PERMISSIONS } : {}),
+      }))
 
-  const changeRole = async (uid: string, role: UserRole, current?: PermissionMap) => {
-    setUpdating(uid)
-    await updateDoc(doc(db, 'users', uid), {
-      role,
-      // Seed defaults the first time someone becomes a manager; keep any
-      // existing tuning if they already had a permission map.
-      ...(role === 'sales_manager' && !current ? { permissions: DEFAULT_SALES_MANAGER_PERMISSIONS } : {}),
-    })
-    setUpdating(null)
-  }
+  const changeRole = async (uid: string, role: UserRole, current?: PermissionMap) =>
+    run(uid, 'change this role', () =>
+      updateDoc(doc(db, 'users', uid), {
+        role,
+        // Seed defaults the first time someone becomes a manager; keep any
+        // existing tuning if they already had a permission map.
+        ...(role === 'sales_manager' && !current ? { permissions: DEFAULT_SALES_MANAGER_PERMISSIONS } : {}),
+      }))
 
-  const setPermission = async (uid: string, current: PermissionMap, key: Permission, value: boolean) => {
-    await updateDoc(doc(db, 'users', uid), {
-      permissions: { ...current, [key]: value },
-    })
-  }
+  const setPermission = async (uid: string, current: PermissionMap, key: Permission, value: boolean) =>
+    run(uid, 'change that permission', () =>
+      updateDoc(doc(db, 'users', uid), {
+        permissions: { ...current, [key]: value },
+      }))
 
   return (
     <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 56 }}>

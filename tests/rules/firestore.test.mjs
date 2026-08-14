@@ -168,6 +168,27 @@ describe('privilege escalation — the critical block', () => {
     }))
   })
 
+  it('a super_admin CAN approve a signup — exact payload UserManagement sends', async () => {
+    await assertSucceeds(updateDoc(doc(asUser(U.sa), 'users', U.pend), {
+      status: 'approved',
+      role: 'offline_sales',
+      approvedAt: 2,
+      approvedBy: U.sa,
+      approvedByName: 'super_1',
+    }))
+  })
+
+  it('an admin CAN approve a signup as sales_manager with a permission map', async () => {
+    await assertSucceeds(updateDoc(doc(asUser(U.admin), 'users', U.pend), {
+      status: 'approved',
+      role: 'sales_manager',
+      approvedAt: 2,
+      approvedBy: U.admin,
+      approvedByName: 'admin_1',
+      permissions: MGR_DEFAULT,
+    }))
+  })
+
   it('an admin CANNOT grant super_admin', async () => {
     await assertFails(updateDoc(doc(asUser(U.admin), 'users', U.pend), {
       status: 'approved', role: 'super_admin',
