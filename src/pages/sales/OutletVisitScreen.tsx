@@ -11,7 +11,7 @@ import {
 import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
 import { PageHeader, Eyebrow, GhostButton, PrimaryButton, EmptyState, inputStyle } from '../../components/ui'
-import { getFix, checkGeofence, distanceM, LocationError, DEFAULT_GEOFENCE_RADIUS_M } from '../../device/location'
+import { getFixOrNull, checkGeofence, distanceM, DEFAULT_GEOFENCE_RADIUS_M } from '../../device/location'
 import { localDateStr } from '../../utils/date'
 
 interface Props {
@@ -87,19 +87,19 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
 
   async function locate() {
     setLocating(true); setFixError(null)
-    try { setFix(await getFix({ capturedBy: appUser.uid })) }
-    catch (e) {
-      setFix(null)
-      setFixError(e instanceof LocationError ? e.message : 'Could not get your location.')
-    } finally { setLocating(false) }
+    const f = await getFixOrNull({ capturedBy: appUser.uid })
+    setFix(f)
+    if (!f) setFixError('No location available — visits will be recorded without one.')
+    setLocating(false)
   }
 
   // ── punch in ──────────────────────────────────────────────────────────────
-  async function punchIn(party: Party, override?: string) {
-    if (!fix || !session.id) return
+  // Location is recorded when we have it. It never stops a visit going ahead.
+  async function punchIn(party: Party) {
+    if (!session.id) return
     setBusy(true); setError(null)
     try {
-      const geo = checkGeofence(fix, party.coordinates ?? null)
+      const geo = fix ? checkGeofence(fix, party.coordinates ?? null) : null
       const payload: Omit<OutletVisit, 'id'> = {
         sessionId: session.id,
         uid: appUser.uid,
@@ -109,9 +109,10 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
         partyName: party.name,
         outletType: party.outletType ?? 'general',
         punchInAt: Date.now(),
-        punchInLocation: fix,
-        ...(geo.distanceM !== null ? { distanceFromOutletM: geo.distanceM, withinGeofence: geo.within } : {}),
-        ...(override ? { geoOverrideReason: override } : {}),
+        ...(fix ? { punchInLocation: fix } : {}),
+        ...(geo && geo.distanceM !== null
+          ? { distanceFromOutletM: geo.distanceM, withinGeofence: geo.within }
+          : {}),
         stock: [],
         competitors: [],
         photos: [],
@@ -120,9 +121,9 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
         createdAt: Date.now(),
       }
       await addDoc(collection(db, 'outlet_visits'), payload)
-      setPending(null); setOverrideReason('')
+      setPending(null)
       // An outlet with no registered position gets one from the first visit.
-      if (!party.coordinates) {
+      if (fix && !party.coordinates) {
         await updateDoc(doc(db, 'parties', party.id!), { coordinates: fix })
       }
     } catch (e: any) {
@@ -159,8 +160,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
     if (!visit?.id || punchOutBlocker) return
     setBusy(true); setError(null)
     try {
-      let outFix: GeoPoint | null = null
-      try { outFix = await getFix({ capturedBy: appUser.uid }) } catch { /* not worth blocking on */ }
+      const outFix = await getFixOrNull({ capturedBy: appUser.uid })
 
       const stockLines: OutletStockLine[] = Object.entries(stock)
         .filter(([, v]) => v !== '' && !isNaN(parseInt(v)))
@@ -296,39 +296,25 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
           )}
         </div>
 
-        {/* Geofence confirmation */}
+        {/* Confirmation — states the distance for the record, blocks nothing */}
         {pending && (() => {
-          const geo = checkGeofence(fix!, pending.coordinates ?? null)
-          const needsOverride = geo.distanceM !== null && !geo.within
+          const geo = fix ? checkGeofence(fix, pending.coordinates ?? null) : null
+          const note = !fix
+            ? 'No location right now, so this visit will be recorded without one.'
+            : geo!.distanceM === null
+              ? 'This outlet has no position on file yet. Punching in will set it from where you are standing.'
+              : `You are about ${geo!.distanceM} m from where this outlet is registered.`
           return (
             <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex', alignItems: 'flex-end' }}>
               <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)' }}
-                onClick={() => { setPending(null); setOverrideReason('') }} />
+                onClick={() => setPending(null)} />
               <div style={{ position: 'relative', zIndex: 1, width: '100%', background: t.bg2,
                             borderTop: `0.5px solid ${t.border}`, padding: '24px 20px 32px' }}>
                 <div style={{ fontSize: 17, fontWeight: 500, color: t.text, marginBottom: 6 }}>{pending.name}</div>
-                <div style={{ fontSize: 14, color: t.text3, lineHeight: 1.6, marginBottom: 18 }}>
-                  {geo.distanceM === null
-                    ? 'This outlet has no registered position yet. Punching in here will set it from where you are standing.'
-                    : needsOverride
-                      ? `You are about ${geo.distanceM} m away, outside the ${geo.radiusM} m limit. Say why before punching in.`
-                      : `You are about ${geo.distanceM} m away. Inside the limit.`}
-                </div>
-
-                {needsOverride && (
-                  <textarea value={overrideReason} onChange={e => setOverrideReason(e.target.value)}
-                    rows={2} placeholder="Why are you punching in from here?"
-                    style={{ ...inputStyle(t), resize: 'none', marginBottom: 16 }} />
-                )}
-
+                <div style={{ fontSize: 14, color: t.text3, lineHeight: 1.6, marginBottom: 18 }}>{note}</div>
                 <div style={{ display: 'flex', gap: 10 }}>
-                  <GhostButton onClick={() => { setPending(null); setOverrideReason('') }} style={{ flex: 1 }}>
-                    Cancel
-                  </GhostButton>
-                  <PrimaryButton
-                    onClick={() => punchIn(pending, needsOverride ? overrideReason.trim() : undefined)}
-                    disabled={busy || (needsOverride && overrideReason.trim().length < 5)}
-                    style={{ flex: 2 }}>
+                  <GhostButton onClick={() => setPending(null)} style={{ flex: 1 }}>Cancel</GhostButton>
+                  <PrimaryButton onClick={() => punchIn(pending)} disabled={busy} style={{ flex: 2 }}>
                     {busy ? 'Starting…' : 'Punch in'}
                   </PrimaryButton>
                 </div>
@@ -351,8 +337,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
         title={visit.partyName}
         onBack={onBack}
         subtitle={`Punched in at ${new Date(visit.punchInAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}${
-          visit.distanceFromOutletM !== undefined ? ` · ${visit.distanceFromOutletM} m away` : ''}${
-          visit.geoOverrideReason ? ' · outside the limit' : ''}`}
+          visit.distanceFromOutletM !== undefined ? ` · ${visit.distanceFromOutletM} m away` : ''}`}
       />
 
       <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 28 }}>

@@ -14,10 +14,17 @@ import { GeoPoint } from '../types'
  * geolocation plugins do. Treat an unset `isMock` as "unknown", not "genuine".
  */
 
-/** Fixes worse than this are too vague to prove presence at a shop. */
+/**
+ * Accuracy beyond this is noted on the record but never rejected. Location here
+ * is captured, not enforced — a vague fix is still more use than none, and the
+ * accuracy travels with it so a report can weigh it.
+ */
 export const DEFAULT_MAX_ACCURACY_M = 100
 
-/** Urban GPS error alone is ±20–50m, so the spec's 50m is too tight in practice. */
+/**
+ * Used only to describe how far an officer was from an outlet. Nothing is
+ * blocked by it.
+ */
 export const DEFAULT_GEOFENCE_RADIUS_M = 130
 
 export class LocationError extends Error {
@@ -42,8 +49,11 @@ async function ensurePermission(): Promise<void> {
 }
 
 /**
- * A single high-accuracy fix. Rejects a fix that is too imprecise to be
- * meaningful rather than silently recording a 500m-accurate "location".
+ * A single high-accuracy fix.
+ *
+ * Throws on permission, timeout or hardware failure. Pass `maxAccuracyM` to
+ * also reject an imprecise fix; by default nothing is rejected on accuracy,
+ * because the accuracy is recorded alongside the position anyway.
  */
 export async function getFix(opts?: {
   timeoutMs?: number
@@ -51,7 +61,7 @@ export async function getFix(opts?: {
   capturedBy?: string
 }): Promise<GeoPoint> {
   const timeout = opts?.timeoutMs ?? 15000
-  const maxAccuracy = opts?.maxAccuracyM ?? DEFAULT_MAX_ACCURACY_M
+  const maxAccuracy = opts?.maxAccuracyM ?? Infinity
 
   await ensurePermission()
 
@@ -84,6 +94,24 @@ export async function getFix(opts?: {
     accuracy,
     capturedAt: Date.now(),
     ...(opts?.capturedBy ? { capturedBy: opts.capturedBy } : {}),
+  }
+}
+
+/**
+ * Best-effort fix. Never throws and never blocks — returns null when the device
+ * cannot supply a position. This is the one to use for punching in and out,
+ * where a missing location should be recorded as missing rather than stopping
+ * someone from working.
+ */
+export async function getFixOrNull(opts?: {
+  timeoutMs?: number
+  capturedBy?: string
+}): Promise<GeoPoint | null> {
+  try {
+    return await getFix(opts)
+  } catch (e) {
+    console.warn('[location] no fix available', e)
+    return null
   }
 }
 

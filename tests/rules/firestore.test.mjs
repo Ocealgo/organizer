@@ -718,6 +718,39 @@ describe('field app — duty sessions', () => {
     await assertSucceeds(setDoc(doc(asUser(U.rep), 'duty_sessions', 'd1'), duty(U.rep)))
   })
 
+  it('an officer CAN start a day with a broken meter, given a reason', async () => {
+    const { startOdometerKm, startOdometerPhoto, ...noMeter } = duty(U.rep)
+    await assertSucceeds(setDoc(doc(asUser(U.rep), 'duty_sessions', 'd1'), {
+      ...noMeter, odometerStatus: 'not_working', odometerIssueNote: 'Meter cable snapped',
+    }))
+  })
+
+  it('an officer CAN start a day with no vehicle at all', async () => {
+    const { startOdometerKm, startOdometerPhoto, ...noMeter } = duty(U.rep)
+    await assertSucceeds(setDoc(doc(asUser(U.rep), 'duty_sessions', 'd1'), {
+      ...noMeter, odometerStatus: 'no_vehicle', odometerIssueNote: 'On the bus today',
+    }))
+  })
+
+  it('an officer CANNOT skip the meter without saying why', async () => {
+    const { startOdometerKm, startOdometerPhoto, ...noMeter } = duty(U.rep)
+    await assertFails(setDoc(doc(asUser(U.rep), 'duty_sessions', 'd1'), {
+      ...noMeter, odometerStatus: 'not_working',
+    }))
+  })
+
+  it('an officer CANNOT claim the meter works and then omit the reading', async () => {
+    const { startOdometerKm, ...noReading } = duty(U.rep)
+    await assertFails(setDoc(doc(asUser(U.rep), 'duty_sessions', 'd1'), {
+      ...noReading, odometerStatus: 'recorded',
+    }))
+  })
+
+  it('a day can be recorded with no location at all', async () => {
+    const { startLocation, ...noGps } = duty(U.rep)
+    await assertSucceeds(setDoc(doc(asUser(U.rep), 'duty_sessions', 'd1'), noGps))
+  })
+
   it('an officer CANNOT open a session in someone else\'s name', async () => {
     await assertFails(setDoc(doc(asUser(U.rep), 'duty_sessions', 'd1'), duty(U.rep2)))
   })

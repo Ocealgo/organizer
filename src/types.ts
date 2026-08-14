@@ -636,6 +636,19 @@ export interface VisitLogAuditEntry {
 export type DutyStatus = 'active' | 'closed'
 
 /**
+ * Not every officer has a working odometer, and some have no vehicle at all.
+ * The reading is recorded when it can be; otherwise the reason is, so the
+ * absence is explained rather than looking like a skipped step.
+ */
+export type OdometerStatus = 'recorded' | 'not_working' | 'no_vehicle'
+
+export const ODOMETER_STATUS_LABEL: Record<OdometerStatus, string> = {
+  recorded: 'I can read my meter',
+  not_working: 'My meter is not working',
+  no_vehicle: 'I am not using a vehicle',
+}
+
+/**
  * One working day for one Sales Officer. Opened by the day punch-in and closed
  * by the punch-out. Everything else in the field app hangs off this.
  */
@@ -648,12 +661,18 @@ export interface DutySession {
   routeId?: string
   routeName?: string
 
-  // Punch-in
+  // Punch-in. Location is recorded when the device can supply it and simply
+  // omitted when it cannot — it is evidence, never a gate.
   startAt: number
-  startLocation: GeoPoint
-  startOdometerKm: number
-  startOdometerPhoto: string      // Storage path
+  startLocation?: GeoPoint
+  startOdometerKm?: number
+  startOdometerPhoto?: string     // Storage path
   startBatteryPct?: number
+
+  /** Whether a meter reading was possible at all. Defaults to 'recorded'. */
+  odometerStatus?: OdometerStatus
+  /** Why there is no reading. Required when odometerStatus is not 'recorded'. */
+  odometerIssueNote?: string
 
   // Punch-out
   endAt?: number
@@ -661,6 +680,8 @@ export interface DutySession {
   endOdometerKm?: number
   endOdometerPhoto?: string
   endBatteryPct?: number
+  /** Set when the meter could be read in the morning but not at close of day. */
+  endOdometerIssueNote?: string
 
   /** endOdometerKm − startOdometerKm. What the officer claims. */
   claimedDistanceKm?: number
@@ -815,14 +836,13 @@ export interface OutletVisit {
   partyName: string
   outletType: OutletType
 
-  // Punch-in
+  // Punch-in. Location is captured for the record; it never blocks a visit.
   punchInAt: number
-  punchInLocation: GeoPoint
-  /** Metres from the outlet's registered coordinates, when it has any. */
+  punchInLocation?: GeoPoint
+  /** Metres from the outlet's registered coordinates, when both are known. */
   distanceFromOutletM?: number
+  /** Informational only — reported, not enforced. */
   withinGeofence?: boolean
-  /** Required when the officer punched in outside the tolerance. */
-  geoOverrideReason?: string
 
   // Execution
   stock: OutletStockLine[]

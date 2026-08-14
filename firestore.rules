@@ -425,12 +425,19 @@ service cloud.firestore {
         || hasPerm('view_reports')
         || resource.data.uid == request.auth.uid;
 
+      // A reading and its photo are required only when the officer says the
+      // meter can be read. Broken meters and officers without a vehicle record
+      // a reason instead, so the gap is explained rather than simply missing.
       allow create: if approved()
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.status == 'active'
-        && request.resource.data.startOdometerKm >= 0
-        && request.resource.data.startOdometerPhoto is string
-        && !('endOdometerKm' in request.resource.data);
+        && !('endOdometerKm' in request.resource.data)
+        && (
+             request.resource.data.get('odometerStatus', 'recorded') != 'recorded'
+               ? request.resource.data.odometerIssueNote is string
+               : (request.resource.data.startOdometerKm >= 0
+                  && request.resource.data.startOdometerPhoto is string)
+           );
 
       // The officer may only close their own open session. The start reading,
       // its photo and the start time can never be rewritten.
