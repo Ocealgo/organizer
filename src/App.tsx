@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, ReactNode } from "react";
 import { signOut } from "firebase/auth";
 import { auth } from "./firebase";
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import { can, isManagement, ROLE_LABELS } from "./auth/permissions";
+import { can, isManagement, ROLE_LABELS_PLAIN } from "./auth/permissions";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import LoginPage from "./pages/auth/LoginPage";
 import SignupPage from "./pages/auth/SignupPage";
@@ -61,9 +61,8 @@ function AppContent() {
           gap: 16,
         }}
       >
-        <div style={{ fontSize: 40 }}>🌿</div>
-        <div style={{ color: "#6ee7b7", fontSize: 14, letterSpacing: 2 }}>
-          Loading Ocealgo...
+        <div style={{ color: t.text2, fontSize: 14, fontWeight: 400 }}>
+          Loading Ocealgo
         </div>
       </div>
     );
@@ -148,7 +147,7 @@ function AppContent() {
     return (
       <div style={{ background: t.bg, minHeight: "100vh" }}>
         <TopBar
-          roleLabel={ROLE_LABELS[appUser.role]}
+          roleLabel={ROLE_LABELS_PLAIN[appUser.role]}
           showUsers={canViewUsers}
           theme={theme}
           onThemeToggle={toggle}
@@ -162,7 +161,7 @@ function AppContent() {
   return (
     <div style={{ background: t.bg, minHeight: "100vh" }}>
       <TopBar
-        roleLabel={ROLE_LABELS[appUser.role]}
+        roleLabel={ROLE_LABELS_PLAIN[appUser.role]}
         showUsers={canViewUsers}
         theme={theme}
         onThemeToggle={toggle}
@@ -174,6 +173,34 @@ function AppContent() {
       {appUser.role === "online_marketing" && <OnlineMarketingView />}
       {management && <AdminDashboard />}
     </div>
+  );
+}
+
+function TextAction({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  const { t } = useTheme();
+  return (
+    <button
+      className="oc-action"
+      onClick={onClick}
+      style={{
+        background: "none",
+        border: "none",
+        padding: 0,
+        fontSize: 13,
+        fontWeight: 400,
+        color: t.text2,
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -192,103 +219,69 @@ function TopBar({
   onUsers: () => void;
   onSignOut: () => void;
 }) {
+  const { t } = useTheme();
   return (
-    <div
+    <header
       style={{
-        background: theme === "dark" ? "#0d1117" : "#fff",
-        borderBottom: `1px solid ${theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.08)"}`,
-        padding: "10px 12px",
+        background: t.bg,
+        borderBottom: `0.5px solid ${t.border}`,
+        padding: "14px 20px",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
+        gap: 16,
         position: "sticky",
         top: 0,
         zIndex: 50,
       }}
     >
       <div
-        style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}
+        style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}
       >
         <span
           style={{
-            color: "#6ee7b7",
-            fontSize: 13,
-            fontWeight: 800,
+            fontSize: 15,
+            fontWeight: 500,
+            color: t.text,
             whiteSpace: "nowrap",
+            letterSpacing: "-0.01em",
           }}
         >
-          🌿 Ocealgo
+          Ocealgo
         </span>
         <span
           style={{
-            fontSize: 10,
-            color: theme === "dark" ? "#475569" : "#94a3b8",
-            background:
-              theme === "dark" ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)",
-            padding: "2px 6px",
-            borderRadius: 99,
+            fontSize: 11,
+            fontWeight: 400,
+            color: t.text2,
+            border: `0.5px solid ${t.border}`,
+            borderRadius: 4,
+            padding: "2px 7px",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
-            maxWidth: 120,
           }}
         >
           {roleLabel}
         </span>
       </div>
-      <div
-        style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}
+
+      <nav
+        style={{
+          display: "flex",
+          gap: 18,
+          alignItems: "center",
+          flexShrink: 0,
+        }}
       >
-        <button
-          onClick={onThemeToggle}
-          style={{
-            background:
-              theme === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
-            border: "none",
-            borderRadius: 10,
-            padding: "7px 9px",
-            fontSize: 15,
-            cursor: "pointer",
-            lineHeight: 1,
-          }}
-        >
-          {theme === "dark" ? "☀️" : "🌙"}
-        </button>
         <NotificationBell />
-        {showUsers && (
-          <button
-            onClick={onUsers}
-            style={{
-              background: "rgba(217,119,6,0.15)",
-              border: "1px solid rgba(217,119,6,0.3)",
-              color: "#d97706",
-              borderRadius: 10,
-              padding: "7px 9px",
-              fontSize: 13,
-              fontWeight: 700,
-              lineHeight: 1,
-            }}
-          >
-            👥
-          </button>
-        )}
-        <button
-          onClick={onSignOut}
-          style={{
-            background: "rgba(220,38,38,0.1)",
-            border: "1px solid rgba(220,38,38,0.2)",
-            color: "#dc2626",
-            borderRadius: 10,
-            padding: "7px 10px",
-            fontSize: 11,
-            fontWeight: 700,
-            whiteSpace: "nowrap",
-          }}
-        >
-          Exit
-        </button>
-      </div>
-    </div>
+        {showUsers && <TextAction onClick={onUsers}>Team</TextAction>}
+        <TextAction onClick={onThemeToggle}>
+          {theme === "dark" ? "Light" : "Dark"}
+        </TextAction>
+        <TextAction onClick={onSignOut}>Sign out</TextAction>
+      </nav>
+    </header>
   );
 }
 

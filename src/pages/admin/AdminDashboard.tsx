@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, ReactNode } from "react";
 import DateInput from "../../components/DateInput";
 import {
   collection,
@@ -12,14 +12,14 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db } from "../../firebase";
-import { usePostStatuses } from "../../hooks/useFirebase";
+import { usePostStatuses, useStockConfig } from "../../hooks/useFirebase";
 import {
   MAY_POSTS,
   FORMAT_EMOJI,
   PILLAR_COLORS,
   STATUS_CONFIG,
 } from "../../data";
-import { CheckIn, AppUser, Party, LeaveRecord, Permission } from "../../types";
+import { CheckIn, AppUser, Party, LeaveRecord, Permission, Product } from "../../types";
 import { can, isAdminRole } from "../../auth/permissions";
 import SalesReport from "../reports/SalesReport";
 import StockManager from "../stock/StockManager";
@@ -74,10 +74,12 @@ export default function AdminDashboard() {
   const [collapsedAdminSections, setCollapsedAdminSections] = useState<Set<string>>(new Set())
   const [leaveRecords, setLeaveRecords] = useState<LeaveRecord[]>([]);
   const [parties, setParties] = useState<Party[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [mainTab, setMainTab] = useState<MainTab>("overview");
   const [salesTab, setSalesTab] = useState<SalesTab>("offline");
   const [marketingTab, setMarketingTab] = useState<MarketingTab>("offline");
   const { statuses } = usePostStatuses(MONTH);
+  const { config } = useStockConfig();
 
   // Sales filters
   const [salesUsers, setSalesUsers] = useState<AppUser[]>([]);
@@ -142,8 +144,15 @@ export default function AdminDashboard() {
     const u8 = onSnapshot(collection(db, "expense_entries"), (snap) =>
       setAllExpenses(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
     );
+    const u9 = onSnapshot(collection(db, "products"), (snap) =>
+      setProducts(
+        snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }) as Product)
+          .filter((p) => p.active),
+      )
+    );
     return () => {
-      u0(); u3(); u4(); u5(); u5b(); u6(); u7(); u8();
+      u0(); u3(); u4(); u5(); u5b(); u6(); u7(); u8(); u9();
     };
   }, []);
 
@@ -564,8 +573,51 @@ export default function AdminDashboard() {
     (l) => l.status === "pending_approval",
   ).length;
 
-  // Which permission each quick link requires. Admins hold all of them;
-  // a sales_manager only sees the tiles they have been granted.
+  // ── Figures behind the attention line, stats and module rows ─────────────
+  const inr = (n: number) =>
+    n >= 1e7 ? `₹${(n / 1e7).toFixed(2)} Cr`
+    : n >= 1e5 ? `₹${(n / 1e5).toFixed(2)} L`
+    : n >= 1e3 ? `₹${(n / 1e3).toFixed(1)} K`
+    : `₹${Math.round(n)}`;
+
+  // Packed and past their planned send date — the things actually waiting.
+  const readyToSend = allocations.filter(
+    (a: any) => a.status === "pending" && a.plannedDate <= todayStr,
+  ).length;
+
+  const owedByParty = new Map<string, number>();
+  allocations
+    .filter((a: any) => a.status === "sent" && a.paymentType === "credit")
+    .forEach((a: any) => {
+      const due = (a.totalAmount || 0) - (a.paidAmount || 0);
+      if (due > 0) owedByParty.set(a.partyId, (owedByParty.get(a.partyId) ?? 0) + due);
+    });
+  const owedTotal = Array.from(owedByParty.values()).reduce((s, v) => s + v, 0);
+  const owedAccounts = owedByParty.size;
+
+  const thisMonth = localMonthStr();
+  const monthSpend = allExpenses
+    .filter((e: any) => (e.date || "").startsWith(thisMonth))
+    .reduce((s: number, e: any) => s + (e.amount || 0), 0);
+  const visitsThisMonth = visitLogs
+    .filter((l: any) => (l.date || "").startsWith(thisMonth))
+    .reduce((s: number, l: any) => s + (l.visits?.length || 0), 0);
+
+  const stockUnits = config.productStock && Object.keys(config.productStock).length
+    ? Object.values(config.productStock).reduce((s, p) => s + (p.total - p.locked), 0)
+    : Math.max(0, (config.total || 0) - (config.locked || 0));
+
+  const districts = new Set(parties.map((p) => p.district).filter(Boolean)).size;
+  const distCount = parties.filter((p) => p.type === "distributor").length;
+  const retailCount = parties.filter((p) => p.type === "retailer").length;
+  const linkedRetailers = parties.filter(
+    (p) => p.type === "retailer" && (p as any).underDistributorId,
+  ).length;
+  const activeCount = parties.filter((p) => (p as any).status === "active").length;
+  const prospectCount = parties.filter((p) => (p as any).status === "prospect").length;
+
+  // Which permission each module row requires. Admins hold all of them;
+  // a sales_manager only sees the rows they have been granted.
   const SCREEN_PERMISSION: Record<string, Permission> = {
     stock: "view_stock",
     parties: "view_parties",
@@ -577,134 +629,201 @@ export default function AdminDashboard() {
     reports: "view_reports",
   };
 
-  const quickLinks = [
+  // The nav doubles as a status board: every row carries its own live number,
+  // so you can see which module needs you before clicking into it.
+  const modules = [
     {
-      emoji: "📦",
-      label: "Stock",
-      sub: "Manage inventory",
+      name: "Stock",
+      desc: "Count, adjust and reconcile inventory",
       screen: "stock" as SubScreen,
-      color: "#16a34a",
+      value: `${stockUnits.toLocaleString("en-IN")} units`,
     },
     {
-      emoji: "🤝",
-      label: "Distributors/Retailers",
-      sub: "View & manage network",
+      name: "Distributors & retailers",
+      desc: "Add accounts and keep their details current",
       screen: "parties" as SubScreen,
-      color: "#0891b2",
+      value: `${parties.length} accounts`,
     },
     {
-      emoji: "🚀",
-      label: "Allocations",
-      sub: "Stock sending events",
+      name: "Allocations",
+      desc: "Plan, dispatch and track every stock movement",
       screen: "allocations" as SubScreen,
-      color: "#d97706",
+      value: readyToSend > 0 ? `${readyToSend} waiting` : "All sent",
+      warn: readyToSend > 0,
     },
     {
-      emoji: "🛍️",
-      label: "Products",
-      sub: "Add & manage products",
+      name: "Products",
+      desc: "Set what you sell, and the price you sell it at",
       screen: "products" as SubScreen,
-      color: "#7c3aed",
+      value: `${products.length} products`,
     },
     {
-      emoji: "💜",
-      label: "Credit Book",
-      sub: "Outstanding payments & ledger",
+      name: "Credit book",
+      desc: "See who owes what, and settle it",
       screen: "credits" as SubScreen,
-      color: "#8b5cf6",
+      value: owedTotal > 0 ? `${inr(owedTotal)} due` : "Nothing due",
+      warn: owedTotal > 0,
     },
     {
-      emoji: "💸",
-      label: "Expenses",
-      sub: "Team expenses log",
+      name: "Expenses",
+      desc: "Team spend, logged and approved",
       screen: "expenses" as SubScreen,
-      color: "#dc2626",
+      value: `${inr(monthSpend)} this month`,
     },
     {
-      emoji: "🏖️",
-      label: "Leave Tracker",
-      sub:
-        pendingLeaveCount > 0
-          ? `⏳ ${pendingLeaveCount} pending approval`
-          : onLeaveTodayCount > 0
-            ? `${onLeaveTodayCount} on leave today`
-            : "Sales team attendance",
+      name: "Leave tracker",
+      desc: "Approve time off and see who is out",
       screen: "leaves" as SubScreen,
-      color: "#0f766e",
-      badge:
+      value:
         pendingLeaveCount > 0
-          ? String(pendingLeaveCount)
+          ? `${pendingLeaveCount} to approve`
           : onLeaveTodayCount > 0
-            ? String(onLeaveTodayCount)
-            : undefined,
+            ? `${onLeaveTodayCount} out today`
+            : "Nobody out",
+      warn: pendingLeaveCount > 0,
     },
     {
-      emoji: "📊",
-      label: "Sales Report",
-      sub: "Day / week / month / custom",
+      name: "Sales report",
+      desc: "Visits, orders and collections, by person or team",
       screen: "reports" as SubScreen,
-      color: "#0891b2",
+      value: `${visitsThisMonth} visits`,
     },
-    ...(appUser?.role === 'super_admin' ? [{
-      emoji: "⚙️",
-      label: "Settings",
-      sub: "App config & links",
-      screen: "settings" as SubScreen,
-      color: "#475569",
-    }] : []),
+    ...(appUser?.role === "super_admin"
+      ? [{
+          name: "Settings",
+          desc: "Mapper links and app configuration",
+          screen: "settings" as SubScreen,
+          value: "—",
+        }]
+      : []),
   ].filter(
-    (q) => q.screen === "settings" || can(appUser, SCREEN_PERMISSION[q.screen]),
+    (m) => m.screen === "settings" || can(appUser, SCREEN_PERMISSION[m.screen]),
   );
+
+  // An inline link on a number in the attention line.
+  const numLink = (label: ReactNode, to: SubScreen) => (
+    <button
+      className="oc-action"
+      onClick={() => setSubScreen(to)}
+      style={{
+        background: "none",
+        border: "none",
+        padding: 0,
+        font: "inherit",
+        color: t.warn,
+        textDecoration: "underline",
+        textUnderlineOffset: 3,
+        cursor: "pointer",
+      }}
+    >
+      {label}
+    </button>
+  );
+
+  const attention: ReactNode[] = [];
+  if (readyToSend > 0)
+    attention.push(
+      <span key="alloc">
+        {numLink(readyToSend, "allocations")}
+        {readyToSend === 1 ? " allocation is" : " allocations are"} packed and
+        waiting to go out
+      </span>,
+    );
+  if (owedTotal > 0)
+    attention.push(
+      <span key="credit">
+        {numLink(inr(owedTotal), "credits")} is still owed across {owedAccounts}{" "}
+        {owedAccounts === 1 ? "account" : "accounts"}
+      </span>,
+    );
+  if (attention.length < 2 && pendingPayments.length > 0)
+    attention.push(
+      <span key="pay">
+        {numLink(pendingPayments.length, "credits")}
+        {pendingPayments.length === 1
+          ? " collected payment needs"
+          : " collected payments need"}{" "}
+        your confirmation
+      </span>,
+    );
+  if (attention.length < 2 && pendingLeaveCount > 0)
+    attention.push(
+      <span key="leave">
+        {numLink(pendingLeaveCount, "leaves")}
+        {pendingLeaveCount === 1
+          ? " leave request is"
+          : " leave requests are"}{" "}
+        waiting on you
+      </span>,
+    );
+
+  const tabs = [
+    { id: "overview", label: "Overview" },
+    { id: "sales", label: "Sales" },
+    ...(isAdminRole(appUser) ? [{ id: "marketing", label: "Marketing" }] : []),
+    ...(can(appUser, "view_workspace")
+      ? [{ id: "workspace", label: "Workspace" }]
+      : []),
+  ] as { id: MainTab; label: string }[];
 
   return (
     <div style={{ minHeight: "100vh", background: t.bg }}>
-      {/* Header */}
-      <div
-        style={{
-          background: "linear-gradient(135deg,#78350f,#d97706)",
-          padding: "16px 20px 0",
-        }}
-      >
+      {/* Attention line — what is actually waiting, in one sentence */}
+      <div style={{ padding: "30px 20px 24px", maxWidth: 720 }}>
         <div
           style={{
-            color: "#fde68a",
-            fontSize: 13,
-            letterSpacing: 3,
+            fontSize: 11,
+            letterSpacing: "0.09em",
             textTransform: "uppercase",
-            marginBottom: 2,
+            color: t.text3,
+            marginBottom: 10,
           }}
         >
-          Founders 👑
+          Needs you today
         </div>
-        <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 14 }}>
-          Admin Dashboard
-        </div>
-        <div style={{ display: "flex", gap: 0, overflowX: "auto" }}>
-          {(
-            [
-              { id: "overview", label: "Overview" },
-              { id: "sales", label: "Sales" },
-              ...(isAdminRole(appUser)
-                ? [{ id: "marketing", label: "Marketing" }]
-                : []),
-              ...(can(appUser, "view_workspace")
-                ? [{ id: "workspace", label: "Workspace" }]
-                : []),
-            ] as { id: MainTab; label: string }[]
-          ).map((tab) => (
+        <p
+          style={{
+            fontSize: 21,
+            lineHeight: 1.5,
+            fontWeight: 400,
+            color: t.text,
+            margin: 0,
+          }}
+        >
+          {attention.length === 0 ? (
+            "Nothing is waiting on you. The team's activity is up to date."
+          ) : (
+            <>
+              {attention[0]}
+              {attention[1] && <>, and {attention[1]}</>}.
+            </>
+          )}
+        </p>
+      </div>
+
+      {/* Tabs */}
+      <div
+        style={{
+          padding: "0 20px",
+          borderBottom: `0.5px solid ${t.border}`,
+        }}
+      >
+        <div style={{ display: "flex", gap: 24, overflowX: "auto" }}>
+          {tabs.map((tab) => (
             <button
               key={tab.id}
+              className="oc-action"
               onClick={() => setMainTab(tab.id)}
               style={{
-                flex: "1 0 auto",
-                background:
-                  mainTab === tab.id ? "rgba(255,255,255,0.2)" : "transparent",
-                color: mainTab === tab.id ? "#fff" : "rgba(255,255,255,0.45)",
+                background: "none",
                 border: "none",
-                borderRadius: "12px 12px 0 0",
-                padding: "10px 12px",
-                fontSize: 13,
-                fontWeight: 800,
+                padding: "0 0 12px",
+                fontSize: 14,
+                fontWeight: mainTab === tab.id ? 500 : 400,
+                color: mainTab === tab.id ? t.text : t.text2,
+                borderBottom: `2px solid ${mainTab === tab.id ? t.text : "transparent"}`,
+                marginBottom: "-0.5px",
+                cursor: "pointer",
                 whiteSpace: "nowrap",
               }}
             >
@@ -716,7 +835,7 @@ export default function AdminDashboard() {
 
       <div
         style={{
-          padding: "14px 14px",
+          padding: "26px 20px 56px",
           display: "flex",
           flexDirection: "column",
           gap: 12,
@@ -730,244 +849,146 @@ export default function AdminDashboard() {
         {mainTab === "overview" && (
           <div
             className="fade-in"
-            style={{ display: "flex", flexDirection: "column", gap: 12 }}
+            style={{ display: "flex", flexDirection: "column", gap: 30 }}
           >
-            {/* Quick links */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 10,
-              }}
-            >
-              {quickLinks.map((q) => (
-                <button
-                  key={q.screen}
-                  onClick={() => setSubScreen(q.screen)}
+            {/* Stats */}
+            <div className="oc-stats">
+              {[
+                {
+                  n: distCount,
+                  label: "Distributors",
+                  ctx:
+                    districts > 0
+                      ? `Across ${districts} ${districts === 1 ? "district" : "districts"}`
+                      : "No districts recorded yet",
+                },
+                {
+                  n: retailCount,
+                  label: "Retailers",
+                  ctx: `${linkedRetailers} linked to a distributor`,
+                },
+                {
+                  n: activeCount,
+                  label: "Active accounts",
+                  ctx: `${prospectCount} still prospects`,
+                },
+              ].map((s) => (
+                <div
+                  key={s.label}
                   style={{
-                    background: t.card,
-                    border: `1px solid ${(q as any).badge ? q.color + "55" : q.color + "33"}`,
-                    borderRadius: 14,
-                    padding: 14,
-                    textAlign: "left",
-                    color: t.text,
-                    position: "relative",
+                    background: t.tint,
+                    borderRadius: 6,
+                    padding: "16px 16px 14px",
                   }}
                 >
-                  {(q as any).badge && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: 10,
-                        right: 10,
-                        background: q.color,
-                        color: "#fff",
-                        fontSize: 10,
-                        fontWeight: 900,
-                        width: 18,
-                        height: 18,
-                        borderRadius: "50%",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      {(q as any).badge}
-                    </div>
-                  )}
-                  <div style={{ fontSize: 22, marginBottom: 6 }}>{q.emoji}</div>
                   <div
-                    style={{ fontWeight: 800, fontSize: 13, color: q.color }}
+                    style={{
+                      fontSize: 26,
+                      fontWeight: 500,
+                      color: t.text,
+                      lineHeight: 1.1,
+                    }}
                   >
-                    {q.label}
+                    {s.n}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 400,
+                      color: t.text,
+                      marginTop: 6,
+                    }}
+                  >
+                    {s.label}
                   </div>
                   <div style={{ fontSize: 12, color: t.text3, marginTop: 2 }}>
-                    {q.sub}
+                    {s.ctx}
                   </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Modules — the nav doubles as a status board */}
+            <div
+              className="oc-modules"
+              style={{ borderBottom: `0.5px solid ${t.border}` }}
+            >
+              {modules.map((m) => (
+                <button
+                  key={m.screen}
+                  className="oc-row"
+                  onClick={() => setSubScreen(m.screen)}
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: 16,
+                    width: "100%",
+                    textAlign: "left",
+                    background: "none",
+                    border: "none",
+                    borderTop: `0.5px solid ${t.border}`,
+                    padding: "16px 14px",
+                    cursor: "pointer",
+                  }}
+                >
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span
+                      style={{
+                        display: "block",
+                        fontSize: 15,
+                        fontWeight: 500,
+                        color: t.text,
+                      }}
+                    >
+                      {m.name}
+                    </span>
+                    <span
+                      style={{
+                        display: "block",
+                        fontSize: 13,
+                        fontWeight: 400,
+                        color: t.text3,
+                        marginTop: 3,
+                      }}
+                    >
+                      {m.desc}
+                    </span>
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 400,
+                      color: (m as any).warn ? t.warn : t.text2,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {m.value}
+                  </span>
                 </button>
               ))}
             </div>
 
-            {/* Network stats */}
-            {(() => {
-              const distCount = parties.filter(
-                (p) => p.type === "distributor",
-              ).length;
-              const retailerCount = parties.filter(
-                (p) => p.type === "retailer",
-              ).length;
-              const activeCount = parties.filter(
-                (p) => (p as any).status === "active",
-              ).length;
-              return (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr 1fr",
-                    gap: 8,
-                  }}
-                >
-                  {[
-                    {
-                      label: "Distributors",
-                      val: distCount,
-                      color: "#0891b2",
-                      emoji: "🚚",
-                    },
-                    {
-                      label: "Retailers",
-                      val: retailerCount,
-                      color: "#16a34a",
-                      emoji: "🏪",
-                    },
-                    {
-                      label: "Active",
-                      val: activeCount,
-                      color: "#d97706",
-                      emoji: "🟢",
-                    },
-                  ].map((s) => (
-                    <button
-                      key={s.label}
-                      onClick={() => setSubScreen("parties")}
-                      style={{
-                        background: t.card,
-                        borderRadius: 12,
-                        padding: "10px 6px",
-                        textAlign: "center",
-                        border: `1px solid ${s.color}22`,
-                      }}
-                    >
-                      <div style={{ fontSize: 13 }}>{s.emoji}</div>
-                      <div
-                        style={{
-                          fontSize: 20,
-                          fontWeight: 900,
-                          color: s.color,
-                        }}
-                      >
-                        {s.val}
-                      </div>
-                      <div
-                        style={{ fontSize: 12, color: t.text3, marginTop: 1 }}
-                      >
-                        {s.label}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              );
-            })()}
-
-            {/* Allocation summary */}
-            {(() => {
-              const today = localDateStr();
-              const pending = allocations.filter(
-                (a) => a.status === "pending" && a.plannedDate >= today,
-              ).length;
-              const overdue = allocations.filter(
-                (a) => a.status === "pending" && a.plannedDate < today,
-              ).length;
-              const creditDue = allocations
-                .filter(
-                  (a) => a.status === "sent" && a.paymentType === "credit",
-                )
-                .reduce((s: number, a: any) => s + a.totalAmount, 0);
-              return (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr 1fr",
-                    gap: 8,
-                  }}
-                >
-                  {[
-                    {
-                      label: "Overdue",
-                      val: overdue,
-                      color: "#dc2626",
-                      bg: "rgba(220,38,38,0.1)",
-                      emoji: "🔴",
-                    },
-                    {
-                      label: "Pending",
-                      val: pending,
-                      color: "#d97706",
-                      bg: "rgba(217,119,6,0.1)",
-                      emoji: "🟡",
-                    },
-                    {
-                      label: "Credit Due",
-                      val:
-                        creditDue > 0
-                          ? `₹${(creditDue / 1000).toFixed(0)}k`
-                          : "0",
-                      color: "#7c3aed",
-                      bg: "rgba(124,58,237,0.1)",
-                      emoji: "💜",
-                    },
-                  ].map((s) => (
-                    <button
-                      key={s.label}
-                      onClick={() => setSubScreen("allocations")}
-                      style={{
-                        background: s.bg,
-                        borderRadius: 12,
-                        padding: "10px 6px",
-                        textAlign: "center",
-                        border: `1px solid ${s.color}33`,
-                      }}
-                    >
-                      <div style={{ fontSize: 13 }}>{s.emoji}</div>
-                      <div
-                        style={{
-                          fontSize: 18,
-                          fontWeight: 900,
-                          color: s.color,
-                        }}
-                      >
-                        {s.val}
-                      </div>
-                      <div
-                        style={{ fontSize: 12, color: t.text3, marginTop: 1 }}
-                      >
-                        {s.label}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              );
-            })()}
-
-            {/* Today's sales snapshot */}
+            {/* Visits today */}
             {(() => {
               const todayLogs = visitLogs.filter(
                 (l: any) => l.date === todayStr,
               );
               return (
-                <div
-                  style={{
-                    background: t.card,
-                    borderRadius: 16,
-                    padding: 16,
-                    border: `1px solid ${t.border}`,
-                  }}
-                >
+                <div>
                   <div
                     style={{
-                      fontSize: 13,
-                      color: t.text3,
-                      marginBottom: 10,
-                      fontWeight: 700,
-                      letterSpacing: 1,
+                      fontSize: 11,
+                      letterSpacing: "0.09em",
                       textTransform: "uppercase",
+                      color: t.text3,
+                      marginBottom: 12,
                     }}
                   >
-                    Sales Today
+                    Visits today
                   </div>
                   {todayLogs.length === 0 ? (
-                    <div style={{ color: t.text3, fontSize: 14 }}>
-                      No visit logs yet today
+                    <div style={{ fontSize: 14, color: t.text3 }}>
+                      Nobody has logged a visit yet today.
                     </div>
                   ) : (
                     todayLogs.map((log: any) => (
@@ -975,37 +996,32 @@ export default function AdminDashboard() {
                         key={log.id}
                         style={{
                           display: "flex",
-                          alignItems: "center",
-                          gap: 10,
-                          marginBottom: 8,
+                          alignItems: "baseline",
+                          justifyContent: "space-between",
+                          gap: 16,
+                          padding: "11px 0",
+                          borderTop: `0.5px solid ${t.border}`,
                         }}
                       >
-                        <div
+                        <span
                           style={{
-                            width: 36,
-                            height: 36,
-                            background:
-                              "linear-gradient(135deg,#0891b2,#0e7490)",
-                            borderRadius: "50%",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontWeight: 900,
                             fontSize: 14,
-                            flexShrink: 0,
+                            fontWeight: 400,
+                            color: t.text,
                           }}
                         >
-                          {log.salesPersonName?.[0] || "?"}
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 700, fontSize: 14 }}>
-                            {log.salesPersonName}
-                          </div>
-                          <div style={{ fontSize: 12, color: "#16a34a" }}>
-                            🏪 {log.totalVisited || 0} visited • ✅{" "}
-                            {log.totalInterested || 0} interested
-                          </div>
-                        </div>
+                          {log.salesPersonName}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 13,
+                            color: t.text2,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {log.totalVisited || 0} visits,{" "}
+                          {log.totalInterested || 0} interested
+                        </span>
                       </div>
                     ))
                   )}
@@ -1013,83 +1029,45 @@ export default function AdminDashboard() {
               );
             })()}
 
-            {/* Marketing snapshot */}
-            <div
-              style={{
-                background: t.card,
-                borderRadius: 16,
-                padding: 16,
-                border: `1px solid ${t.border}`,
-                display: "flex",
-                alignItems: "center",
-                gap: 14,
-              }}
-            >
-              <div
-                style={{
-                  position: "relative",
-                  width: 56,
-                  height: 56,
-                  flexShrink: 0,
-                }}
-              >
-                <svg
-                  width="56"
-                  height="56"
-                  style={{ transform: "rotate(-90deg)" }}
-                >
-                  <circle
-                    cx="28"
-                    cy="28"
-                    r="22"
-                    fill="none"
-                    stroke={t.border2}
-                    strokeWidth="5"
-                  />
-                  <circle
-                    cx="28"
-                    cy="28"
-                    r="22"
-                    fill="none"
-                    stroke="#22c55e"
-                    strokeWidth="5"
-                    strokeDasharray={`${2 * Math.PI * 22}`}
-                    strokeDashoffset={`${2 * Math.PI * 22 * (1 - pct / 100)}`}
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 12,
-                    fontWeight: 900,
-                    color: "#6ee7b7",
-                  }}
-                >
-                  {pct}%
-                </div>
-              </div>
+            {/* Online marketing */}
+            {isAdminRole(appUser) && (
               <div>
                 <div
-                  style={{ color: "#6ee7b7", fontSize: 12, letterSpacing: 1 }}
+                  style={{
+                    fontSize: 11,
+                    letterSpacing: "0.09em",
+                    textTransform: "uppercase",
+                    color: t.text3,
+                    marginBottom: 12,
+                  }}
                 >
-                  ONLINE MARKETING — MAY
+                  Online marketing
                 </div>
-                <div style={{ fontSize: 22, fontWeight: 900, lineHeight: 1 }}>
-                  {done}
-                  <span style={{ fontSize: 13, color: "#6ee7b7" }}>
-                    /{MAY_POSTS.length}
-                  </span>
+                <div style={{ fontSize: 15, fontWeight: 400, color: t.text }}>
+                  {done} of {MAY_POSTS.length} posts published
+                  {missed > 0 && (
+                    <span style={{ color: t.warn }}> · {missed} missed</span>
+                  )}
                 </div>
-                <div style={{ color: t.text3, fontSize: 12 }}>
-                  posts {missed > 0 ? `• ❌ ${missed} missed` : "✅ on track"}
+                <div
+                  style={{
+                    background: t.tint,
+                    borderRadius: 99,
+                    height: 2,
+                    marginTop: 12,
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${pct}%`,
+                      height: "100%",
+                      background: t.text2,
+                    }}
+                  />
                 </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -1143,43 +1121,35 @@ export default function AdminDashboard() {
             {/* Online Sales — placeholder */}
             {salesTab === "online" && (
               <div
-                style={{
-                  background: t.card,
-                  borderRadius: 16,
-                  padding: 32,
-                  textAlign: "center",
-                  border: "1px dashed rgba(217,119,6,0.3)",
-                }}
+                style={{ padding: "44px 0", maxWidth: 420 }}
               >
-                <div style={{ fontSize: 36, marginBottom: 12 }}>🌐</div>
                 <div
-                  style={{
-                    background: "rgba(217,119,6,0.2)",
-                    color: "#d97706",
-                    fontSize: 11,
-                    fontWeight: 800,
-                    padding: "3px 10px",
-                    borderRadius: 99,
-                    display: "inline-block",
-                    marginBottom: 10,
-                  }}
+                  style={{ fontSize: 17, fontWeight: 500, color: t.text, marginBottom: 6 }}
                 >
-                  COMING SOON
+                  Online sales
                 </div>
                 <div
+                  style={{ fontSize: 14, color: t.text3, lineHeight: 1.6, marginBottom: 18 }}
+                >
+                  E-commerce orders and digital campaigns will land here.
+                  Offline sales is where the activity is today.
+                </div>
+                <button
+                  className="oc-action"
+                  onClick={() => setSalesTab("offline")}
                   style={{
-                    fontSize: 16,
-                    fontWeight: 700,
+                    background: "none",
+                    border: `0.5px solid ${t.border2}`,
+                    borderRadius: 6,
+                    padding: "9px 14px",
+                    fontSize: 13,
+                    fontWeight: 400,
                     color: t.text,
-                    marginBottom: 8,
+                    cursor: "pointer",
                   }}
                 >
-                  Online Sales Analytics
-                </div>
-                <div style={{ fontSize: 13, color: t.text3 }}>
-                  E-commerce orders, digital campaign tracking and online sales
-                  performance will appear here.
-                </div>
+                  View offline sales
+                </button>
               </div>
             )}
 
@@ -2080,9 +2050,29 @@ export default function AdminDashboard() {
 
                   const sortedDates = Object.keys(dayPersonMap).sort((a, b) => b.localeCompare(a))
                   if (sortedDates.length === 0) return (
-                    <div style={{ textAlign: 'center', padding: 32, color: t.text3 }}>
-                      <div style={{ fontSize: 32, marginBottom: 10 }}>📋</div>
-                      <div style={{ fontWeight: 700 }}>No activity for this filter</div>
+                    <div style={{ padding: '40px 0', maxWidth: 420 }}>
+                      <div style={{ fontSize: 17, fontWeight: 500, color: t.text, marginBottom: 6 }}>
+                        No activity in this range
+                      </div>
+                      <div style={{ fontSize: 14, color: t.text3, lineHeight: 1.6, marginBottom: 18 }}>
+                        Nobody logged a visit, order or expense between {rangeStart} and {rangeEnd}.
+                      </div>
+                      <button
+                        className="oc-action"
+                        onClick={() => { setDateMode('month'); setDateMonth(localMonthStr()) }}
+                        style={{
+                          background: 'none',
+                          border: `0.5px solid ${t.border2}`,
+                          borderRadius: 6,
+                          padding: '9px 14px',
+                          fontSize: 13,
+                          fontWeight: 400,
+                          color: t.text,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Show this month
+                      </button>
                     </div>
                   )
 
@@ -2819,44 +2809,34 @@ export default function AdminDashboard() {
 
             {/* Offline Marketing — Coming Soon */}
             {marketingTab === "offline" && (
-              <div
-                style={{
-                  background: t.card,
-                  borderRadius: 16,
-                  padding: 32,
-                  textAlign: "center",
-                  border: "1px dashed rgba(217,119,6,0.3)",
-                }}
-              >
-                <div style={{ fontSize: 36, marginBottom: 12 }}>📣</div>
+              <div style={{ padding: "44px 0", maxWidth: 420 }}>
                 <div
-                  style={{
-                    background: "rgba(217,119,6,0.2)",
-                    color: "#d97706",
-                    fontSize: 11,
-                    fontWeight: 800,
-                    padding: "3px 10px",
-                    borderRadius: 99,
-                    display: "inline-block",
-                    marginBottom: 10,
-                  }}
+                  style={{ fontSize: 17, fontWeight: 500, color: t.text, marginBottom: 6 }}
                 >
-                  COMING SOON
+                  Offline marketing
                 </div>
                 <div
+                  style={{ fontSize: 14, color: t.text3, lineHeight: 1.6, marginBottom: 18 }}
+                >
+                  On-ground campaigns, events and sampling will live here.
+                  The online calendar is running today.
+                </div>
+                <button
+                  className="oc-action"
+                  onClick={() => setMarketingTab("online")}
                   style={{
-                    fontSize: 16,
-                    fontWeight: 700,
+                    background: "none",
+                    border: `0.5px solid ${t.border2}`,
+                    borderRadius: 6,
+                    padding: "9px 14px",
+                    fontSize: 13,
+                    fontWeight: 400,
                     color: t.text,
-                    marginBottom: 8,
+                    cursor: "pointer",
                   }}
                 >
-                  Offline Marketing Dashboard
-                </div>
-                <div style={{ fontSize: 13, color: t.text3 }}>
-                  On-ground campaigns, events, BTL activities and physical
-                  marketing will appear here.
-                </div>
+                  Open the content calendar
+                </button>
               </div>
             )}
 

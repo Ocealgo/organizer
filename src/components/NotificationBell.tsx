@@ -4,9 +4,11 @@ import { db } from '../firebase'
 import { Alert } from '../types'
 import { useAuth } from '../context/AuthContext'
 import { isManagement } from '../auth/permissions'
+import { useTheme } from '../context/ThemeContext'
 
 export default function NotificationBell() {
   const { appUser } = useAuth()
+  const { t } = useTheme()
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -49,17 +51,12 @@ export default function NotificationBell() {
     })
   }
 
-  const TYPE_EMOJI: Record<string, string> = {
-    new_party: '🤝', low_stock: '⚠️',
-    credit_settlement: '💜', stock_dispatched: '📦',
-  }
-
   const timeAgo = (ts: number) => {
     const diff = Date.now() - ts
     const mins = Math.floor(diff / 60000)
     const hrs  = Math.floor(diff / 3600000)
     const days = Math.floor(diff / 86400000)
-    if (mins < 1)  return 'just now'
+    if (mins < 1)  return 'Just now'
     if (mins < 60) return `${mins}m ago`
     if (hrs < 24)  return `${hrs}h ago`
     return `${days}d ago`
@@ -67,42 +64,72 @@ export default function NotificationBell() {
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
-      <button onClick={() => setOpen(!open)}
-        style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '6px 10px', cursor: 'pointer', position: 'relative', display: 'flex', alignItems: 'center' }}>
-        <span style={{ fontSize: 16 }}>🔔</span>
+      <button
+        className="oc-action"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        style={{
+          background: 'none', border: 'none', padding: 0,
+          fontSize: 13, fontWeight: 400, color: t.text2,
+          cursor: 'pointer', whiteSpace: 'nowrap',
+        }}
+      >
+        Notifications
         {unread > 0 && (
-          <span style={{ position: 'absolute', top: -4, right: -4, background: '#dc2626', color: '#fff', borderRadius: '50%', width: 18, height: 18, fontSize: 10, fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #0d1117' }}>
-            {unread > 9 ? '9+' : unread}
-          </span>
+          <span style={{ color: t.warn, marginLeft: 5 }}>{unread > 99 ? '99+' : unread}</span>
         )}
       </button>
 
       {open && (
-        <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, width: 300, background: '#1e2530', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 16px 48px rgba(0,0,0,0.5)', zIndex: 1000 }}>
-          <div style={{ padding: '14px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontWeight: 800, fontSize: 14, color: '#fff' }}>Notifications {unread > 0 && <span style={{ color: '#6ee7b7' }}>({unread})</span>}</span>
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 12px)', right: 0, width: 320,
+          background: t.bg2, border: `0.5px solid ${t.border}`, borderRadius: 8,
+          overflow: 'hidden', zIndex: 1000,
+        }}>
+          <div style={{
+            padding: '12px 16px', borderBottom: `0.5px solid ${t.border}`,
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          }}>
+            <span style={{ fontWeight: 500, fontSize: 13, color: t.text }}>
+              Notifications
+              {unread > 0 && <span style={{ color: t.text3, fontWeight: 400 }}> · {unread} unread</span>}
+            </span>
             {unread > 0 && (
-              <button onClick={markAllRead} style={{ background: 'none', border: 'none', color: '#6ee7b7', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>
-                Mark all read
+              <button className="oc-action" onClick={markAllRead}
+                style={{ background: 'none', border: 'none', padding: 0, color: t.accent, fontSize: 12, cursor: 'pointer' }}>
+                Mark all as read
               </button>
             )}
           </div>
-          <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+
+          <div style={{ maxHeight: 380, overflowY: 'auto' }}>
             {alerts.length === 0 ? (
-              <div style={{ padding: 32, textAlign: 'center', color: '#475569' }}>
-                <div style={{ fontSize: 32, marginBottom: 8 }}>🔔</div>
-                <div style={{ fontSize: 13 }}>No notifications yet</div>
+              <div style={{ padding: '28px 20px' }}>
+                <div style={{ fontSize: 14, fontWeight: 500, color: t.text, marginBottom: 4 }}>
+                  Nothing new
+                </div>
+                <div style={{ fontSize: 13, color: t.text3, lineHeight: 1.5 }}>
+                  Alerts about stock, credit and approvals will land here.
+                </div>
               </div>
             ) : alerts.map(a => (
-              <div key={a.id} onClick={() => !a.read && markRead(a.id!)}
-                style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.04)', cursor: a.read ? 'default' : 'pointer', background: a.read ? 'transparent' : 'rgba(110,231,183,0.05)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                <span style={{ fontSize: 18, flexShrink: 0 }}>{TYPE_EMOJI[a.type] || '🔔'}</span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, color: a.read ? '#64748b' : '#e2e8f0', lineHeight: 1.5 }}>{a.message}</div>
-                  <div style={{ fontSize: 10, color: '#475569', marginTop: 3 }}>{timeAgo(a.createdAt)}</div>
+              <button
+                key={a.id}
+                className="oc-row"
+                onClick={() => !a.read && markRead(a.id!)}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left',
+                  padding: '12px 16px', border: 'none',
+                  borderTop: `0.5px solid ${t.border}`,
+                  background: a.read ? 'transparent' : t.tint,
+                  cursor: a.read ? 'default' : 'pointer',
+                }}
+              >
+                <div style={{ fontSize: 13, color: a.read ? t.text3 : t.text, lineHeight: 1.5 }}>
+                  {a.message}
                 </div>
-                {!a.read && <div style={{ width: 7, height: 7, background: '#6ee7b7', borderRadius: '50%', flexShrink: 0, marginTop: 4 }} />}
-              </div>
+                <div style={{ fontSize: 11, color: t.text3, marginTop: 3 }}>{timeAgo(a.createdAt)}</div>
+              </button>
             ))}
           </div>
         </div>

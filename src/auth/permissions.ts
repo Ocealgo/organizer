@@ -123,6 +123,17 @@ export const ROLE_LABELS: Record<UserRoleKey, string> = {
   online_marketing: '💻 Online Marketing',
 }
 
+/** Sentence case, no emoji — for the app header and other quiet chrome. */
+export const ROLE_LABELS_PLAIN: Record<UserRoleKey, string> = {
+  super_admin: 'Super admin',
+  admin: 'Admin',
+  sales_manager: 'Sales manager',
+  offline_sales: 'Offline sales',
+  online_sales: 'Online sales',
+  offline_marketing: 'Offline marketing',
+  online_marketing: 'Online marketing',
+}
+
 type UserRoleKey = AppUser['role']
 
 /** Roles an admin may assign. super_admin is deliberately absent — bootstrap only. */
