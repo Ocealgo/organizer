@@ -19,7 +19,9 @@ import {
   PILLAR_COLORS,
   STATUS_CONFIG,
 } from "../../data";
-import { CheckIn, AppUser, Party, LeaveRecord } from "../../types";
+import { CheckIn, AppUser, Party, LeaveRecord, Permission } from "../../types";
+import { can, isAdminRole } from "../../auth/permissions";
+import SalesReport from "../reports/SalesReport";
 import StockManager from "../stock/StockManager";
 import WorkspaceDashboard from "../workspace/WorkspaceDashboard";
 import PartyManager from "../distributors/PartyManager";
@@ -48,6 +50,7 @@ type SubScreen =
   | "allocations"
   | "products"
   | "leaves"
+  | "reports"
   | "settings";
 
 function isValidUrl(url: string): boolean {
@@ -484,9 +487,11 @@ export default function AdminDashboard() {
       <AllocationManager
         onBack={() => setSubScreen("dashboard")}
         parties={parties}
-        isAdmin
+        isAdmin={can(appUser, "dispatch_allocations")}
       />
     );
+  if (subScreen === "reports")
+    return <SalesReport onBack={() => setSubScreen("dashboard")} />;
   if (subScreen === "products")
     return <ProductManager onBack={() => setSubScreen("dashboard")} />;
   if (subScreen === "parties")
@@ -559,6 +564,19 @@ export default function AdminDashboard() {
     (l) => l.status === "pending_approval",
   ).length;
 
+  // Which permission each quick link requires. Admins hold all of them;
+  // a sales_manager only sees the tiles they have been granted.
+  const SCREEN_PERMISSION: Record<string, Permission> = {
+    stock: "view_stock",
+    parties: "view_parties",
+    allocations: "view_allocations",
+    products: "view_products",
+    credits: "view_credit",
+    expenses: "view_expenses",
+    leaves: "view_leave",
+    reports: "view_reports",
+  };
+
   const quickLinks = [
     {
       emoji: "📦",
@@ -620,6 +638,13 @@ export default function AdminDashboard() {
             ? String(onLeaveTodayCount)
             : undefined,
     },
+    {
+      emoji: "📊",
+      label: "Sales Report",
+      sub: "Day / week / month / custom",
+      screen: "reports" as SubScreen,
+      color: "#0891b2",
+    },
     ...(appUser?.role === 'super_admin' ? [{
       emoji: "⚙️",
       label: "Settings",
@@ -627,7 +652,9 @@ export default function AdminDashboard() {
       screen: "settings" as SubScreen,
       color: "#475569",
     }] : []),
-  ];
+  ].filter(
+    (q) => q.screen === "settings" || can(appUser, SCREEN_PERMISSION[q.screen]),
+  );
 
   return (
     <div style={{ minHeight: "100vh", background: t.bg }}>
@@ -657,8 +684,12 @@ export default function AdminDashboard() {
             [
               { id: "overview", label: "Overview" },
               { id: "sales", label: "Sales" },
-              { id: "marketing", label: "Marketing" },
-              { id: "workspace", label: "Workspace" },
+              ...(isAdminRole(appUser)
+                ? [{ id: "marketing", label: "Marketing" }]
+                : []),
+              ...(can(appUser, "view_workspace")
+                ? [{ id: "workspace", label: "Workspace" }]
+                : []),
             ] as { id: MainTab; label: string }[]
           ).map((tab) => (
             <button

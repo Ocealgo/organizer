@@ -4,6 +4,7 @@ import { db } from '../../firebase'
 import { Party, Dispatch, MonthlyRequest, Product } from '../../types'
 import DateInput from '../../components/DateInput'
 import { useAuth } from '../../context/AuthContext'
+import { can } from '../../auth/permissions'
 import { useStockConfig, updateStockConfig, toDisplay, setProductStock } from '../../hooks/useFirebase'
 import { localMonthStr } from '../../utils/date'
 
@@ -75,7 +76,7 @@ export default function StockManager({ onBack }: Props) {
   const [editingProductStock, setEditingProductStock] = useState<Record<string, string>>({})
   const [partyStatusFilter, setPartyStatusFilter] = useState<'all' | 'active' | 'prospect' | 'inactive'>('all')
 
-  const isAdmin = appUser?.role === 'super_admin' || appUser?.role === 'admin'
+  const isAdmin = can(appUser, 'edit_stock')
 
   // Aggregate display values from per-product stock
   const hasProductStock = config.productStock && Object.keys(config.productStock).length > 0

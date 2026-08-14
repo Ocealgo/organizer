@@ -17,6 +17,7 @@ import {
   CollectionType,
 } from "../../types";
 import { useAuth } from "../../context/AuthContext";
+import { can } from "../../auth/permissions";
 import { useTheme } from "../../context/ThemeContext";
 import { useConfirm } from "../../hooks/useConfirm";
 import { localDateStr } from "../../utils/date";
@@ -82,7 +83,9 @@ export default function CreditBook({ onBack, initialPartyId, focusPaymentId, sal
   const [paymentsCollapsed, setPaymentsCollapsed] = useState(false);
 
   const today = localDateStr();
-  const isAdmin = appUser?.role === "super_admin" || appUser?.role === "admin";
+  // "isAdmin" here means "may act on payments" — recording, confirming, cancelling.
+  const isAdmin = can(appUser, "approve_payments");
+  const canMarkPaid = can(appUser, "mark_paid");
 
 
   useEffect(() => {
@@ -854,14 +857,14 @@ export default function CreditBook({ onBack, initialPartyId, focusPaymentId, sal
                           fontSize: 11,
                           color: isOverdue ? "#dc2626" : "#d97706",
                           fontWeight: 600,
-                          marginBottom: isAdmin ? 8 : 0,
+                          marginBottom: canMarkPaid ? 8 : 0,
                         }}
                       >
                         {isOverdue ? "🔴 Due date passed: " : "📅 Due: "}
                         {dueDate}
                       </div>
                     )}
-                    {isAdmin && (
+                    {canMarkPaid && (
                       <>
                         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.2)", borderRadius: 8, padding: "7px 10px" }}>
                           <span style={{ fontSize: 13 }}>⚠️</span>

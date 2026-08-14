@@ -33,7 +33,7 @@ export default function ChecklistView() {
     return onSnapshot(collection(db, 'users'), snap => {
       setAdmins(snap.docs
         .map(d => ({ uid: d.id, ...d.data() } as AppUser))
-        .filter(u => u.status === 'approved' && (u.role === 'admin' || u.role === 'super_admin')))
+        .filter(u => u.status === 'approved' && (u.role === 'admin' || u.role === 'super_admin' || u.role === 'sales_manager')))
     })
   }, [])
 

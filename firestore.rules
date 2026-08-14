@@ -11,12 +11,19 @@ rules_version = '2';
 //   (privilege escalation, unauthorised money movement), so that is what this
 //   pass closes.
 //
+// ROLES
+//   super_admin / admin  — implicitly hold every permission
+//   sales_manager        — holds ONLY what users/{uid}.permissions grants
+//   everyone else        — hold none
+//   hasPerm() below mirrors can() in src/auth/permissions.ts. If you add a
+//   permission in one place, add it in the other, or the UI toggle is cosmetic.
+//
 // KNOWN GAPS — deliberate, marked inline as [GAP n]. Read these before deploying.
 //
 // PERFORMANCE NOTE
-//   approved()/isAdmin() each do a get() on users/{uid}, which is a billed read
-//   per rule evaluation. Once Cloud Functions exist, move role/status onto custom
-//   auth claims and read request.auth.token.role instead — free and faster.
+//   approved()/isAdmin()/hasPerm() each do a get() on users/{uid}, which is a
+//   billed read per rule evaluation. Once Cloud Functions exist, move role and
+//   permissions onto custom auth claims and read request.auth.token instead.
 // ─────────────────────────────────────────────────────────────────────────────
 
 service cloud.firestore {
@@ -40,7 +47,6 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    // Any user whose account has been approved by an admin.
     function approved() {
       return userExists() && userData().status == 'approved';
     }
@@ -57,8 +63,18 @@ service cloud.firestore {
       return approved() && userData().role in ['offline_sales', 'online_sales'];
     }
 
+    function isSalesManager() {
+      return approved() && userData().role == 'sales_manager';
+    }
+
     function isMarketing() {
       return approved() && userData().role in ['offline_marketing', 'online_marketing'];
+    }
+
+    // ── Permission check ────────────────────────────────────────────────────
+    function hasPerm(p) {
+      return isAdmin()
+        || (isSalesManager() && userData().get('permissions', {}).get(p, false) == true);
     }
 
     // ── Field-diff helpers ──────────────────────────────────────────────────
@@ -79,20 +95,16 @@ service cloud.firestore {
 
     // ── USERS ───────────────────────────────────────────────────────────────
     // The single most important block in this file: it is what stops any
-    // logged-in employee from making themselves super_admin.
+    // logged-in employee from making themselves super_admin — and what stops a
+    // sales_manager from widening their own permissions.
     match /users/{uid} {
 
-      // Own doc always readable (AuthContext needs it even while pending).
-      // Approved users may read the roster — AdminDashboard and VisitLogger
-      // both list sales users.
       allow read: if isSelf(uid) || approved();
 
       // Signup. Self only, always pending, never a privileged role, and the
       // email must match the verified auth token so it cannot be spoofed.
-      //
       // This intentionally BLOCKS the hardcoded super-admin grant in
-      // SignupPage.tsx:33-39. Bootstrapping a super_admin is a one-time manual
-      // action in the Firebase console, not something a client may self-assign.
+      // SignupPage.tsx — bootstrapping is a manual console action.
       allow create: if isSelf(uid)
         && request.resource.data.status == 'pending'
         && request.resource.data.email == request.auth.token.email
@@ -101,18 +113,32 @@ service cloud.firestore {
              'offline_marketing', 'online_marketing'
            ];
 
-      // Self-service: display name only. Never role, never status.
+      // Self-service: display name only. Never role, status or permissions.
       allow update: if isSelf(uid) && onlyChanged(['name']);
 
-      // Admin: approve / reject / deactivate / change role.
-      //   · a super_admin's doc is untouchable by anyone (matches the UI rule)
+      // Admin: approve / reject / deactivate / change role / tune permissions.
+      //   · a super_admin's doc is untouchable by anyone
       //   · only a super_admin may grant super_admin
       allow update: if isAdmin()
         && resource.data.role != 'super_admin'
-        && onlyChanged(['role', 'status', 'approvedAt', 'approvedBy', 'approvedByName'])
+        && onlyChanged(['role', 'status', 'permissions',
+                        'approvedAt', 'approvedBy', 'approvedByName'])
         && (request.resource.data.role != 'super_admin' || isSuperAdmin());
 
-      // Danger Zone clears users except super admins.
+      // Sales manager with approve_sales_users: may action a PENDING signup
+      // only, only into offline_sales, and never their own account.
+      // 'permissions' is deliberately absent from the allowed key list, so a
+      // manager can never widen anyone's access — including their own.
+      allow update: if hasPerm('approve_sales_users')
+        && !isAdmin()
+        && !isSelf(uid)
+        && resource.data.status == 'pending'
+        && onlyChanged(['role', 'status',
+                        'approvedAt', 'approvedBy', 'approvedByName'])
+        && request.resource.data.status in ['approved', 'rejected']
+        && (request.resource.data.status != 'approved'
+            || request.resource.data.role == 'offline_sales');
+
       allow delete: if isSuperAdmin() && resource.data.role != 'super_admin';
     }
 
@@ -120,8 +146,6 @@ service cloud.firestore {
     match /parties/{partyId} {
       allow read: if approved();
 
-      // Reps add prospects from PartyManager / VisitLogger. New parties must
-      // start as prospects and be attributed to the actual author.
       allow create: if approved()
         && request.resource.data.status == 'prospect'
         && request.resource.data.addedBy == request.auth.uid;
@@ -130,17 +154,15 @@ service cloud.firestore {
       // on a revisit stock update, and inline field edits.
       allow update: if approved();
 
-      // Only admins delete (matches PartyManager's admin-gated delete button).
-      allow delete: if isAdmin();
+      allow delete: if hasPerm('delete_parties');
     }
 
     // ── PRODUCTS ────────────────────────────────────────────────────────────
-    // [GAP 1] seedDefaultProducts() in App.tsx:16 runs on EVERY app load for
-    // EVERY role and will now fail for non-admins with a permission error.
-    // Fix in code: gate the seed behind isAdmin, or drop it entirely.
+    // [GAP 1] seedDefaultProducts() in App.tsx is gated to admins in code —
+    // if you ungate it, non-admins will hit permission errors here.
     match /products/{productId} {
       allow read: if approved();
-      allow write: if isAdmin();
+      allow write: if hasPerm('manage_products');
     }
 
     // ── CONFIG ──────────────────────────────────────────────────────────────
@@ -151,27 +173,24 @@ service cloud.firestore {
 
     match /config/stock {
       allow read: if approved();
-      allow write: if isAdmin();
+      allow write: if hasPerm('edit_stock');
 
-      // [GAP 2] Reps create allocations, and creating one locks company stock
-      // (AllocationManager.tsx:218). So reps must be able to write
-      // productStock.*.locked. Because affectedKeys() only sees top-level keys,
-      // this also lets a rep alter productStock.*.total — rules cannot express
-      // a nested-key restriction.
-      //   Residual risk: a rep could inflate company stock totals.
+      // [GAP 2] Creating an allocation locks company stock, and reps and
+      // managers both create allocations. Because affectedKeys() only sees
+      // top-level keys, this also lets them alter productStock.*.total —
+      // rules cannot express a nested-key restriction.
+      //   Residual risk: stock totals can be inflated by a non-admin.
       //   Proper fix: move stock locking into a Cloud Function, then delete
-      //   this rule so config/stock becomes admin-write-only.
-      // At least carton size and the legacy global pool are protected here.
-      allow update: if isSales() && onlyChanged(['productStock', 'updatedAt']);
+      //   this rule so config/stock is permission-gated only.
+      // Carton size and the legacy global pool stay protected either way.
+      allow update: if (isSales() || isSalesManager())
+        && onlyChanged(['productStock', 'updatedAt']);
     }
 
     // ── ALLOCATIONS (allocations_v2) — the money collection ─────────────────
     match /allocations_v2/{allocId} {
       allow read: if approved();
 
-      // Created by reps (VisitLogger, RevisitLogger) and admins. Must start
-      // pending, be correctly attributed, carry no pre-set payment, and have
-      // internally consistent arithmetic (±1 tolerance for float prices).
       allow create: if approved()
         && request.resource.data.status == 'pending'
         && request.resource.data.createdBy == request.auth.uid
@@ -184,11 +203,17 @@ service cloud.firestore {
         && request.resource.data.totalAmount <=
              request.resource.data.packets * request.resource.data.pricePerPacket + 1;
 
-      // Admins: dispatch, mark paid, edit, cancel.
       allow update: if isAdmin();
 
-      // Non-admins: may edit or cancel their OWN still-pending allocation.
-      // May never dispatch, mark paid, or move money.
+      // Dispatching and cancelling is its own permission…
+      allow update: if hasPerm('dispatch_allocations')
+        && request.resource.data.status in ['sent', 'cancelled'];
+
+      // …and settling is another. A manager can hold one without the other.
+      allow update: if hasPerm('mark_paid')
+        && request.resource.data.status == 'paid';
+
+      // Author may edit or cancel their OWN still-pending allocation.
       allow update: if approved()
         && resource.data.createdBy == request.auth.uid
         && resource.data.status == 'pending'
@@ -200,13 +225,12 @@ service cloud.firestore {
 
       // [GAP 3] COMPATIBILITY RULE — REMOVE WHEN PAYMENTS MOVE SERVER-SIDE.
       //
-      // RevisitLogger.tsx:469-484 has reps apply collected payments FIFO,
-      // writing paidAmount (and status → 'paid') directly onto SENT
-      // allocations. That is a rep writing to the financial ledger.
+      // RevisitLogger.tsx has reps apply collected payments FIFO, writing
+      // paidAmount (and status → 'paid') directly onto SENT allocations.
+      // That is a rep writing to the financial ledger.
       //
-      // This rule is enabled so that deploying these rules does not break a
-      // live feature your team uses daily. It is the largest remaining hole.
-      // Once the payment application is a callable Cloud Function, delete this
+      // Enabled so deploying these rules does not break a live daily feature.
+      // Once payment application is a callable Cloud Function, delete this
       // block — the strict rules above are already correct without it.
       allow update: if isSales()
         && resource.data.status in ['sent', 'overdue']
@@ -221,22 +245,17 @@ service cloud.firestore {
     match /payment_transactions/{txnId} {
       allow read: if approved();
 
-      // A rep may log a collection, but only as pending_approval and only in
-      // their own name. Pre-approving your own payment is denied.
       allow create: if approved()
         && request.resource.data.amount > 0
         && (
-             isAdmin()
+             hasPerm('approve_payments')
              || (request.resource.data.status == 'pending_approval'
                  && request.resource.data.collectedBy == request.auth.uid
                  && !('confirmedAt' in request.resource.data))
            );
 
-      // Approve / reject / confirm receipt / edit amount — admin only.
-      allow update: if isAdmin();
+      allow update: if hasPerm('approve_payments');
 
-      // Reps delete their own not-yet-confirmed txn during the revisit-edit
-      // and visit-delete flows.
       allow delete: if isAdmin()
         || (approved()
             && resource.data.collectedBy == request.auth.uid
@@ -246,14 +265,13 @@ service cloud.firestore {
     // ── VISIT LOGS ──────────────────────────────────────────────────────────
     match /visit_logs/{logId} {
       allow read: if isAdmin()
+        || hasPerm('view_reports')
         || resource.data.salesPersonId == request.auth.uid
         || request.auth.uid in resource.data.get('sharedWith', []);
 
       allow create: if approved()
         && request.resource.data.salesPersonId == request.auth.uid;
 
-      // Owner, an existing share partner, or someone accepting a share request
-      // (that write adds their own uid to sharedWith via arrayUnion).
       allow update: if isAdmin()
         || resource.data.salesPersonId == request.auth.uid
         || request.auth.uid in resource.data.get('sharedWith', [])
@@ -285,7 +303,6 @@ service cloud.firestore {
         && request.resource.data.fromUid == request.auth.uid
         && request.resource.data.status == 'pending';
 
-      // Only the recipient accepts or rejects.
       allow update: if approved()
         && resource.data.toUid == request.auth.uid
         && request.resource.data.status in ['accepted', 'rejected'];
@@ -299,21 +316,20 @@ service cloud.firestore {
       allow create: if approved()
         && request.resource.data.status == 'requested'
         && request.resource.data.requestedBy == request.auth.uid;
-      // Fulfil / partial / cancel is an admin action in the Network tab.
-      allow update, delete: if isAdmin();
+      allow update, delete: if hasPerm('dispatch_allocations');
     }
 
     // ── DISPATCHES & STOCK MOVEMENTS — append-only audit trail ──────────────
     match /dispatches/{id} {
       allow read: if approved();
-      allow create: if isAdmin();
+      allow create: if hasPerm('dispatch_allocations');
       allow update: if false;
       allow delete: if isSuperAdmin();   // Danger Zone only
     }
 
     match /stock_movements/{id} {
       allow read: if approved();
-      allow create: if isAdmin();
+      allow create: if hasPerm('dispatch_allocations');
       allow update: if false;
       allow delete: if isSuperAdmin();
     }
@@ -321,24 +337,28 @@ service cloud.firestore {
     // ── LEGACY CREDITS (written on dispatch, read by nothing) ───────────────
     match /credits/{id} {
       allow read: if approved();
-      allow create: if isAdmin();
+      allow create: if hasPerm('dispatch_allocations');
       allow update: if false;
       allow delete: if isSuperAdmin();
     }
 
     // ── LEAVE ───────────────────────────────────────────────────────────────
     match /leave_records/{id} {
-      allow read: if isAdmin() || resource.data.uid == request.auth.uid;
+      // view_reports is included because SalesReport queries by date range
+      // across the whole team, with no uid filter to satisfy a self-only rule.
+      allow read: if isAdmin()
+        || hasPerm('view_leave')
+        || hasPerm('view_reports')
+        || resource.data.uid == request.auth.uid;
 
-      // Self-request (pending_approval), or admin marking on someone's behalf.
-      allow create: if isAdmin()
+      allow create: if hasPerm('approve_leave')
         || (approved()
             && request.resource.data.uid == request.auth.uid
             && request.resource.data.status == 'pending_approval');
 
       // A user may only move their own ACTIVE leave to unmark_requested.
-      // Approving, rejecting and removing are admin-only transitions.
-      allow update: if isAdmin()
+      // Approving, rejecting and removing are permission-gated.
+      allow update: if hasPerm('approve_leave')
         || (approved()
             && resource.data.uid == request.auth.uid
             && resource.data.status == 'active'
@@ -349,7 +369,7 @@ service cloud.firestore {
 
     match /holidays/{id} {
       allow read: if approved();
-      allow write: if isAdmin();
+      allow write: if hasPerm('approve_leave');
     }
 
     // ── EXPENSES ────────────────────────────────────────────────────────────
@@ -359,15 +379,18 @@ service cloud.firestore {
     }
 
     match /expense_reports/{id} {
-      allow read: if isAdmin() || resource.data.userId == request.auth.uid;
+      allow read: if isAdmin()
+        || hasPerm('view_expenses')
+        || hasPerm('view_reports')
+        || resource.data.userId == request.auth.uid;
 
       allow create: if approved()
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.status == 'draft';
 
       // Owner may edit while draft or rejected — a submitted report is frozen
-      // until an admin clears or rejects it.
-      allow update: if isAdmin()
+      // until someone with clear_expenses clears or rejects it.
+      allow update: if hasPerm('clear_expenses')
         || (approved()
             && resource.data.userId == request.auth.uid
             && resource.data.status in ['draft', 'rejected']);
@@ -376,18 +399,23 @@ service cloud.firestore {
     }
 
     match /expense_entries/{id} {
-      allow read: if isAdmin() || resource.data.userId == request.auth.uid;
+      allow read: if isAdmin()
+        || hasPerm('view_expenses')
+        || hasPerm('view_reports')
+        || resource.data.userId == request.auth.uid;
+
       allow create: if approved()
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.amount >= 0;
+
       allow update, delete: if isAdmin()
         || (approved() && resource.data.userId == request.auth.uid);
     }
 
     // ── ALERTS ──────────────────────────────────────────────────────────────
-    // READ SCOPING: NotificationBell.tsx:17 subscribes to the entire collection
-    // and filters recipients in JavaScript, so per-recipient rules would break
-    // it. To tighten: split into three queries (toUid == me / toRole ==
+    // READ SCOPING: NotificationBell subscribes to the entire collection and
+    // filters recipients in JavaScript, so per-recipient rules would break it.
+    // To tighten: split into three queries (toUid == me / toRole ==
     // 'admin_group' / broadcast) and then restrict here.
     match /alerts/{id} {
       allow read: if approved();
@@ -396,10 +424,10 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // ── WORKSPACE — admin only ──────────────────────────────────────────────
-    match /reminders/{id}        { allow read, write: if isAdmin(); }
-    match /checklist_items/{id}  { allow read, write: if isAdmin(); }
-    match /pinned_notes/{id}     { allow read, write: if isAdmin(); }
+    // ── WORKSPACE ───────────────────────────────────────────────────────────
+    match /reminders/{id}        { allow read, write: if hasPerm('view_workspace'); }
+    match /checklist_items/{id}  { allow read, write: if hasPerm('view_workspace'); }
+    match /pinned_notes/{id}     { allow read, write: if hasPerm('view_workspace'); }
 
     // ── MARKETING ───────────────────────────────────────────────────────────
     match /post_statuses/{id} {
@@ -414,14 +442,12 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // StockManager.tsx:90 still subscribes to this even though nothing writes it.
     match /monthly_requests/{id} {
       allow read: if approved();
       allow write: if isAdmin();
     }
 
     // ── DEFAULT DENY ────────────────────────────────────────────────────────
-    // Any collection not named above is inaccessible.
     match /{document=**} {
       allow read, write: if false;
     }

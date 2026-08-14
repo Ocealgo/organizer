@@ -3,6 +3,7 @@ import { collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, deleteField 
 import { db } from '../../firebase'
 import { Party, PartyType, PartyCategory, Dispatch, UnifiedAllocation, Product } from '../../types'
 import { useAuth } from '../../context/AuthContext'
+import { can } from '../../auth/permissions'
 import { useStockConfig, toDisplay } from '../../hooks/useFirebase'
 import CustomSelect from '../../components/CustomSelect'
 import AllocationManager from './AllocationManager'
@@ -75,7 +76,9 @@ export default function PartyManager({ onBack }: Props) {
   const [showAllocation, setShowAllocation] = useState(false)
   const [partyPage, setPartyPage] = useState(0)
 
-  const isAdmin = appUser?.role === 'super_admin' || appUser?.role === 'admin'
+  const canEditParties = can(appUser, 'edit_parties')
+  const canDeleteParties = can(appUser, 'delete_parties')
+  const canDispatch = can(appUser, 'dispatch_allocations')
   const distributors = parties.filter(p => p.type === 'distributor')
 
   useEffect(() => {
@@ -258,7 +261,7 @@ export default function PartyManager({ onBack }: Props) {
   }
 
   if (tab === 'import') return <CSVImporter onBack={() => setTab('list')} onDone={() => setTab('list')} />
-  if (tab === 'allocations') return <AllocationManager onBack={() => setTab('list')} parties={parties} isAdmin={isAdmin} />
+  if (tab === 'allocations') return <AllocationManager onBack={() => setTab('list')} parties={parties} isAdmin={canDispatch} />
 
 
   const distributorOptions = distributors.map(d => ({ value: d.id!, label: `🚚 ${d.name}` }))
@@ -277,7 +280,7 @@ export default function PartyManager({ onBack }: Props) {
           {([
             { id: 'list', label: '📋 View All' },
             { id: 'add', label: editingId ? '✏️ Editing' : '➕ Add New' },
-            ...(isAdmin ? [{ id: 'import', label: '📥 Import' }] : []),
+            ...(canEditParties ? [{ id: 'import', label: '📥 Import' }] : []),
             { id: 'allocations', label: '📦 Allocations' },
           ] as { id: 'list' | 'add' | 'import' | 'allocations'; label: string }[]).map(t => (
             <button key={t.id} onClick={() => { setTab(t.id); if (t.id !== 'add') { setEditingId(null); setForm(emptyForm) } }}
@@ -506,7 +509,7 @@ export default function PartyManager({ onBack }: Props) {
                         style={{ background: 'rgba(8,145,178,0.1)', border: '1px solid rgba(8,145,178,0.2)', color: '#0891b2', borderRadius: 10, padding: '7px 10px', fontSize: 13, flexShrink: 0 }}>
                         ✏️
                       </button>
-                      {isAdmin && (
+                      {canDeleteParties && (
                         <button onClick={() => handleDelete(p.id!)} disabled={deleting === p.id}
                           style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.2)', color: '#dc2626', borderRadius: 10, padding: '7px 10px', fontSize: 13, opacity: deleting === p.id ? 0.5 : 1, flexShrink: 0 }}>
                           🗑️
@@ -731,7 +734,7 @@ export default function PartyManager({ onBack }: Props) {
                     )}
                   </div>
 
-                  {isAdmin && (
+                  {canEditParties && (
                     <div>
                       <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>Low Stock Alert Threshold</div>
                       <div style={{ fontSize: 11, color: '#6ee7b7', marginBottom: 6 }}>💡 Admin alerted when remaining falls below this</div>

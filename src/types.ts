@@ -1,10 +1,33 @@
-export type UserRole = 'super_admin' | 'admin' | 'offline_sales' | 'online_sales' | 'offline_marketing' | 'online_marketing'
-export type AccountStatus = 'pending' | 'approved' | 'rejected'
+export type UserRole =
+  | 'super_admin' | 'admin' | 'sales_manager'
+  | 'offline_sales' | 'online_sales'
+  | 'offline_marketing' | 'online_marketing'
+
+export type AccountStatus = 'pending' | 'approved' | 'rejected' | 'deactivated'
+
+// ── PERMISSIONS ───────────────────────────────────────────────────────────────
+// admin / super_admin implicitly hold every permission. sales_manager holds only
+// what is explicitly set to true on their user document. Everyone else holds none.
+// Enforced in firestore.rules as well as the UI — see can() in src/auth/permissions.ts
+export type Permission =
+  // screens
+  | 'view_stock' | 'view_parties' | 'view_allocations' | 'view_products'
+  | 'view_credit' | 'view_expenses' | 'view_leave' | 'view_reports'
+  | 'view_workspace' | 'view_users'
+  // actions
+  | 'edit_parties' | 'delete_parties'
+  | 'manage_products' | 'edit_stock'
+  | 'dispatch_allocations' | 'mark_paid' | 'approve_payments'
+  | 'approve_leave' | 'clear_expenses'
+  | 'approve_sales_users'
+
+export type PermissionMap = Partial<Record<Permission, boolean>>
 
 export interface AppUser {
   uid: string; email: string; name: string
   role: UserRole; status: AccountStatus
   createdAt: number; approvedAt?: number; approvedBy?: string
+  permissions?: PermissionMap   // only meaningful for role === 'sales_manager'
 }
 
 export interface CheckIn {

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { signOut } from "firebase/auth";
 import { auth } from "./firebase";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { can, isManagement, ROLE_LABELS } from "./auth/permissions";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import LoginPage from "./pages/auth/LoginPage";
 import SignupPage from "./pages/auth/SignupPage";
@@ -73,7 +74,7 @@ function AppContent() {
     return <LoginPage onSwitch={() => setAuthScreen("signup")} />;
   }
 
-  const status = (appUser as any).status;
+  const status = appUser.status;
   if (status === "pending" || status === "rejected" || status === "deactivated")
     return (
       <div
@@ -136,25 +137,19 @@ function AppContent() {
       </div>
     );
 
-  const isAdmin = appUser.role === "super_admin" || appUser.role === "admin";
+  // sales_manager lands on the AdminDashboard too — what they actually see
+  // inside it is decided per-permission, not per-role.
+  const management = isManagement(appUser);
+  const canViewUsers = can(appUser, "view_users");
   const isSales =
     appUser.role === "offline_sales" || appUser.role === "online_sales";
-
-  const ROLE_LABEL: Record<string, string> = {
-    offline_sales: "🏪 Offline Sales",
-    online_sales: "🌐 Online Sales",
-    offline_marketing: "📣 Offline Marketing",
-    online_marketing: "💻 Online Marketing",
-    admin: "🛡️ Admin",
-    super_admin: "👑 Super Admin",
-  };
 
   if (showUserMgmt)
     return (
       <div style={{ background: t.bg, minHeight: "100vh" }}>
         <TopBar
-          roleLabel={ROLE_LABEL[appUser.role]}
-          isAdmin={isAdmin}
+          roleLabel={ROLE_LABELS[appUser.role]}
+          showUsers={canViewUsers}
           theme={theme}
           onThemeToggle={toggle}
           onUsers={() => setShowUserMgmt(true)}
@@ -167,8 +162,8 @@ function AppContent() {
   return (
     <div style={{ background: t.bg, minHeight: "100vh" }}>
       <TopBar
-        roleLabel={ROLE_LABEL[appUser.role]}
-        isAdmin={isAdmin}
+        roleLabel={ROLE_LABELS[appUser.role]}
+        showUsers={canViewUsers}
         theme={theme}
         onThemeToggle={toggle}
         onUsers={() => setShowUserMgmt(true)}
@@ -177,21 +172,21 @@ function AppContent() {
       {isSales && <SalesView name={appUser.name} />}
       {appUser.role === "offline_marketing" && <MarketingView />}
       {appUser.role === "online_marketing" && <OnlineMarketingView />}
-      {isAdmin && <AdminDashboard />}
+      {management && <AdminDashboard />}
     </div>
   );
 }
 
 function TopBar({
   roleLabel,
-  isAdmin,
+  showUsers,
   theme,
   onThemeToggle,
   onUsers,
   onSignOut,
 }: {
   roleLabel: string;
-  isAdmin: boolean;
+  showUsers: boolean;
   theme: string;
   onThemeToggle: () => void;
   onUsers: () => void;
@@ -260,7 +255,7 @@ function TopBar({
           {theme === "dark" ? "☀️" : "🌙"}
         </button>
         <NotificationBell />
-        {isAdmin && (
+        {showUsers && (
           <button
             onClick={onUsers}
             style={{

@@ -10,6 +10,7 @@ import {
   ExpenseReport, ExpenseEntry, LeaveRecord, AppUser, DailyVisitLog, Holiday,
 } from '../../types'
 import { useAuth } from '../../context/AuthContext'
+import { can } from '../../auth/permissions'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr } from '../../utils/date'
 
@@ -147,7 +148,8 @@ const DEFAULT_CONFIG: ExpenseConfig = { hq: 200, ex: 300, os: 450 }
 // ── Root ──────────────────────────────────────────────────────────────────────
 export default function ExpenseLogger({ onBack, onViewVisitLog, onLogVisit, defaultToDay }: Props) {
   const { appUser } = useAuth()
-  const isAdmin = appUser?.role === 'super_admin' || appUser?.role === 'admin'
+  // Whole-team expense view is permission-gated; everyone else logs their own.
+  const isAdmin = can(appUser, 'view_expenses')
   if (!appUser) return null
   return isAdmin
     ? <AdminView onBack={onBack} appUser={appUser} onViewVisitLog={onViewVisitLog} />
@@ -856,6 +858,10 @@ function AdminView({ onBack, appUser, onViewVisitLog }: { onBack: () => void; ap
   }
 
   const handleClear = async (r: ExpenseReport) => {
+    if (!can(appUser, 'clear_expenses')) {
+      await showAlert('Not allowed', 'You do not have permission to clear expense reports.')
+      return
+    }
     const liveTotal = reportTotal(r.id!)
     if (!await showConfirm('Clear expenses', `Mark ₹${liveTotal.toLocaleString()} expense report for ${r.userName} as cleared and paid?`)) return
     setClearingId(r.id!)
@@ -876,6 +882,10 @@ function AdminView({ onBack, appUser, onViewVisitLog }: { onBack: () => void; ap
   }
 
   const handleReject = async (r: ExpenseReport) => {
+    if (!can(appUser, 'clear_expenses')) {
+      await showAlert('Not allowed', 'You do not have permission to reject expense reports.')
+      return
+    }
     if (!rejectNote.trim()) { await showAlert('Note required', 'Add a reason before rejecting.'); return }
     if (!await showConfirm('Reject report', `Reject ${r.userName}'s expense report? They will be notified.`)) return
     setRejectingId(r.id!)

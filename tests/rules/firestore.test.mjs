@@ -23,7 +23,22 @@ const U = {
   sa: 'super_1',
   pend: 'pending_1',
   off: 'deactivated_1',
+  mgr: 'manager_1',      // sales_manager on the shipped defaults
+  mgrPlus: 'manager_2',  // sales_manager with every permission granted
 }
+
+// Mirrors DEFAULT_SALES_MANAGER_PERMISSIONS in src/auth/permissions.ts
+const MGR_DEFAULT = {
+  view_parties: true, view_allocations: true, view_stock: true, view_products: true,
+  view_credit: true, view_expenses: true, view_leave: true, view_reports: true,
+  view_users: true, view_workspace: false,
+  edit_parties: true, approve_leave: true, approve_sales_users: true,
+  manage_products: false, edit_stock: false,
+  dispatch_allocations: false, mark_paid: false, approve_payments: false,
+  clear_expenses: false, delete_parties: false,
+}
+
+const MGR_FULL = Object.fromEntries(Object.keys(MGR_DEFAULT).map(k => [k, true]))
 
 let env
 
@@ -50,8 +65,11 @@ after(async () => {
 beforeEach(async () => {
   await env.clearFirestore()
   await seed(async (db) => {
-    const mk = (uid, role, status, email) =>
-      setDoc(doc(db, 'users', uid), { email, name: uid, role, status, createdAt: 1 })
+    const mk = (uid, role, status, email, permissions) =>
+      setDoc(doc(db, 'users', uid), {
+        email, name: uid, role, status, createdAt: 1,
+        ...(permissions ? { permissions } : {}),
+      })
     await Promise.all([
       mk(U.rep, 'offline_sales', 'approved', 'rep@ocealgo.test'),
       mk(U.rep2, 'offline_sales', 'approved', 'rep2@ocealgo.test'),
@@ -59,6 +77,8 @@ beforeEach(async () => {
       mk(U.sa, 'super_admin', 'approved', 'sa@ocealgo.test'),
       mk(U.pend, 'offline_sales', 'pending', 'pend@ocealgo.test'),
       mk(U.off, 'offline_sales', 'deactivated', 'off@ocealgo.test'),
+      mk(U.mgr, 'sales_manager', 'approved', 'mgr@ocealgo.test', MGR_DEFAULT),
+      mk(U.mgrPlus, 'sales_manager', 'approved', 'mgr2@ocealgo.test', MGR_FULL),
     ])
   })
 })
@@ -501,6 +521,165 @@ describe('expenses', () => {
       status: 'submitted', totalAmount: 500, createdAt: 1,
     }))
     await assertFails(updateDoc(doc(asUser(U.rep), 'expense_reports', 'r1'), { status: 'cleared' }))
+  })
+})
+
+describe('sales manager — permission enforcement', () => {
+  it('a manager CANNOT widen their own permissions', async () => {
+    // The whole feature rests on this one.
+    await assertFails(updateDoc(doc(asUser(U.mgr), 'users', U.mgr), {
+      permissions: { ...MGR_DEFAULT, dispatch_allocations: true },
+    }))
+  })
+
+  it('a manager CANNOT change their own role', async () => {
+    await assertFails(updateDoc(doc(asUser(U.mgr), 'users', U.mgr), { role: 'admin' }))
+  })
+
+  it('a manager CANNOT edit another manager\'s permissions', async () => {
+    await assertFails(updateDoc(doc(asUser(U.mgr), 'users', U.mgrPlus), {
+      permissions: { ...MGR_FULL },
+    }))
+  })
+
+  it('an admin CAN tune a manager\'s permissions', async () => {
+    await assertSucceeds(updateDoc(doc(asUser(U.admin), 'users', U.mgr), {
+      permissions: { ...MGR_DEFAULT, mark_paid: true },
+    }))
+  })
+
+  it('a manager on defaults CAN read parties but CANNOT delete one', async () => {
+    await seed((db) => setDoc(doc(db, 'parties', 'p1'), party()))
+    await assertSucceeds(getDoc(doc(asUser(U.mgr), 'parties', 'p1')))
+    await assertFails(deleteDoc(doc(asUser(U.mgr), 'parties', 'p1')))
+  })
+
+  it('a manager granted delete_parties CAN delete a party', async () => {
+    await seed((db) => setDoc(doc(db, 'parties', 'p1'), party()))
+    await assertSucceeds(deleteDoc(doc(asUser(U.mgrPlus), 'parties', 'p1')))
+  })
+
+  it('a manager on defaults CANNOT dispatch an allocation', async () => {
+    await seed((db) => setDoc(doc(db, 'allocations_v2', 'a1'), alloc()))
+    await assertFails(updateDoc(doc(asUser(U.mgr), 'allocations_v2', 'a1'),
+      { status: 'sent', sentAt: 9 }))
+  })
+
+  it('a manager granted dispatch_allocations CAN dispatch', async () => {
+    await seed((db) => setDoc(doc(db, 'allocations_v2', 'a1'), alloc()))
+    await assertSucceeds(updateDoc(doc(asUser(U.mgrPlus), 'allocations_v2', 'a1'),
+      { status: 'sent', sentAt: 9 }))
+  })
+
+  it('a manager on defaults CANNOT mark an allocation paid', async () => {
+    await seed((db) => setDoc(doc(db, 'allocations_v2', 'a1'),
+      alloc({ status: 'sent', sentAt: 5 })))
+    await assertFails(updateDoc(doc(asUser(U.mgr), 'allocations_v2', 'a1'),
+      { status: 'paid', paidAt: 9, paidAmount: 450 }))
+  })
+
+  it('a manager on defaults CANNOT confirm a payment', async () => {
+    await seed((db) => setDoc(doc(db, 'payment_transactions', 't1'), {
+      partyId: 'p1', partyName: 'Test Shop', partyType: 'retailer',
+      amount: 500, paymentMethod: 'cash', collectionType: 'collected_by_salesperson',
+      collectedBy: U.rep, collectedByName: 'rep_1',
+      status: 'pending_approval', date: '2026-08-01', createdAt: 1,
+    }))
+    await assertFails(updateDoc(doc(asUser(U.mgr), 'payment_transactions', 't1'),
+      { status: 'approved', confirmedAt: 9 }))
+  })
+
+  it('a manager on defaults CANNOT create or edit products', async () => {
+    await assertFails(setDoc(doc(asUser(U.mgr), 'products', 'prod_new'),
+      { name: 'X', unitLabel: 'packets', defaultPricePerUnit: 1, unitsPerCarton: 12, active: true }))
+  })
+
+  it('a manager on defaults CANNOT edit company stock', async () => {
+    await seed((db) => setDoc(doc(db, 'config', 'stock'),
+      { total: 0, locked: 0, packetsPerCarton: 12, productStock: {}, updatedAt: 1 }))
+    await assertFails(updateDoc(doc(asUser(U.mgr), 'config', 'stock'), { packetsPerCarton: 99 }))
+  })
+
+  it('a manager without view_workspace CANNOT read reminders', async () => {
+    await seed((db) => setDoc(doc(db, 'reminders', 'rm1'),
+      { title: 'Private', date: '2026-08-01', category: 'Finance', type: 'manual', done: false, createdAt: 1 }))
+    await assertFails(getDoc(doc(asUser(U.mgr), 'reminders', 'rm1')))
+  })
+
+  it('a manager granted view_workspace CAN read reminders', async () => {
+    await seed((db) => setDoc(doc(db, 'reminders', 'rm1'),
+      { title: 'Private', date: '2026-08-01', category: 'Finance', type: 'manual', done: false, createdAt: 1 }))
+    await assertSucceeds(getDoc(doc(asUser(U.mgrPlus), 'reminders', 'rm1')))
+  })
+
+  it('a manager with view_reports CAN read any rep\'s visit log', async () => {
+    await seed((db) => setDoc(doc(db, 'visit_logs', 'l1'), {
+      salesPersonId: U.rep, salesPersonName: 'rep_1', date: '2026-08-01',
+      visits: [], endOfDayNote: '', totalVisited: 0, createdAt: 1, updatedAt: 1,
+    }))
+    await assertSucceeds(getDoc(doc(asUser(U.mgr), 'visit_logs', 'l1')))
+  })
+
+  it('a manager with view_reports CAN read team leave and expenses', async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, 'leave_records', 'lv1'), {
+        uid: U.rep, name: 'rep_1', role: 'offline_sales', date: '2026-08-01',
+        leaveType: 'full_day', status: 'active', markedAt: 1, markedBy: U.rep, markedByName: 'rep_1',
+      })
+      await setDoc(doc(db, 'expense_entries', 'e1'), {
+        reportId: 'r1', userId: U.rep, date: '2026-08-01',
+        type: 'variable', category: 'bus_fare', amount: 100, createdAt: 1,
+      })
+    })
+    await assertSucceeds(getDoc(doc(asUser(U.mgr), 'leave_records', 'lv1')))
+    await assertSucceeds(getDoc(doc(asUser(U.mgr), 'expense_entries', 'e1')))
+  })
+})
+
+describe('sales manager — approving signups', () => {
+  it('CAN approve a pending signup into offline_sales', async () => {
+    await assertSucceeds(updateDoc(doc(asUser(U.mgr), 'users', U.pend), {
+      status: 'approved', role: 'offline_sales',
+      approvedAt: 2, approvedBy: U.mgr, approvedByName: 'manager_1',
+    }))
+  })
+
+  it('CAN reject a pending signup', async () => {
+    await assertSucceeds(updateDoc(doc(asUser(U.mgr), 'users', U.pend), { status: 'rejected' }))
+  })
+
+  it('CANNOT approve a signup into admin', async () => {
+    await assertFails(updateDoc(doc(asUser(U.mgr), 'users', U.pend), {
+      status: 'approved', role: 'admin',
+    }))
+  })
+
+  it('CANNOT approve a signup into sales_manager', async () => {
+    await assertFails(updateDoc(doc(asUser(U.mgr), 'users', U.pend), {
+      status: 'approved', role: 'sales_manager',
+    }))
+  })
+
+  it('CANNOT grant permissions while approving', async () => {
+    await assertFails(updateDoc(doc(asUser(U.mgr), 'users', U.pend), {
+      status: 'approved', role: 'offline_sales', permissions: MGR_FULL,
+    }))
+  })
+
+  it('CANNOT change an already-approved user', async () => {
+    await assertFails(updateDoc(doc(asUser(U.mgr), 'users', U.rep), {
+      status: 'deactivated',
+    }))
+  })
+
+  it('CANNOT deactivate anyone', async () => {
+    await assertFails(updateDoc(doc(asUser(U.mgr), 'users', U.rep2), { status: 'deactivated' }))
+  })
+
+  it('a rep with no permissions CANNOT approve a signup', async () => {
+    await assertFails(updateDoc(doc(asUser(U.rep), 'users', U.pend), {
+      status: 'approved', role: 'offline_sales',
+    }))
   })
 })
 

@@ -3,6 +3,7 @@ import { collection, onSnapshot, updateDoc, doc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { Alert } from '../types'
 import { useAuth } from '../context/AuthContext'
+import { isManagement } from '../auth/permissions'
 
 export default function NotificationBell() {
   const { appUser } = useAuth()
@@ -10,7 +11,7 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
-  const isAdmin = appUser?.role === 'admin' || appUser?.role === 'super_admin'
+  const isAdmin = isManagement(appUser)
 
   useEffect(() => {
     // No orderBy — sort client-side to avoid index requirement
