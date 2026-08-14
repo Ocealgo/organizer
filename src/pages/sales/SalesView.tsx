@@ -18,13 +18,14 @@ import { localDateStr, localMonthStr } from '../../utils/date'
 import { Eyebrow, StatGrid, StatCard, RowGroup, ListRow, EmptyState, GhostButton } from '../../components/ui'
 import { useDutySession } from '../../hooks/useDutySession'
 import DutyScreen from './DutyScreen'
+import OutletVisitScreen from './OutletVisitScreen'
 
 interface Props { name: string }
 
 const todayStr = () => localDateStr()
 const currentMonth = () => localMonthStr()
 
-type SubScreen = 'home' | 'duty' | 'visits' | 'parties' | 'stock' | 'expenses' | 'credits' | 'allocations' | 'history' | 'leaves'
+type SubScreen = 'home' | 'duty' | 'outlet' | 'visits' | 'parties' | 'stock' | 'expenses' | 'credits' | 'allocations' | 'history' | 'leaves'
 
 export default function SalesView({ name }: Props) {
   const { appUser } = useAuth()
@@ -151,6 +152,7 @@ export default function SalesView({ name }: Props) {
 
   // Route to sub-screens — hooks are above so this is safe
   if (screen === 'duty' && appUser) return <DutyScreen appUser={appUser} session={dutySession} onBack={() => setScreen('home')} />
+  if (screen === 'outlet' && appUser && dutySession) return <OutletVisitScreen appUser={appUser} session={dutySession} onBack={() => setScreen('home')} />
   if (screen === 'visits')      return <VisitLogger onBack={() => { setVisitInitialDate(undefined); setScreen('home') }} initialDate={visitInitialDate} onViewAllocation={(id) => { setHighlightAllocationId(id); setScreen('allocations') }} onViewPayment={(partyId, paymentId) => { setDeepLinkPaymentPartyId(partyId); setDeepLinkPaymentId(paymentId); setCreditReturnScreen('visits'); setScreen('credits') }} />
   if (screen === 'parties')     return <PartyManager onBack={() => setScreen('home')} />
   if (screen === 'stock')       return <StockManager onBack={() => setScreen('home')} />
@@ -268,7 +270,7 @@ export default function SalesView({ name }: Props) {
                       : 'Record shop visits and what came of them'}
               value={isOnFullLeave || !isOnDuty ? undefined : `${visitsToday} today`}
               disabled={isOnFullLeave || !isOnDuty}
-              onClick={() => setScreen('visits')}
+              onClick={() => setScreen('outlet')}
             />
             <ListRow
               title="Add an expense"
