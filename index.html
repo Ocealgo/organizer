@@ -29,6 +29,10 @@
         .oc-modules, .oc-stats { grid-template-columns: 1fr; }
       }
 
+      /* A list sitting directly under a tab strip: the strip already draws the
+         opening rule, so the first row must not draw its own. */
+      .oc-list-flush > :first-child { border-top: none !important; }
+
       /* Header responsive switch — the nav never wraps or overflows. */
       .oc-sm-only { display: none; }
       @media (max-width: 599px) {

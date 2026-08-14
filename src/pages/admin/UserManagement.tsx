@@ -126,7 +126,7 @@ export default function UserManagement({ onBack }: Props) {
             <EmptyState title="Nobody is waiting"
               body="New signups appear here for you to approve or turn down." />
           ) : (
-            <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+            <div className="oc-list-flush" style={{ borderBottom: `0.5px solid ${t.border}` }}>
               {pending.map(u => (
                 <PendingCard key={u.uid} user={u} updating={updating} roles={assignableRoles}
                   onApprove={approveUser} onReject={rejectUser} />
@@ -140,7 +140,7 @@ export default function UserManagement({ onBack }: Props) {
             <EmptyState title="No active accounts yet"
               body="Once you approve a signup, the account shows up here." />
           ) : (
-            <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+            <div className="oc-list-flush" style={{ borderBottom: `0.5px solid ${t.border}` }}>
               {active.map(u => (
                 <UserCard key={u.uid} user={u} updating={updating}
                   currentUser={appUser!}
@@ -159,7 +159,7 @@ export default function UserManagement({ onBack }: Props) {
             <EmptyState title="Nobody has been deactivated"
               body="Accounts you switch off are kept here so you can bring them back." />
           ) : (
-            <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+            <div className="oc-list-flush" style={{ borderBottom: `0.5px solid ${t.border}` }}>
               {deactivated.map(u => (
                 <DeactivatedCard key={u.uid} user={u} updating={updating}
                   roles={assignableRoles} canReactivate={viewerIsAdmin}
