@@ -2,11 +2,14 @@ import { useState, useEffect, useMemo, CSSProperties } from 'react'
 import * as XLSX from 'xlsx'
 import { collection, onSnapshot, query, where } from 'firebase/firestore'
 import { db } from '../../firebase'
-import { AppUser, Holiday, LeaveRecord } from '../../types'
+import {
+  AppUser, Holiday, LeaveRecord,
+  VISIT_OUTCOME_LABEL, VisitOutcomeCategory,
+} from '../../types'
 import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
-import { PageHeader, PrimaryButton, GhostButton, Eyebrow, EmptyState } from '../../components/ui'
+import { PageHeader, PrimaryButton, Eyebrow, EmptyState } from '../../components/ui'
 import { localDateStr, localMonthStr } from '../../utils/date'
 
 interface Props { onBack: () => void }
@@ -61,7 +64,9 @@ interface PersonStats {
   notInterested: number
   followUp: number
   newParties: number
-  revisits: number
+  /** Sum of outlet visit durations, and how many visits were actually timed. */
+  visitMinutes: number
+  timedVisits: number
   orders: number
   orderValue: number
   payments: number
@@ -75,7 +80,7 @@ const EMPTY = (uid: string, name: string): PersonStats => ({
   uid, name,
   daysLogged: 0, visits: 0, uniqueParties: 0,
   interested: 0, notInterested: 0, followUp: 0,
-  newParties: 0, revisits: 0,
+  newParties: 0, visitMinutes: 0, timedVisits: 0,
   orders: 0, orderValue: 0,
   payments: 0, paymentValue: 0,
   expenses: 0, fullDayLeave: 0, halfDayLeave: 0,
@@ -103,6 +108,10 @@ export default function SalesReport({ onBack }: Props) {
   // ── data ───────────────────────────────────────────────────────────────────
   const [salesUsers, setSalesUsers] = useState<AppUser[]>([])
   const [visitLogs, setVisitLogs] = useState<any[]>([])
+  // The field app writes here; visit_logs is the older flow. Both are counted
+  // so nothing silently disappears while the two coexist.
+  const [outletVisits, setOutletVisits] = useState<any[]>([])
+  const [newParties, setNewParties] = useState<any[]>([])
   const [revisitLogs, setRevisitLogs] = useState<any[]>([])
   const [allocations, setAllocations] = useState<any[]>([])
   const [payments, setPayments] = useState<any[]>([])
@@ -137,7 +146,13 @@ export default function SalesReport({ onBack }: Props) {
 
     const unsubs = [
       byDate('visit_logs', setVisitLogs),
+      byDate('outlet_visits', setOutletVisits),
       byDate('revisit_logs', setRevisitLogs),
+      onSnapshot(
+        query(collection(db, 'parties'),
+          where('createdAt', '>=', fromMs), where('createdAt', '<=', toMs)),
+        snap => setNewParties(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      ),
       byDate('payment_transactions', setPayments),
       byDate('expense_entries', setExpenses),
       byDate('leave_records', v => setLeaves(v as LeaveRecord[])),
@@ -157,21 +172,44 @@ export default function SalesReport({ onBack }: Props) {
     wanted.forEach(u => byUid.set(u.uid, EMPTY(u.uid, u.name)))
 
     const partySets = new Map<string, Set<string>>()
-    wanted.forEach(u => partySets.set(u.uid, new Set()))
+    const daySets = new Map<string, Set<string>>()
+    wanted.forEach(u => { partySets.set(u.uid, new Set()); daySets.set(u.uid, new Set()) })
 
+    // Older flow — one document per person per day, visits in an array.
     visitLogs.forEach(log => {
       const s = byUid.get(log.salesPersonId)
       if (!s) return
-      if (!log.isNoEntry && (log.visits || []).length > 0) s.daysLogged++
+      if (!log.isNoEntry && (log.visits || []).length > 0) daySets.get(log.salesPersonId)!.add(log.date)
       ;(log.visits || []).forEach((v: any) => {
         s.visits++
         partySets.get(log.salesPersonId)!.add(v.partyId)
         if (v.outcome === 'interested') s.interested++
         else if (v.outcome === 'not_interested') s.notInterested++
         else if (v.outcome === 'follow_up') s.followUp++
-        if (v.isNew) s.newParties++
-        if (v.isRevisit) s.revisits++
       })
+    })
+
+    // Field app — one document per outlet visit, with the structured outcome.
+    // Mapping onto the older three-way split: a booked order is interest, the
+    // four no-order categories are not, and an institutional outcome (trial
+    // requested, committee review, tender) is a follow-up rather than a refusal.
+    outletVisits.forEach(v => {
+      const s = byUid.get(v.uid)
+      if (!s) return
+      s.visits++
+      partySets.get(v.uid)!.add(v.partyId)
+      daySets.get(v.uid)!.add(v.date)
+      if (v.remarksCategory === 'order_booked') s.interested++
+      else if (v.remarksCategory === 'institutional') s.followUp++
+      else if (v.remarksCategory) s.notInterested++
+      if (v.durationMinutes) { s.visitMinutes += v.durationMinutes; s.timedVisits++ }
+    })
+
+    // Counted from the parties themselves rather than a flag on a visit, so it
+    // stays correct whichever flow added them.
+    newParties.forEach(p => {
+      const s = byUid.get(p.addedBy)
+      if (s) s.newParties++
     })
 
     allocations.forEach(a => {
@@ -201,7 +239,11 @@ export default function SalesReport({ onBack }: Props) {
       else s.halfDayLeave++
     })
 
-    byUid.forEach((s, uid) => { s.uniqueParties = partySets.get(uid)?.size ?? 0 })
+    byUid.forEach((s, uid) => {
+      s.uniqueParties = partySets.get(uid)?.size ?? 0
+      // A day counts once even if the person used both flows on it.
+      s.daysLogged = daySets.get(uid)?.size ?? 0
+    })
 
     const holidaySet = new Set(holidays.map(h => h.date))
     const working = eachDay(from, to).filter(d => {
@@ -218,7 +260,8 @@ export default function SalesReport({ onBack }: Props) {
       notInterested: acc.notInterested + s.notInterested,
       followUp: acc.followUp + s.followUp,
       newParties: acc.newParties + s.newParties,
-      revisits: acc.revisits + s.revisits,
+      visitMinutes: acc.visitMinutes + s.visitMinutes,
+      timedVisits: acc.timedVisits + s.timedVisits,
       orders: acc.orders + s.orders,
       orderValue: acc.orderValue + s.orderValue,
       payments: acc.payments + s.payments,
@@ -252,7 +295,7 @@ export default function SalesReport({ onBack }: Props) {
     { label: 'Follow up', get: s => s.followUp },
     { label: 'Conversion %', get: s => s.visits > 0 ? +((s.interested / s.visits) * 100).toFixed(1) : 0 },
     { label: 'New parties', get: s => s.newParties },
-    { label: 'Revisits', get: s => s.revisits },
+    { label: 'Avg minutes in outlet', get: s => s.timedVisits > 0 ? Math.round(s.visitMinutes / s.timedVisits) : 0 },
     { label: 'Orders', get: s => s.orders },
     { label: 'Order value', get: s => s.orderValue, money: true },
     { label: 'Payments', get: s => s.payments },
@@ -309,12 +352,25 @@ export default function SalesReport({ onBack }: Props) {
           'Sales Person': log.salesPersonName,
           Party: v.partyName,
           Outcome: v.outcome ?? (v.isRevisit ? 'revisit' : ''),
-          New: v.isNew ? 'Yes' : '',
+          Minutes: '',
           Reason: v.notInterestedReason === 'Other' ? (v.otherReason ?? '') : (v.notInterestedReason ?? ''),
-          Notes: v.notes ?? '',
+          Remarks: v.notes ?? '',
         })
       })
     })
+    outletVisits.forEach((v: any) => {
+      if (scope !== 'all' && v.uid !== scope) return
+      detail.push({
+        Date: v.date,
+        'Sales Person': v.name,
+        Party: v.partyName,
+        Outcome: v.remarksCategory ? VISIT_OUTCOME_LABEL[v.remarksCategory as VisitOutcomeCategory] : 'open',
+        Minutes: v.durationMinutes ?? '',
+        Reason: v.remarksReason ?? '',
+        Remarks: v.remarksText ?? '',
+      })
+    })
+    detail.sort((a, b) => String(a.Date).localeCompare(String(b.Date)))
     const detailWs = XLSX.utils.json_to_sheet(
       detail.length ? detail : [{ Date: '', 'Sales Person': '', Party: 'No visits in range' }],
     )
@@ -400,14 +456,9 @@ export default function SalesReport({ onBack }: Props) {
             />
           </div>
 
-          <div style={{ display: 'flex', gap: 8 }}>
-            <PrimaryButton onClick={exportExcel} disabled={loading} style={{ flex: 2 }}>
-              Download Excel
-            </PrimaryButton>
-            <GhostButton onClick={() => window.print()} disabled={loading} style={{ flex: 1 }}>
-              Print / PDF
-            </GhostButton>
-          </div>
+          <PrimaryButton onClick={exportExcel} disabled={loading} style={{ width: '100%' }}>
+            Download Excel
+          </PrimaryButton>
         </div>
 
         {loading ? (
