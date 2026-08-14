@@ -883,6 +883,47 @@ describe('field app — outlet visits', () => {
   })
 })
 
+describe('stock ledger', () => {
+  const line = (uid, over = {}) => ({
+    partyId: 'p1', partyName: 'Test Shop',
+    productId: 'prod1', productName: 'Baby Wet Wipes',
+    date: '2026-08-01', at: 1000,
+    delta: -12, balanceAfter: 88, reason: 'sale',
+    refType: 'revisit', byUid: uid, byName: uid, createdAt: 1000,
+    ...over,
+  })
+
+  it('an approved user CAN append a ledger line in their own name', async () => {
+    await assertSucceeds(setDoc(doc(asUser(U.rep), 'stock_ledger', 'l1'), line(U.rep)))
+  })
+
+  it('a ledger line CANNOT be attributed to someone else', async () => {
+    await assertFails(setDoc(doc(asUser(U.rep), 'stock_ledger', 'l1'), line(U.rep2)))
+  })
+
+  it('a line without a numeric delta is rejected', async () => {
+    await assertFails(setDoc(doc(asUser(U.rep), 'stock_ledger', 'l1'),
+      line(U.rep, { delta: 'twelve' })))
+  })
+
+  it('the ledger is append-only — nobody can edit a line, not even an admin', async () => {
+    await seed((db) => setDoc(doc(db, 'stock_ledger', 'l1'), line(U.rep)))
+    await assertFails(updateDoc(doc(asUser(U.rep), 'stock_ledger', 'l1'), { delta: 0 }))
+    await assertFails(updateDoc(doc(asUser(U.admin), 'stock_ledger', 'l1'), { delta: 0 }))
+  })
+
+  it('only a super admin can delete a line', async () => {
+    await seed((db) => setDoc(doc(db, 'stock_ledger', 'l1'), line(U.rep)))
+    await assertFails(deleteDoc(doc(asUser(U.admin), 'stock_ledger', 'l1')))
+    await assertSucceeds(deleteDoc(doc(asUser(U.sa), 'stock_ledger', 'l1')))
+  })
+
+  it('a manager CAN read the ledger — reports are built on it', async () => {
+    await seed((db) => setDoc(doc(db, 'stock_ledger', 'l1'), line(U.rep)))
+    await assertSucceeds(getDoc(doc(asUser(U.mgr), 'stock_ledger', 'l1')))
+  })
+})
+
 describe('field app — routes', () => {
   const route = { name: 'Kochi North', outletIds: ['p1'], assignedTo: ['rep_1'], active: true, createdBy: 'admin_1', createdByName: 'admin_1', createdAt: 1 }
 

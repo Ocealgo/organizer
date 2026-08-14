@@ -489,6 +489,20 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ── STOCK LEDGER ────────────────────────────────────────────────────────
+    // Append-only by design. A ledger you can edit is not a ledger — a
+    // correction is another line, not a rewrite of an old one.
+    match /stock_ledger/{id} {
+      allow read: if approved();
+      allow create: if approved()
+        && request.resource.data.byUid == request.auth.uid
+        && request.resource.data.delta is number
+        && request.resource.data.partyId is string
+        && request.resource.data.productId is string;
+      allow update: if false;
+      allow delete: if isSuperAdmin();
+    }
+
     // ── ROUTES / BEATS ──────────────────────────────────────────────────────
     match /sales_routes/{id} {
       allow read: if approved();

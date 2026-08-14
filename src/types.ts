@@ -887,3 +887,55 @@ export function validateVisitForPunchOut(v: Partial<OutletVisit>): string | null
     return `Remarks must be at least ${MIN_REMARKS_LENGTH} characters describing the conversation.`
   return null
 }
+
+// ── STOCK LEDGER ─────────────────────────────────────────────────────────────
+/**
+ * Why a party's stock changed.
+ *
+ * `parties.stock` is a live counter with no memory, which makes "what did they
+ * hold on the 1st" unanswerable. Every movement writes a line here instead, so
+ * opening and closing balances for any period are read off the ledger rather
+ * than inferred backwards from today — inference breaks the moment anyone
+ * records a manual correction.
+ */
+export type StockMoveReason =
+  | 'dispatch_in'    // company → this party
+  | 'dispatch_out'   // this distributor → one of their retailers
+  | 'indent_in'      // retailer received against an indent
+  | 'indent_out'     // distributor sent against an indent
+  | 'sale'           // sold off the shelf, seen on a revisit
+  | 'adjustment'     // manual correction of the counted balance
+
+export const STOCK_MOVE_LABEL: Record<StockMoveReason, string> = {
+  dispatch_in: 'Received from Ocealgo',
+  dispatch_out: 'Sent to a retailer',
+  indent_in: 'Received against an indent',
+  indent_out: 'Sent against an indent',
+  sale: 'Sold',
+  adjustment: 'Stock correction',
+}
+
+/** Movements that count as primary sales — company into the trade. */
+export const PRIMARY_REASONS: StockMoveReason[] = ['dispatch_in']
+/** Movements that count as secondary — out of a distributor, onward. */
+export const SECONDARY_REASONS: StockMoveReason[] = ['dispatch_out', 'indent_out', 'sale']
+
+export interface StockLedgerEntry {
+  id?: string
+  partyId: string
+  partyName: string
+  productId: string
+  productName: string
+  date: string            // YYYY-MM-DD, for period queries
+  at: number
+  /** Signed: positive into the party, negative out of it. The source of truth. */
+  delta: number
+  /** Best effort, written where the balance was already known. Audit aid only. */
+  balanceAfter?: number
+  reason: StockMoveReason
+  refType?: 'allocation' | 'indent' | 'revisit'
+  refId?: string
+  byUid: string
+  byName: string
+  createdAt: number
+}

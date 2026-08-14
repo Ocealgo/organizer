@@ -25,6 +25,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { useConfirm } from "../../hooks/useConfirm";
 import { localDateStr, localDateOffset } from "../../utils/date";
+import { recordStockMoves } from "../../data/stockLedger";
 
 interface EditMode {
   revisitLogId: string;
@@ -287,6 +288,16 @@ export default function RevisitLogger({
     }
 
     if (stockOpening === 0) {
+      // A counted balance rather than a movement — recorded as a correction so
+      // the ledger still adds up to what the party actually holds.
+      await recordStockMoves([{
+        partyId: party.id!, partyName: party.name,
+        productId: stockProductId, productName,
+        delta: bal - stockOpening, balanceAfter: bal,
+        reason: 'adjustment', refType: 'revisit',
+        byUid: appUser!.uid, byName: appUser!.name,
+        date: logDate || localDateStr(),
+      }])
       await updateDoc(doc(db, "parties", party.id!), {
         [`stock.${stockProductId}`]: bal,
       });
@@ -302,6 +313,15 @@ export default function RevisitLogger({
         aiRead: false,
       } as StockUpdateAction);
     } else {
+      // Units gone off the shelf since the last visit — secondary sales.
+      await recordStockMoves([{
+        partyId: party.id!, partyName: party.name,
+        productId: stockProductId, productName,
+        delta: -stockSold, balanceAfter: stockBalance,
+        reason: 'sale', refType: 'revisit',
+        byUid: appUser!.uid, byName: appUser!.name,
+        date: logDate || localDateStr(),
+      }])
       await updateDoc(doc(db, "parties", party.id!), {
         [`stock.${stockProductId}`]: increment(-stockSold),
       });

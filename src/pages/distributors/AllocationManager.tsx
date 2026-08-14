@@ -9,6 +9,7 @@ import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr, localMonthStr, localDateOffset } from '../../utils/date'
+import { ledgerInTransaction } from '../../data/stockLedger'
 
 interface Props { onBack: () => void; parties: Party[]; isAdmin?: boolean; highlightId?: string; salesRepOnly?: boolean }
 
@@ -252,6 +253,20 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
         tx.update(distRef, { [`stock.${indent.productId}`]: increment(-qty) })
         tx.update(retailerRef, { [`stock.${indent.productId}`]: increment(qty) })
         tx.update(indentRef, { fulfilledPackets: qty, status: 'fulfilled' as IndentStatus, fulfilledAt: Date.now() })
+
+        ledgerInTransaction(tx, {
+          partyId: indent.distributorId, partyName: indent.distributorName,
+          productId: indent.productId, productName: indent.productName,
+          delta: -qty, balanceAfter: currentStock - qty,
+          reason: 'indent_out', refType: 'indent', refId: indent.id,
+          byUid: appUser!.uid, byName: appUser!.name,
+        })
+        ledgerInTransaction(tx, {
+          partyId: indent.retailerId, partyName: indent.retailerName,
+          productId: indent.productId, productName: indent.productName,
+          delta: qty, reason: 'indent_in', refType: 'indent', refId: indent.id,
+          byUid: appUser!.uid, byName: appUser!.name,
+        })
       })
       await addDoc(collection(db, 'stock_movements'), {
         fromId: indent.distributorId, fromName: indent.distributorName,
@@ -371,6 +386,15 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
             })
           }
           tx.update(partyRef, { [`stock.${a.productId}`]: increment(a.packets) })
+
+          // Ledger line rides in the same transaction as the stock change.
+          ledgerInTransaction(tx, {
+            partyId: a.partyId, partyName: a.partyName,
+            productId: a.productId, productName: a.productName || a.productId,
+            delta: a.packets, reason: 'dispatch_in',
+            refType: 'allocation', refId: a.id,
+            byUid: appUser!.uid, byName: appUser!.name, date: sentDate,
+          })
         } else {
           // Distributor → retailer
           const distRef = doc(db, 'parties', a.fromId)
@@ -385,6 +409,21 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
           })
           tx.update(distRef, { [`stock.${a.productId}`]: increment(-a.packets) })
           tx.update(partyRef, { [`stock.${a.productId}`]: increment(a.packets) })
+
+          ledgerInTransaction(tx, {
+            partyId: a.fromId, partyName: a.fromName || 'Distributor',
+            productId: a.productId, productName: a.productName || a.productId,
+            delta: -a.packets, balanceAfter: distStock - a.packets,
+            reason: 'dispatch_out', refType: 'allocation', refId: a.id,
+            byUid: appUser!.uid, byName: appUser!.name, date: sentDate,
+          })
+          ledgerInTransaction(tx, {
+            partyId: a.partyId, partyName: a.partyName,
+            productId: a.productId, productName: a.productName || a.productId,
+            delta: a.packets, reason: 'dispatch_in',
+            refType: 'allocation', refId: a.id,
+            byUid: appUser!.uid, byName: appUser!.name, date: sentDate,
+          })
         }
       })
 
