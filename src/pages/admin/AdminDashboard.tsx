@@ -10,6 +10,8 @@ import {
   setDoc,
   getDocs,
   writeBatch,
+  query,
+  where,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { usePostStatuses, useStockConfig } from "../../hooks/useFirebase";
@@ -22,6 +24,7 @@ import {
 import { CheckIn, AppUser, Party, LeaveRecord, Permission, Product } from "../../types";
 import { can, isAdminRole } from "../../auth/permissions";
 import SalesReport from "../reports/SalesReport";
+import FieldReport from "./FieldReport";
 import { Eyebrow, StatGrid, StatCard, EmptyState, GhostButton } from "../../components/ui";
 import StockManager from "../stock/StockManager";
 import WorkspaceDashboard from "../workspace/WorkspaceDashboard";
@@ -52,6 +55,7 @@ type SubScreen =
   | "products"
   | "leaves"
   | "reports"
+  | "field"
   | "settings";
 
 function isValidUrl(url: string): boolean {
@@ -182,6 +186,17 @@ export default function AdminDashboard() {
       );
     });
     return unsub;
+  }, []);
+
+  // Who is out in the field right now. Scoped to today so it stays cheap.
+  const [todayDuty, setTodayDuty] = useState<any[]>([]);
+  useEffect(() => {
+    const today = localDateStr();
+    return onSnapshot(
+      query(collection(db, "duty_sessions"), where("date", "==", today)),
+      (snap: any) => setTodayDuty(snap.docs.map((d: any) => ({ id: d.id, ...d.data() }))),
+      (err: any) => console.error("[AdminDashboard] duty_sessions listener failed", err),
+    );
   }, []);
 
   useEffect(() => {
@@ -502,6 +517,8 @@ export default function AdminDashboard() {
     );
   if (subScreen === "reports")
     return <SalesReport onBack={() => setSubScreen("dashboard")} />;
+  if (subScreen === "field")
+    return <FieldReport onBack={() => setSubScreen("dashboard")} />;
   if (subScreen === "products")
     return <ProductManager onBack={() => setSubScreen("dashboard")} />;
   if (subScreen === "parties")
@@ -628,6 +645,7 @@ export default function AdminDashboard() {
     expenses: "view_expenses",
     leaves: "view_leave",
     reports: "view_reports",
+    field: "view_reports",
   };
 
   // The nav doubles as a status board: every row carries its own live number,
@@ -682,6 +700,17 @@ export default function AdminDashboard() {
             ? `${onLeaveTodayCount} out today`
             : "Nobody out",
       warn: pendingLeaveCount > 0,
+    },
+    {
+      name: "Field activity",
+      desc: "Attendance, meter readings and every visit remark",
+      screen: "field" as SubScreen,
+      value: todayDuty.filter((d: any) => d.status === "active").length > 0
+        ? `${todayDuty.filter((d: any) => d.status === "active").length} out now`
+        : todayDuty.length > 0
+          ? `${todayDuty.length} worked today`
+          : "Nobody out",
+      warn: todayDuty.filter((d: any) => d.status === "active").length > 0,
     },
     {
       name: "Sales report",
