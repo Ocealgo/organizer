@@ -116,42 +116,56 @@ export default function UserManagement({ onBack }: Props) {
         ]}
       />
 
-      <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Rows carry their own top hairline, so the list has no gap — the
+          rules run continuously the way they do on the dashboard. */}
+      <div style={{ padding: '24px 20px 48px' }}>
 
         {tab === 'pending' && (
           pending.length === 0 ? (
             <EmptyState title="Nobody is waiting"
               body="New signups appear here for you to approve or turn down." />
-          ) : pending.map(u => (
-            <PendingCard key={u.uid} user={u} updating={updating} roles={assignableRoles}
-              onApprove={approveUser} onReject={rejectUser} />
-          ))
+          ) : (
+            <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+              {pending.map(u => (
+                <PendingCard key={u.uid} user={u} updating={updating} roles={assignableRoles}
+                  onApprove={approveUser} onReject={rejectUser} />
+              ))}
+            </div>
+          )
         )}
 
         {tab === 'active' && (
           active.length === 0 ? (
             <EmptyState title="No active accounts yet"
               body="Once you approve a signup, the account shows up here." />
-          ) : active.map(u => (
-            <UserCard key={u.uid} user={u} updating={updating}
-              currentUser={appUser!}
-              viewerIsAdmin={viewerIsAdmin}
-              roles={assignableRoles}
-              onDeactivate={deactivateUser}
-              onRoleChange={changeRole}
-              onPermissionChange={setPermission} />
-          ))
+          ) : (
+            <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+              {active.map(u => (
+                <UserCard key={u.uid} user={u} updating={updating}
+                  currentUser={appUser!}
+                  viewerIsAdmin={viewerIsAdmin}
+                  roles={assignableRoles}
+                  onDeactivate={deactivateUser}
+                  onRoleChange={changeRole}
+                  onPermissionChange={setPermission} />
+              ))}
+            </div>
+          )
         )}
 
         {tab === 'deactivated' && (
           deactivated.length === 0 ? (
             <EmptyState title="Nobody has been deactivated"
               body="Accounts you switch off are kept here so you can bring them back." />
-          ) : deactivated.map(u => (
-            <DeactivatedCard key={u.uid} user={u} updating={updating}
-              roles={assignableRoles} canReactivate={viewerIsAdmin}
-              onReactivate={reactivateUser} />
-          ))
+          ) : (
+            <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+              {deactivated.map(u => (
+                <DeactivatedCard key={u.uid} user={u} updating={updating}
+                  roles={assignableRoles} canReactivate={viewerIsAdmin}
+                  onReactivate={reactivateUser} />
+              ))}
+            </div>
+          )
         )}
       </div>
       {modal}

@@ -175,8 +175,9 @@ export function EmptyState({ title, body, actionLabel, onAction }: {
   title: string; body: string; actionLabel?: string; onAction?: () => void
 }) {
   const { t } = useTheme()
+  // No top padding — the surrounding container owns the space above.
   return (
-    <div style={{ padding: '40px 0', maxWidth: 420 }}>
+    <div style={{ padding: '0 0 40px', maxWidth: 420 }}>
       <div style={{ fontSize: 17, fontWeight: 500, color: t.text, marginBottom: 6 }}>{title}</div>
       <div style={{ fontSize: 14, fontWeight: 400, color: t.text3, lineHeight: 1.6 }}>{body}</div>
       {actionLabel && onAction && (
