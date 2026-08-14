@@ -6,7 +6,7 @@ import { AppUser, Holiday, LeaveRecord } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
-import { PageHeader, PrimaryButton } from '../../components/ui'
+import { PageHeader, PrimaryButton, GhostButton, Eyebrow, EmptyState } from '../../components/ui'
 import { localDateStr, localMonthStr } from '../../utils/date'
 
 interface Props { onBack: () => void }
@@ -237,49 +237,68 @@ export default function SalesReport({ onBack }: Props) {
 
   const conversion = team.visits > 0 ? ((team.interested / team.visits) * 100).toFixed(1) : '0.0'
 
+  /**
+   * One definition of the report's rows, used by the on-screen table and the
+   * spreadsheet alike, so the two can never drift apart. Conversion is read
+   * from each column's own totals rather than averaged, which is why it takes
+   * the whole stats object rather than a number.
+   */
+  const METRICS: { label: string; get: (s: PersonStats) => number; money?: boolean }[] = [
+    { label: 'Days logged', get: s => s.daysLogged },
+    { label: 'Visits', get: s => s.visits },
+    { label: 'Unique shops', get: s => s.uniqueParties },
+    { label: 'Interested', get: s => s.interested },
+    { label: 'Not interested', get: s => s.notInterested },
+    { label: 'Follow up', get: s => s.followUp },
+    { label: 'Conversion %', get: s => s.visits > 0 ? +((s.interested / s.visits) * 100).toFixed(1) : 0 },
+    { label: 'New parties', get: s => s.newParties },
+    { label: 'Revisits', get: s => s.revisits },
+    { label: 'Orders', get: s => s.orders },
+    { label: 'Order value', get: s => s.orderValue, money: true },
+    { label: 'Payments', get: s => s.payments },
+    { label: 'Payment value', get: s => s.paymentValue, money: true },
+    { label: 'Expenses', get: s => s.expenses, money: true },
+    { label: 'Full day leave', get: s => s.fullDayLeave },
+    { label: 'Half day leave', get: s => s.halfDayLeave },
+  ]
+
+  /** People across, plus a total column once there is more than one of them. */
+  const columns: PersonStats[] = rows.length > 1 ? [...rows, team] : rows
+
   // ── excel export ───────────────────────────────────────────────────────────
   const exportExcel = () => {
     const wb = XLSX.utils.book_new()
 
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
-      { Metric: 'Period', Value: prettyRange(from, to) },
-      { Metric: 'Scope', Value: scope === 'all' ? 'Whole team' : rows[0]?.name ?? '—' },
-      { Metric: 'Working days', Value: workingDays },
-      { Metric: 'Days logged', Value: team.daysLogged },
-      { Metric: 'Total visits', Value: team.visits },
-      { Metric: 'Unique shops', Value: team.uniqueParties },
-      { Metric: 'Interested', Value: team.interested },
-      { Metric: 'Not interested', Value: team.notInterested },
-      { Metric: 'Follow up', Value: team.followUp },
-      { Metric: 'Conversion %', Value: conversion },
-      { Metric: 'New parties', Value: team.newParties },
-      { Metric: 'Orders created', Value: team.orders },
-      { Metric: 'Order value', Value: team.orderValue },
-      { Metric: 'Payments collected', Value: team.payments },
-      { Metric: 'Payment value', Value: team.paymentValue },
-      { Metric: 'Expenses', Value: team.expenses },
-      { Metric: 'Full day leave', Value: team.fullDayLeave },
-      { Metric: 'Half day leave', Value: team.halfDayLeave },
-    ]), 'Summary')
+    // People across the top, metrics down the side, total on the right —
+    // the layout a manager actually reads, rather than one row per person.
+    const header = ['', ...columns.map(c => c.name)]
+    const body = METRICS.map(m => [m.label, ...columns.map(c => m.get(c))])
 
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.map(s => ({
-      'Sales Person': s.name,
-      'Days Logged': s.daysLogged,
-      'Visits': s.visits,
-      'Unique Shops': s.uniqueParties,
-      'Interested': s.interested,
-      'Not Interested': s.notInterested,
-      'Follow Up': s.followUp,
-      'New Parties': s.newParties,
-      'Revisits': s.revisits,
-      'Orders': s.orders,
-      'Order Value': s.orderValue,
-      'Payments': s.payments,
-      'Payment Value': s.paymentValue,
-      'Expenses': s.expenses,
-      'Full Day Leave': s.fullDayLeave,
-      'Half Day Leave': s.halfDayLeave,
-    }))), 'Per Person')
+    const aoa: (string | number)[][] = [
+      ['Ocealgo — Sales report'],
+      ['Period', prettyRange(from, to)],
+      ['Scope', scope === 'all' ? 'Whole team' : rows[0]?.name ?? '—'],
+      ['Working days', workingDays],
+      ['Generated', new Date().toLocaleString('en-IN')],
+      [],
+      header,
+      ...body,
+    ]
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa)
+    ws['!cols'] = [{ wch: 20 }, ...columns.map(() => ({ wch: 15 }))]
+    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: Math.max(1, columns.length) } }]
+
+    // Thousands separators on the money rows so large figures stay readable.
+    const firstBodyRow = 7
+    METRICS.forEach((m, i) => {
+      if (!m.money) return
+      for (let c = 1; c <= columns.length; c++) {
+        const cell = ws[XLSX.utils.encode_cell({ r: firstBodyRow + i, c })]
+        if (cell) cell.z = '#,##0'
+      }
+    })
+    XLSX.utils.book_append_sheet(wb, ws, 'Summary')
 
     const detail: any[] = []
     visitLogs.forEach(log => {
@@ -296,12 +315,17 @@ export default function SalesReport({ onBack }: Props) {
         })
       })
     })
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+    const detailWs = XLSX.utils.json_to_sheet(
       detail.length ? detail : [{ Date: '', 'Sales Person': '', Party: 'No visits in range' }],
-    ), 'Visit Detail')
+    )
+    detailWs['!cols'] = [
+      { wch: 12 }, { wch: 18 }, { wch: 28 }, { wch: 14 },
+      { wch: 6 }, { wch: 24 }, { wch: 40 },
+    ]
+    XLSX.utils.book_append_sheet(wb, detailWs, 'Visit detail')
 
     const who = scope === 'all' ? 'team' : (rows[0]?.name ?? 'person').toLowerCase().replace(/\s+/g, '-')
-    XLSX.writeFile(wb, `sales-report-${who}-${from}_to_${to}.xlsx`)
+    XLSX.writeFile(wb, `ocealgo-sales-report-${who}-${from}_to_${to}.xlsx`)
   }
 
   // ── ui bits ────────────────────────────────────────────────────────────────
@@ -330,10 +354,10 @@ export default function SalesReport({ onBack }: Props) {
         onBack={onBack}
       />
 
-      <div style={{ padding: '14px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div className="oc-print-plain" style={{ padding: '14px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
         {/* Range picker */}
-        <div style={{ background: t.card, borderRadius: 14, padding: 14, border: `1px solid ${t.border}`, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="oc-no-print" style={{ background: t.card, borderRadius: 14, padding: 14, border: `1px solid ${t.border}`, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ display: 'flex', gap: 6 }}>
             {(['day', 'week', 'month', 'custom'] as RangeMode[]).map(m => (
               <button key={m} onClick={() => setMode(m)} style={chip(mode === m)}>
@@ -376,9 +400,14 @@ export default function SalesReport({ onBack }: Props) {
             />
           </div>
 
-          <PrimaryButton onClick={exportExcel} disabled={loading} style={{ width: '100%' }}>
-            Download Excel
-          </PrimaryButton>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <PrimaryButton onClick={exportExcel} disabled={loading} style={{ flex: 2 }}>
+              Download Excel
+            </PrimaryButton>
+            <GhostButton onClick={() => window.print()} disabled={loading} style={{ flex: 1 }}>
+              Print / PDF
+            </GhostButton>
+          </div>
         </div>
 
         {loading ? (
@@ -405,59 +434,83 @@ export default function SalesReport({ onBack }: Props) {
               <Stat label="Leave" value={team.fullDayLeave} sub={team.halfDayLeave > 0 ? `+${team.halfDayLeave} half` : undefined} color="#f59e0b" />
             </div>
 
-            {/* Per person */}
-            {scope === 'all' && (
-              <>
-                <div style={{ fontSize: 11, color: t.text3, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', marginTop: 4 }}>
-                  Per person ({rows.length})
-                </div>
-                {rows.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: 32, color: t.text3 }}>
-                    <div style={{ fontSize: 32, marginBottom: 8 }}>📊</div>
-                    <div style={{ fontWeight: 700 }}>No sales users found</div>
-                  </div>
-                ) : rows.map(s => (
-                  <div key={s.uid} style={{ background: t.card, borderRadius: 14, padding: 14, border: `1px solid ${t.border}` }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                      <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'linear-gradient(135deg,#0891b2,#0e7490)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 14, color: '#fff', flexShrink: 0 }}>
-                        {s.name[0]?.toUpperCase() ?? '?'}
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 800, fontSize: 15, color: t.text }}>{s.name}</div>
-                        <div style={{ fontSize: 11, color: t.text3 }}>
-                          {s.daysLogged} of {workingDays} days logged
-                          {s.fullDayLeave > 0 && ` · ${s.fullDayLeave} leave`}
-                        </div>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 16, fontWeight: 900, color: '#0891b2' }}>{s.visits}</div>
-                        <div style={{ fontSize: 10, color: t.text3 }}>visits</div>
-                      </div>
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6 }}>
-                      {([
-                        ['Shops', s.uniqueParties, t.text],
-                        ['Interested', s.interested, '#16a34a'],
-                        ['Orders', s.orders, '#d97706'],
-                        ['New', s.newParties, '#6366f1'],
-                      ] as [string, number, string][]).map(([label, val, color]) => (
-                        <div key={label} style={{ background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 8, padding: '7px 4px', textAlign: 'center' }}>
-                          <div style={{ fontSize: 14, fontWeight: 800, color }}>{val}</div>
-                          <div style={{ fontSize: 10, color: t.text3 }}>{label}</div>
-                        </div>
+            {/* The cross-tab: metrics down, people across, total on the right */}
+            <div>
+              <div style={{ marginBottom: 12 }}>
+                <Eyebrow>{columns.length > 1 ? 'By person' : 'Detail'}</Eyebrow>
+              </div>
+
+              {columns.length === 0 ? (
+                <EmptyState
+                  title="No sales people found"
+                  body="Approve someone into an offline sales role and their numbers will appear here."
+                />
+              ) : (
+                <div style={{ overflowX: 'auto', borderBottom: `0.5px solid ${t.border}` }}>
+                  <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 120 + columns.length * 96 }}>
+                    <thead>
+                      <tr>
+                        <th style={{
+                          position: 'sticky', left: 0, background: t.bg, zIndex: 1,
+                          textAlign: 'left', padding: '10px 12px 10px 0',
+                          fontSize: 12, fontWeight: 400, color: t.text3,
+                          borderBottom: `0.5px solid ${t.border}`, whiteSpace: 'nowrap',
+                        }} />
+                        {columns.map((c, i) => {
+                          const isTotal = columns.length > 1 && i === columns.length - 1
+                          return (
+                            <th key={c.uid} style={{
+                              textAlign: 'right', padding: '10px 12px',
+                              fontSize: 13, fontWeight: 500,
+                              color: isTotal ? t.text : t.text2,
+                              borderBottom: `0.5px solid ${isTotal ? t.text2 : t.border}`,
+                              borderLeft: isTotal ? `0.5px solid ${t.border}` : undefined,
+                              whiteSpace: 'nowrap',
+                            }}>
+                              {c.name}
+                            </th>
+                          )
+                        })}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {METRICS.map(m => (
+                        <tr key={m.label}>
+                          <td style={{
+                            position: 'sticky', left: 0, background: t.bg, zIndex: 1,
+                            padding: '11px 12px 11px 0', fontSize: 13, color: t.text3,
+                            borderTop: `0.5px solid ${t.border}`, whiteSpace: 'nowrap',
+                          }}>
+                            {m.label}
+                          </td>
+                          {columns.map((c, i) => {
+                            const isTotal = columns.length > 1 && i === columns.length - 1
+                            const v = m.get(c)
+                            return (
+                              <td key={c.uid} style={{
+                                textAlign: 'right', padding: '11px 12px',
+                                fontSize: 14, fontWeight: isTotal ? 500 : 400,
+                                color: v === 0 ? t.text3 : t.text,
+                                borderTop: `0.5px solid ${t.border}`,
+                                borderLeft: isTotal ? `0.5px solid ${t.border}` : undefined,
+                                whiteSpace: 'nowrap',
+                              }}>
+                                {m.money ? `₹${v.toLocaleString('en-IN')}` : v.toLocaleString('en-IN')}
+                              </td>
+                            )
+                          })}
+                        </tr>
                       ))}
-                    </div>
-                    {(s.orderValue > 0 || s.paymentValue > 0 || s.expenses > 0) && (
-                      <div style={{ display: 'flex', gap: 12, marginTop: 8, flexWrap: 'wrap', fontSize: 11 }}>
-                        {s.orderValue > 0 && <span style={{ color: '#d97706' }}>📦 ₹{s.orderValue.toLocaleString('en-IN')}</span>}
-                        {s.paymentValue > 0 && <span style={{ color: '#7c3aed' }}>💰 ₹{s.paymentValue.toLocaleString('en-IN')}</span>}
-                        {s.expenses > 0 && <span style={{ color: '#dc2626' }}>💸 ₹{s.expenses.toLocaleString('en-IN')}</span>}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </>
-            )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div style={{ fontSize: 12, color: t.text3, marginTop: 12, lineHeight: 1.6 }}>
+                {workingDays} working days in this period. Conversion is interested
+                visits as a share of all visits, worked out per column rather than averaged.
+              </div>
+            </div>
           </>
         )}
       </div>

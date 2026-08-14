@@ -43,6 +43,27 @@
       @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after { transition: none !important; animation: none !important; }
       }
+
+      /* Printing a report. Ctrl+P -> Save as PDF gives a clean document without
+         pulling in a PDF library: controls drop out, dark mode is forced to
+         paper, and tables are allowed to break across pages sensibly. */
+      @media print {
+        .oc-no-print { display: none !important; }
+        body {
+          background: #fff !important;
+          color: #000 !important;
+        }
+        .oc-print-plain, .oc-print-plain * {
+          background: transparent !important;
+          color: #000 !important;
+          border-color: #999 !important;
+        }
+        a[href]::after { content: ""; }
+        table { page-break-inside: auto; }
+        tr { page-break-inside: avoid; page-break-after: auto; }
+        thead { display: table-header-group; }
+        @page { margin: 14mm; }
+      }
     </style>
   </head>
   <body>
