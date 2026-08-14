@@ -16,13 +16,15 @@ import { Party, DailyVisitLog, LeaveRecord, Holiday } from '../../types'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr, localMonthStr } from '../../utils/date'
 import { Eyebrow, StatGrid, StatCard, RowGroup, ListRow, EmptyState, GhostButton } from '../../components/ui'
+import { useDutySession } from '../../hooks/useDutySession'
+import DutyScreen from './DutyScreen'
 
 interface Props { name: string }
 
 const todayStr = () => localDateStr()
 const currentMonth = () => localMonthStr()
 
-type SubScreen = 'home' | 'visits' | 'parties' | 'stock' | 'expenses' | 'credits' | 'allocations' | 'history' | 'leaves'
+type SubScreen = 'home' | 'duty' | 'visits' | 'parties' | 'stock' | 'expenses' | 'credits' | 'allocations' | 'history' | 'leaves'
 
 export default function SalesView({ name }: Props) {
   const { appUser } = useAuth()
@@ -48,6 +50,8 @@ export default function SalesView({ name }: Props) {
   const [expenseDefaultToDay, setExpenseDefaultToDay] = useState(false)
   const [holidays, setHolidays] = useState<Holiday[]>([])
   const { modal: leaveModal, showConfirm: showLeaveConfirm } = useConfirm()
+  // Spec §2.3 — the outlet list stays locked until the day is punched in.
+  const { session: dutySession, isOnDuty, isDayClosed } = useDutySession(appUser?.uid)
 
   useEffect(() => {
     return onSnapshot(collection(db, 'parties'), snap => {
@@ -146,6 +150,7 @@ export default function SalesView({ name }: Props) {
   }
 
   // Route to sub-screens — hooks are above so this is safe
+  if (screen === 'duty' && appUser) return <DutyScreen appUser={appUser} session={dutySession} onBack={() => setScreen('home')} />
   if (screen === 'visits')      return <VisitLogger onBack={() => { setVisitInitialDate(undefined); setScreen('home') }} initialDate={visitInitialDate} onViewAllocation={(id) => { setHighlightAllocationId(id); setScreen('allocations') }} onViewPayment={(partyId, paymentId) => { setDeepLinkPaymentPartyId(partyId); setDeepLinkPaymentId(paymentId); setCreditReturnScreen('visits'); setScreen('credits') }} />
   if (screen === 'parties')     return <PartyManager onBack={() => setScreen('home')} />
   if (screen === 'stock')       return <StockManager onBack={() => setScreen('home')} />
@@ -175,9 +180,13 @@ export default function SalesView({ name }: Props) {
     ? 'Today is a public holiday. Nothing is expected from you.'
     : isOnFullLeave
       ? 'You are on full day leave today. Visit logging is paused.'
-      : visitsToday === 0
-        ? 'Nothing logged yet today. Start with your first shop visit.'
-        : `${visitsToday} ${visitsToday === 1 ? 'visit' : 'visits'} logged today${ordersToday > 0 ? `, and ${ordersToday} ${ordersToday === 1 ? 'order' : 'orders'} placed` : ''}.`
+      : isDayClosed
+        ? `Your day is finished — ${visitsToday} ${visitsToday === 1 ? 'visit' : 'visits'} logged and ${dutySession?.claimedDistanceKm ?? 0} km travelled.`
+        : !isOnDuty
+          ? 'You have not started your day yet. Punch in to unlock your outlet list.'
+          : visitsToday === 0
+            ? 'Nothing logged yet today. Start with your first shop visit.'
+            : `${visitsToday} ${visitsToday === 1 ? 'visit' : 'visits'} logged today${ordersToday > 0 ? `, and ${ordersToday} ${ordersToday === 1 ? 'order' : 'orders'} placed` : ''}.`
 
   return (
     <div style={{ minHeight: '100vh', background: t.bg }}>
@@ -233,15 +242,32 @@ export default function SalesView({ name }: Props) {
         <div>
           <div style={{ marginBottom: 12 }}><Eyebrow>Today</Eyebrow></div>
           <RowGroup>
+            {/* Duty is the gate. Everything in the field hangs off this session. */}
+            <ListRow
+              title={isDayClosed ? 'Day finished' : isOnDuty ? 'End the day' : 'Start the day'}
+              desc={isDayClosed
+                ? `${dutySession?.claimedDistanceKm ?? 0} km recorded`
+                : isOnDuty
+                  ? `Started at ${new Date(dutySession!.startAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} · closing reading and photo`
+                  : 'Meter reading, photo and location'}
+              value={isOnDuty ? `${dutySession?.startOdometerKm} km` : undefined}
+              warn={!isOnDuty && !isDayClosed && !isOnFullLeave}
+              disabled={isOnFullLeave}
+              onClick={() => setScreen('duty')}
+            />
             <ListRow
               title="Log a visit"
               desc={isTodayHoliday
                 ? 'Paused — today is a public holiday'
                 : isOnFullLeave
                   ? 'Paused — you are on full day leave'
-                  : 'Record shop visits and what came of them'}
-              value={isOnFullLeave ? undefined : `${visitsToday} today`}
-              disabled={isOnFullLeave}
+                  : isDayClosed
+                    ? 'Locked — you have punched out for the day'
+                    : !isOnDuty
+                      ? 'Locked until you start the day'
+                      : 'Record shop visits and what came of them'}
+              value={isOnFullLeave || !isOnDuty ? undefined : `${visitsToday} today`}
+              disabled={isOnFullLeave || !isOnDuty}
               onClick={() => setScreen('visits')}
             />
             <ListRow
