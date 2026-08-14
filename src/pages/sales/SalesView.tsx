@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { collection, onSnapshot, query, where, updateDoc, doc, addDoc, deleteDoc } from 'firebase/firestore'
+import { collection, onSnapshot, query, where, updateDoc, doc, addDoc } from 'firebase/firestore'
 import { db } from '../../firebase'
 
 import { useAuth } from '../../context/AuthContext'
@@ -15,18 +15,18 @@ import LeaveHistory from './LeaveHistory'
 import { Party, DailyVisitLog, LeaveRecord, Holiday } from '../../types'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr, localMonthStr } from '../../utils/date'
+import { Eyebrow, StatGrid, StatCard, RowGroup, ListRow, EmptyState, GhostButton } from '../../components/ui'
 
 interface Props { name: string }
 
 const todayStr = () => localDateStr()
 const currentMonth = () => localMonthStr()
-const isLocked = (createdAt: number) => Date.now() - createdAt > 24 * 60 * 60 * 1000
 
 type SubScreen = 'home' | 'visits' | 'parties' | 'stock' | 'expenses' | 'credits' | 'allocations' | 'history' | 'leaves'
 
 export default function SalesView({ name }: Props) {
   const { appUser } = useAuth()
-  const { t, theme } = useTheme()
+  const { t } = useTheme()
   const isOnline = appUser?.role === 'online_sales'
   const [screen, setScreen] = useState<SubScreen>('home')
   const [visitInitialDate, setVisitInitialDate] = useState<string | undefined>()
@@ -132,8 +132,8 @@ export default function SalesView({ name }: Props) {
   const handleUnmarkLeave = async () => {
     if (!todayLeave?.id) return
     const confirmed = await showLeaveConfirm(
-      'Request Unmark Leave?',
-      'Admin will need to approve this. Your leave stays active until then.'
+      'Request to unmark this leave?',
+      'An admin has to approve it. Your leave stays active until then.'
     )
     if (!confirmed) return
     await updateDoc(doc(db, 'leave_records', todayLeave.id), {
@@ -155,143 +155,132 @@ export default function SalesView({ name }: Props) {
   if (screen === 'history')     return <ActivityScreen onBack={() => setScreen('home')} onViewAllocation={(allocId) => { setHighlightAllocationId(allocId); setAllocSalesRepOnly(true); setAllocReturnScreen('history'); setScreen('allocations') }} onViewPayment={(partyId, paymentId) => { setDeepLinkPaymentPartyId(partyId); setDeepLinkPaymentId(paymentId); setCreditReturnScreen('history'); setScreen('credits') }} />
   if (screen === 'leaves')      return <LeaveHistory leaveRecords={allLeaveRecords} onBack={() => setScreen('home')} />
 
-  // Online Sales — disabled
+  // Online Sales — not built yet
   if (isOnline) return (
-    <div style={{ minHeight: '100vh', background: t.bg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
-      <div style={{ fontSize: 64, marginBottom: 24 }}>🌐</div>
-      <div style={{ background: 'rgba(217,119,6,0.2)', color: '#d97706', fontSize: 12, fontWeight: 800, padding: '4px 12px', borderRadius: 99, marginBottom: 16 }}>COMING SOON</div>
-      <div style={{ fontSize: 24, fontWeight: 900, color: t.text, marginBottom: 12, textAlign: 'center' }}>Online Sales Dashboard</div>
-      <div style={{ color: t.text2, fontSize: 14, lineHeight: 1.8, textAlign: 'center', maxWidth: 280 }}>
-        E-commerce orders, digital campaigns and online sales will be available soon.
-      </div>
+    <div style={{ minHeight: '100vh', background: t.bg, padding: '30px 20px' }}>
+      <EmptyState
+        title="Online sales"
+        body="E-commerce orders and digital campaigns will live here. Nothing to do in this space yet."
+      />
     </div>
   )
 
-  const initials = name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
   const isTodayHoliday = holidays.some(h => h.date === todayStr())
   const isOnFullLeave = isTodayHoliday || !!(todayLeave && todayLeave.leaveType === 'full_day' && todayLeave.status === 'active')
   const pendingLeavesCount = allLeaveRecords.filter(l => l.status === 'pending_approval').length
+  const visitsToday = todayVisitLog?.totalVisited ?? 0
 
-  const renderCard = (item: { emoji: string; label: string; sub: string; action: () => void; badge?: string }) => (
-    <button key={item.label} onClick={item.action}
-      style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.7)', color: theme === 'dark' ? '#fff' : '#0d3d2e', border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)'}`, borderRadius: 18, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left', cursor: 'pointer', marginBottom: 10, width: '100%' }}>
-      <span style={{ fontSize: 26 }}>{item.emoji}</span>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontWeight: 800, fontSize: 15 }}>{item.label}</div>
-        <div style={{ fontSize: 13, color: theme === 'dark' ? '#a7f3d0' : '#475569', marginTop: 3 }}>{item.sub}</div>
-      </div>
-      {item.badge
-        ? <span style={{ fontSize: 10, fontWeight: 700, color: theme === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.35)', background: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', borderRadius: 99, padding: '3px 8px', flexShrink: 0 }}>{item.badge}</span>
-        : <span style={{ fontSize: 22, opacity: 0.4 }}>›</span>
-      }
-    </button>
-  )
+  // One sentence saying what today looks like from the rep's side.
+  const attention = isTodayHoliday
+    ? 'Today is a public holiday. Nothing is expected from you.'
+    : isOnFullLeave
+      ? 'You are on full day leave today. Visit logging is paused.'
+      : visitsToday === 0
+        ? 'Nothing logged yet today. Start with your first shop visit.'
+        : `${visitsToday} ${visitsToday === 1 ? 'visit' : 'visits'} logged today${ordersToday > 0 ? `, and ${ordersToday} ${ordersToday === 1 ? 'order' : 'orders'} placed` : ''}.`
 
   return (
-    <div style={{ minHeight: '100vh', background: theme === 'dark' ? 'linear-gradient(145deg,#0d3d2e 0%,#1a5c42 55%,#2d7a56 100%)' : 'linear-gradient(145deg,#ecfdf5 0%,#d1fae5 100%)' }}>
-      {/* Header */}
-      <div style={{ padding: '28px 24px 20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ width: 54, height: 54, background: 'rgba(255,255,255,0.2)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 22, color: '#fff', border: '2px solid rgba(255,255,255,0.3)' }}>{initials}</div>
-          <div>
-            <div style={{ color: theme === 'dark' ? '#6ee7b7' : '#1a5c42', fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', fontWeight: 700 }}>🏪 Offline Sales</div>
-            <div style={{ fontSize: 26, fontWeight: 900, color: theme === 'dark' ? '#fff' : '#0d3d2e' }}>{name}</div>
-          </div>
+    <div style={{ minHeight: '100vh', background: t.bg }}>
+      {/* Attention line */}
+      <div style={{ padding: '30px 20px 24px', maxWidth: 720 }}>
+        <div style={{ marginBottom: 10 }}>
+          <Eyebrow>{name} · Offline sales</Eyebrow>
         </div>
-
-        {/* Today summary */}
-        <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-          {[
-            { label: 'Visits Today', val: isOnFullLeave ? '🏖️' : (todayVisitLog ? todayVisitLog.totalVisited : '—'), color: theme === 'dark' ? '#fff' : '#0d3d2e' },
-            { label: 'Orders Today', val: isOnFullLeave ? '—' : ordersToday, color: theme === 'dark' ? '#86efac' : '#16a34a' },
-            { label: 'Logs Today', val: isOnFullLeave ? '—' : revisitLogsToday, color: theme === 'dark' ? '#bae6fd' : '#0891b2' },
-          ].map(s => (
-            <div key={s.label} style={{ flex: 1, background: theme === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.5)', borderRadius: 12, padding: '12px 8px', textAlign: 'center' }}>
-              <div style={{ fontSize: 18, fontWeight: 900, color: s.color }}>{s.val}</div>
-              <div style={{ fontSize: 11, color: theme === 'dark' ? 'rgba(255,255,255,0.6)' : '#475569', marginTop: 2 }}>{s.label}</div>
-            </div>
-          ))}
-        </div>
+        <p style={{ fontSize: 21, lineHeight: 1.5, fontWeight: 400, color: t.text, margin: 0 }}>
+          {attention}
+        </p>
       </div>
 
-      {/* Leave status banner — top, only when a leave record exists */}
-      {todayLeave && (
-        <div style={{ padding: '0 20px 12px' }}>
-          {todayLeave.status === 'pending_approval' && (
-            <div style={{ background: 'rgba(100,116,139,0.1)', border: '1.5px solid rgba(100,116,139,0.25)', borderRadius: 16, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 22 }}>⏳</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 800, fontSize: 16, color: theme === 'dark' ? '#fff' : t.text }}>Leave Request Pending</div>
-                <div style={{ fontSize: 13, color: theme === 'dark' ? 'rgba(255,255,255,0.75)' : '#4b5563', marginTop: 3 }}>
-                  {todayLeave.leaveType === 'half_day' ? 'Half Day' : 'Full Day'} · {todayLeave.reason} · Awaiting admin approval
+      <div style={{ padding: '0 20px 56px', display: 'flex', flexDirection: 'column', gap: 30 }}>
+
+        {/* Leave status */}
+        {todayLeave && (todayLeave.status === 'pending_approval' || todayLeave.status === 'active' || todayLeave.status === 'unmark_requested') && (
+          <div style={{ background: t.tint, borderRadius: 6, padding: '14px 16px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 500, color: t.text }}>
+                  {todayLeave.leaveType === 'half_day' ? 'Half day leave' : 'Full day leave'}
+                  {todayLeave.reason ? ` · ${todayLeave.reason}` : ''}
+                </div>
+                <div style={{ fontSize: 13, color: t.text3, marginTop: 3 }}>
+                  {todayLeave.status === 'pending_approval'
+                    ? 'Waiting for an admin to approve it.'
+                    : todayLeave.status === 'unmark_requested'
+                      ? 'You asked to unmark this. Waiting for approval.'
+                      : `Approved at ${new Date(todayLeave.markedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}.`}
                 </div>
               </div>
-            </div>
-          )}
-          {(todayLeave.status === 'active' || todayLeave.status === 'unmark_requested') && (
-            <div style={{ background: todayLeave.leaveType === 'half_day' ? 'rgba(59,130,246,0.12)' : 'rgba(245,158,11,0.15)', border: `1.5px solid ${todayLeave.leaveType === 'half_day' ? 'rgba(59,130,246,0.35)' : 'rgba(245,158,11,0.35)'}`, borderRadius: 16, padding: '14px 18px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: todayLeave.status === 'unmark_requested' ? 8 : 0 }}>
-                <span style={{ fontSize: 26 }}>🏖️</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 800, fontSize: 16, color: theme === 'dark' ? '#fff' : '#92400e' }}>
-                    {todayLeave.leaveType === 'half_day' ? 'Half Day Leave' : 'Full Day Leave'}
-                    {todayLeave.reason && <span style={{ fontWeight: 600, fontSize: 13, marginLeft: 6, opacity: 0.85 }}>· {todayLeave.reason}</span>}
-                  </div>
-                  <div style={{ fontSize: 13, color: theme === 'dark' ? 'rgba(255,255,255,0.75)' : '#b45309', marginTop: 3 }}>
-                    Approved · {new Date(todayLeave.markedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                  </div>
-                </div>
-                {todayLeave.status === 'active' && (
-                  <button onClick={handleUnmarkLeave}
-                    style={{ background: 'rgba(220,38,38,0.12)', border: '1px solid rgba(220,38,38,0.25)', color: '#dc2626', borderRadius: 10, padding: '7px 12px', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
-                    Request Unmark
-                  </button>
-                )}
-              </div>
-              {todayLeave.status === 'unmark_requested' && (
-                <div style={{ background: 'rgba(217,119,6,0.1)', border: '1px solid rgba(217,119,6,0.2)', borderRadius: 8, padding: '6px 10px', fontSize: 13, color: theme === 'dark' ? '#fff' : '#d97706', fontWeight: 700 }}>
-                  Unmark request sent — waiting for admin approval
-                </div>
+              {todayLeave.status === 'active' && (
+                <GhostButton onClick={handleUnmarkLeave} style={{ flexShrink: 0 }}>
+                  Unmark
+                </GhostButton>
               )}
             </div>
-          )}
-        </div>
-      )}
-
-      {/* Menu — sectioned */}
-      <div style={{ padding: '0 20px 40px' }}>
-
-        {/* ── TODAY ── */}
-        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', color: theme === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.35)', marginBottom: 10, marginTop: 4 }}>Today</div>
-
-        <button onClick={isOnFullLeave ? undefined : () => setScreen('visits')} disabled={isOnFullLeave}
-          style={{ background: isOnFullLeave ? (theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)') : '#fff', color: isOnFullLeave ? (theme === 'dark' ? 'rgba(255,255,255,0.3)' : '#9ca3af') : '#0d3d2e', border: isOnFullLeave ? `1.5px dashed ${theme === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)'}` : 'none', borderRadius: 18, padding: '20px', display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left', boxShadow: isOnFullLeave ? 'none' : '0 8px 32px rgba(0,0,0,0.2)', cursor: isOnFullLeave ? 'not-allowed' : 'pointer', opacity: isOnFullLeave ? 0.6 : 1, marginBottom: 10, width: '100%' }}>
-          <span style={{ fontSize: 32 }}>🗺️</span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 900, fontSize: 18 }}>Log a Visit</div>
-            <div style={{ fontSize: 13, color: isOnFullLeave ? (theme === 'dark' ? 'rgba(255,255,255,0.3)' : '#ef4444') : '#6b7280', marginTop: 3 }}>
-              {isTodayHoliday ? 'Disabled — public holiday' : isOnFullLeave ? 'Disabled — you are on full day leave' : 'Log shop visits & outcomes'}
-            </div>
           </div>
-          {!isOnFullLeave && <span style={{ fontSize: 24, opacity: 0.4 }}>›</span>}
-        </button>
+        )}
 
-        {renderCard({ emoji: '💸', label: 'Add Expense', sub: 'Log travel, food & misc', action: () => { setExpenseDefaultToDay(true); setScreen('expenses') } })}
+        {/* Today */}
+        <StatGrid>
+          <StatCard value={isOnFullLeave ? '—' : visitsToday} label="Visits today"
+            context={`${monthlyVisitLogCount} days logged this month`} />
+          <StatCard value={isOnFullLeave ? '—' : ordersToday} label="Orders today"
+            context="Placed from a revisit" />
+          <StatCard value={isOnFullLeave ? '—' : revisitLogsToday} label="Logs today"
+            context={`${monthlyRevisitLogCount} this month`} />
+        </StatGrid>
 
-        {/* ── SALES ── */}
-        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', color: theme === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.35)', marginBottom: 10, marginTop: 8 }}>Trade</div>
+        {/* Today's work */}
+        <div>
+          <div style={{ marginBottom: 12 }}><Eyebrow>Today</Eyebrow></div>
+          <RowGroup>
+            <ListRow
+              title="Log a visit"
+              desc={isTodayHoliday
+                ? 'Paused — today is a public holiday'
+                : isOnFullLeave
+                  ? 'Paused — you are on full day leave'
+                  : 'Record shop visits and what came of them'}
+              value={isOnFullLeave ? undefined : `${visitsToday} today`}
+              disabled={isOnFullLeave}
+              onClick={() => setScreen('visits')}
+            />
+            <ListRow
+              title="Add an expense"
+              desc="Log travel, food and daily allowance"
+              onClick={() => { setExpenseDefaultToDay(true); setScreen('expenses') }}
+            />
+          </RowGroup>
+        </div>
 
-        {renderCard({ emoji: '🤝', label: 'Network', sub: 'Distributors & retailers', action: () => setScreen('parties') })}
-        {renderCard({ emoji: '📦', label: 'Allocations', sub: 'View & create stock requests', action: () => setScreen('allocations') })}
-        {renderCard({ emoji: '📊', label: 'Stock', sub: 'Available inventory', action: () => setScreen('stock'), badge: '👁 View only' })}
-        {renderCard({ emoji: '💜', label: 'Credit Book', sub: 'Outstanding & settlements', action: () => setScreen('credits'), badge: '👁 View only' })}
+        {/* Trade */}
+        <div>
+          <div style={{ marginBottom: 12 }}><Eyebrow>Trade</Eyebrow></div>
+          <RowGroup columns={2}>
+            <ListRow title="Network" desc="Distributors and retailers you cover"
+              value={`${parties.length} accounts`} onClick={() => setScreen('parties')} />
+            <ListRow title="Allocations" desc="Stock requests you have raised"
+              onClick={() => setScreen('allocations')} />
+            <ListRow title="Stock" desc="What the company has available"
+              value="View only" onClick={() => setScreen('stock')} />
+            <ListRow title="Credit book" desc="Outstanding amounts and settlements"
+              value="View only" onClick={() => setScreen('credits')} />
+          </RowGroup>
+        </div>
 
-        {/* ── PERSONAL ── */}
-        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', color: theme === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.35)', marginBottom: 10, marginTop: 8 }}>Personal</div>
-
-        {renderCard({ emoji: '📅', label: 'My Activity', sub: 'Visit logs & action history', action: () => setScreen('history') })}
-        {renderCard({ emoji: '🏖️', label: 'My Leaves', sub: pendingLeavesCount > 0 ? `${pendingLeavesCount} pending approval` : 'Apply & manage leaves', action: () => setScreen('leaves') })}
-        {renderCard({ emoji: '🧾', label: 'Expense Reports', sub: 'Weekly submissions & history', action: () => { setExpenseDefaultToDay(false); setScreen('expenses') } })}
+        {/* Personal */}
+        <div>
+          <div style={{ marginBottom: 12 }}><Eyebrow>Yours</Eyebrow></div>
+          <RowGroup columns={2}>
+            <ListRow title="My activity" desc="Everything you have logged, day by day"
+              value={`${monthlyVisitLogCount} days this month`} onClick={() => setScreen('history')} />
+            <ListRow title="My leaves" desc="Apply for time off and track approvals"
+              value={pendingLeavesCount > 0 ? `${pendingLeavesCount} pending` : undefined}
+              warn={pendingLeavesCount > 0}
+              onClick={() => setScreen('leaves')} />
+            <ListRow title="Expense reports" desc="Weekly submissions and what was cleared"
+              onClick={() => { setExpenseDefaultToDay(false); setScreen('expenses') }} />
+          </RowGroup>
+        </div>
 
       </div>
       {leaveModal}

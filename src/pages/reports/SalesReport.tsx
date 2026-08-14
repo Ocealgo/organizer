@@ -6,6 +6,7 @@ import { AppUser, Holiday, LeaveRecord } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
+import { PageHeader, PrimaryButton } from '../../components/ui'
 import { localDateStr, localMonthStr } from '../../utils/date'
 
 interface Props { onBack: () => void }
@@ -322,16 +323,12 @@ export default function SalesReport({ onBack }: Props) {
 
   return (
     <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
-      {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg,#0e4f7a,#0891b2)', padding: '20px 20px 16px' }}>
-        <button onClick={onBack}
-          style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#bae6fd', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 14, cursor: 'pointer' }}>
-          ← Back
-        </button>
-        <div style={{ color: '#bae6fd', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 2 }}>Reports 📊</div>
-        <div style={{ fontSize: 22, fontWeight: 900, color: '#fff' }}>Sales Report</div>
-        <div style={{ fontSize: 13, color: '#e0f2fe', marginTop: 2 }}>{prettyRange(from, to)}</div>
-      </div>
+      <PageHeader
+        eyebrow="Reports"
+        title="Sales report"
+        subtitle={prettyRange(from, to)}
+        onBack={onBack}
+      />
 
       <div style={{ padding: '14px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
@@ -379,10 +376,9 @@ export default function SalesReport({ onBack }: Props) {
             />
           </div>
 
-          <button onClick={exportExcel} disabled={loading}
-            style={{ background: 'linear-gradient(135deg,#0e4f7a,#0891b2)', color: '#fff', border: 'none', borderRadius: 12, padding: '13px', fontSize: 14, fontWeight: 800, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}>
-            ⬇️ Download Excel
-          </button>
+          <PrimaryButton onClick={exportExcel} disabled={loading} style={{ width: '100%' }}>
+            Download Excel
+          </PrimaryButton>
         </div>
 
         {loading ? (

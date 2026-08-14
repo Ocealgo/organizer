@@ -2,39 +2,42 @@ import { useState } from 'react'
 import RemindersView from './RemindersView'
 import ChecklistView from './ChecklistView'
 import PinnedNotesView from './PinnedNotesView'
+import { useTheme } from '../../context/ThemeContext'
 
 type WTab = 'reminders' | 'checklist' | 'notes'
 
+const TABS: { id: WTab; label: string }[] = [
+  { id: 'reminders', label: 'Reminders' },
+  { id: 'checklist', label: 'Tasks' },
+  { id: 'notes', label: 'Notes' },
+]
+
 export default function WorkspaceDashboard() {
+  const { t } = useTheme()
   const [tab, setTab] = useState<WTab>('reminders')
 
-  const tabs = [
-    { id: 'reminders' as WTab, label: '📅 Reminders' },
-    { id: 'checklist' as WTab, label: '✅ My Tasks' },
-    { id: 'notes'    as WTab, label: '📌 Notes' },
-  ]
-
+  // Rendered inside the dashboard's Workspace tab, so no page chrome here —
+  // just a quiet sub-switch and the content.
   return (
-    <div style={{ minHeight: '100vh', background: '#0d1117' }}>
-      {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg,#1e3a5f,#1e40af)', padding: '16px 20px 0' }}>
-        <div style={{ color: '#93c5fd', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 2 }}>Founders Only 🔒</div>
-        <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 14 }}>Workspace</div>
-        <div style={{ display: 'flex', gap: 4 }}>
-          {tabs.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              style={{ flex: 1, background: tab === t.id ? 'rgba(255,255,255,0.2)' : 'transparent', color: tab === t.id ? '#fff' : 'rgba(255,255,255,0.45)', border: 'none', borderRadius: '12px 12px 0 0', padding: '10px 4px', fontSize: 11, fontWeight: 800 }}>
-              {t.label}
-            </button>
-          ))}
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div style={{ display: 'flex', gap: 20, borderBottom: `0.5px solid ${t.border}` }}>
+        {TABS.map(x => (
+          <button key={x.id} className="oc-action" onClick={() => setTab(x.id)}
+            style={{
+              background: 'none', border: 'none', padding: '0 0 10px',
+              fontSize: 13, fontWeight: tab === x.id ? 500 : 400,
+              color: tab === x.id ? t.text : t.text2,
+              borderBottom: `2px solid ${tab === x.id ? t.text : 'transparent'}`,
+              marginBottom: '-0.5px', cursor: 'pointer', whiteSpace: 'nowrap',
+            }}>
+            {x.label}
+          </button>
+        ))}
       </div>
 
-      <div style={{ padding: '14px' }}>
-        {tab === 'reminders' && <RemindersView />}
-        {tab === 'checklist' && <ChecklistView />}
-        {tab === 'notes'     && <PinnedNotesView />}
-      </div>
+      {tab === 'reminders' && <RemindersView />}
+      {tab === 'checklist' && <ChecklistView />}
+      {tab === 'notes' && <PinnedNotesView />}
     </div>
   )
 }

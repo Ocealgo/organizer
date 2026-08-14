@@ -3,17 +3,14 @@ import { collection, addDoc, onSnapshot, updateDoc, doc, query, orderBy } from '
 import { db } from '../../firebase'
 import { ChecklistItem, WorkspaceCategory, AppUser } from '../../types'
 import { useAuth } from '../../context/AuthContext'
+import { useTheme } from '../../context/ThemeContext'
+import { Eyebrow, EmptyState, GhostButton, PrimaryButton, inputStyle } from '../../components/ui'
 
 const CATEGORIES: WorkspaceCategory[] = ['Finance', 'Operations', 'Sales', 'Marketing', 'General']
-const CAT_COLOR: Record<WorkspaceCategory, string> = {
-  Finance: '#16a34a', Operations: '#0891b2', Sales: '#f59e0b', Marketing: '#7c3aed', General: '#64748b',
-}
-const CAT_EMOJI: Record<WorkspaceCategory, string> = {
-  Finance: '💰', Operations: '⚙️', Sales: '🤝', Marketing: '📣', General: '📝',
-}
 
 export default function ChecklistView() {
   const { appUser } = useAuth()
+  const { t } = useTheme()
   const [items, setItems] = useState<ChecklistItem[]>([])
   const [admins, setAdmins] = useState<AppUser[]>([])
   const [selectedAdmin, setSelectedAdmin] = useState<string>(appUser?.uid || '')
@@ -76,132 +73,155 @@ export default function ChecklistView() {
 
   const pending   = adminItems.filter(i => !i.completed)
   const completed = adminItems.filter(i => i.completed)
-  const pct = adminItems.length > 0 ? Math.round((completed.length / adminItems.length) * 100) : 0
-
   const viewingAdmin = admins.find(a => a.uid === selectedAdmin)
 
+  const chip = (active: boolean) => ({
+    background: 'none',
+    border: `0.5px solid ${active ? t.text2 : t.border}`,
+    borderRadius: 99,
+    padding: '5px 12px',
+    fontSize: 12,
+    fontWeight: 400,
+    color: active ? t.text : t.text3,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
+  })
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {/* Admin selector */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+      {/* Whose list */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {[{ uid: appUser?.uid || '', name: 'Me' }, ...admins.filter(a => a.uid !== appUser?.uid).map(a => ({ uid: a.uid, name: a.name }))].map(a => (
-          <button key={a.uid} onClick={() => setSelectedAdmin(a.uid)}
-            style={{ background: selectedAdmin === a.uid ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.04)', color: selectedAdmin === a.uid ? '#93c5fd' : '#64748b', border: `1px solid ${selectedAdmin === a.uid ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '6px 14px', fontSize: 12, fontWeight: 700 }}>
+        {[{ uid: appUser?.uid || '', name: 'Mine' },
+          ...admins.filter(a => a.uid !== appUser?.uid).map(a => ({ uid: a.uid, name: a.name }))
+        ].map(a => (
+          <button key={a.uid} className="oc-action" onClick={() => setSelectedAdmin(a.uid)}
+            style={chip(selectedAdmin === a.uid)}>
             {a.name}
           </button>
         ))}
       </div>
 
-      {/* Progress + Add */}
-      <div style={{ background: '#161b22', borderRadius: 14, padding: 14, border: '1px solid rgba(255,255,255,0.06)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, alignItems: 'center' }}>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{isMyList ? 'My Checklist' : `${viewingAdmin?.name}'s Checklist`}</div>
-            <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{completed.length}/{adminItems.length} done</div>
+      {/* Progress */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 500, color: t.text }}>
+            {isMyList ? 'Your tasks' : `${viewingAdmin?.name ?? 'Their'} tasks`}
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <div style={{ fontSize: 18, fontWeight: 900, color: '#93c5fd' }}>{pct}%</div>
-            {isMyList && (
-              <button onClick={() => setShowAdd(!showAdd)}
-                style={{ background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', color: '#93c5fd', borderRadius: 8, padding: '6px 12px', fontSize: 11, fontWeight: 700 }}>
-                + Add
-              </button>
-            )}
+          <div style={{ fontSize: 13, color: t.text3, marginTop: 2 }}>
+            {adminItems.length === 0
+              ? 'Nothing on the list'
+              : `${completed.length} of ${adminItems.length} done`}
           </div>
         </div>
-        <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 99, height: 6, overflow: 'hidden' }}>
-          <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg,#1e40af,#3b82f6)', borderRadius: 99, transition: 'width 0.5s' }} />
-        </div>
+        {isMyList && (
+          <GhostButton onClick={() => setShowAdd(!showAdd)}>
+            {showAdd ? 'Cancel' : 'Add a task'}
+          </GhostButton>
+        )}
       </div>
 
       {/* Add form */}
       {showAdd && isMyList && (
-        <div style={{ background: '#161b22', borderRadius: 14, padding: 14, border: '1px solid rgba(59,130,246,0.2)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })}
-            placeholder="What needs to be done?"
+            placeholder="What needs doing?"
             onKeyDown={e => e.key === 'Enter' && handleAdd()}
-            style={{ background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '11px 14px', fontSize: 14, color: '#fff', outline: 'none', width: '100%', boxSizing: 'border-box' }} />
+            style={inputStyle(t)} />
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {CATEGORIES.map(c => (
-              <button key={c} onClick={() => setForm({ ...form, category: c })}
-                style={{ background: form.category === c ? `${CAT_COLOR[c]}22` : 'rgba(255,255,255,0.04)', color: form.category === c ? CAT_COLOR[c] : '#64748b', border: `1px solid ${form.category === c ? CAT_COLOR[c] : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700 }}>
-                {CAT_EMOJI[c]} {c}
+              <button key={c} className="oc-action" onClick={() => setForm({ ...form, category: c })}
+                style={chip(form.category === c)}>
+                {c}
               </button>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => setShowAdd(false)} style={{ flex: 1, background: 'rgba(255,255,255,0.04)', border: 'none', color: '#64748b', borderRadius: 10, padding: 10, fontSize: 13, fontWeight: 700 }}>Cancel</button>
-            <button onClick={handleAdd} disabled={saving} style={{ flex: 2, background: saving ? '#475569' : 'linear-gradient(135deg,#1e3a5f,#1e40af)', color: '#fff', border: 'none', borderRadius: 10, padding: 10, fontSize: 13, fontWeight: 800 }}>
-              {saving ? 'Saving...' : 'Add Task ✅'}
-            </button>
+          <div>
+            <PrimaryButton onClick={handleAdd} disabled={saving || !form.title.trim()}>
+              {saving ? 'Saving…' : 'Add it'}
+            </PrimaryButton>
           </div>
         </div>
       )}
 
       {/* Category filter */}
-      <div style={{ display: 'flex', gap: 6, overflowX: 'auto' }}>
-        <button onClick={() => setCatFilter('all')}
-          style={{ background: catFilter === 'all' ? '#1e40af' : 'rgba(255,255,255,0.04)', color: catFilter === 'all' ? '#fff' : '#64748b', border: 'none', borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
+      <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
+        <button className="oc-action" onClick={() => setCatFilter('all')} style={chip(catFilter === 'all')}>
           All
         </button>
         {CATEGORIES.map(c => (
-          <button key={c} onClick={() => setCatFilter(c)}
-            style={{ background: catFilter === c ? `${CAT_COLOR[c]}22` : 'rgba(255,255,255,0.04)', color: catFilter === c ? CAT_COLOR[c] : '#64748b', border: `1px solid ${catFilter === c ? CAT_COLOR[c] : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
-            {CAT_EMOJI[c]} {c}
+          <button key={c} className="oc-action" onClick={() => setCatFilter(c)} style={chip(catFilter === c)}>
+            {c}
           </button>
         ))}
       </div>
 
-      {/* Pending items */}
-      {pending.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ fontSize: 11, color: '#64748b', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Pending ({pending.length})</div>
-          {pending.map(item => (
-            <TaskItem key={item.id} item={item} canToggle={isMyList} onToggle={() => toggleItem(item)} />
-          ))}
-        </div>
-      )}
+      {adminItems.length === 0 ? (
+        <EmptyState
+          title={isMyList ? 'Your list is clear' : 'Nothing on this list'}
+          body={isMyList
+            ? 'Add the things you keep meaning to do — chase a payment, call a distributor, check a price.'
+            : 'This person has not added any tasks yet.'}
+          actionLabel={isMyList && !showAdd ? 'Add a task' : undefined}
+          onAction={isMyList && !showAdd ? () => setShowAdd(true) : undefined}
+        />
+      ) : (
+        <>
+          {pending.length > 0 && (
+            <div>
+              <div style={{ marginBottom: 10 }}><Eyebrow>To do ({pending.length})</Eyebrow></div>
+              <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+                {pending.map(item => (
+                  <TaskItem key={item.id} item={item} canToggle={isMyList} onToggle={() => toggleItem(item)} />
+                ))}
+              </div>
+            </div>
+          )}
 
-      {/* Completed items */}
-      {completed.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ fontSize: 11, color: '#64748b', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Completed ({completed.length})</div>
-          {completed.map(item => (
-            <TaskItem key={item.id} item={item} canToggle={isMyList} onToggle={() => toggleItem(item)} />
-          ))}
-        </div>
-      )}
-
-      {adminItems.length === 0 && (
-        <div style={{ textAlign: 'center', padding: 32, color: '#475569' }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
-          <div style={{ fontWeight: 700 }}>{isMyList ? 'Your checklist is empty' : 'No tasks yet'}</div>
-          {isMyList && <div style={{ fontSize: 13, marginTop: 6 }}>Tap "+ Add" to create your first task</div>}
-        </div>
+          {completed.length > 0 && (
+            <div>
+              <div style={{ marginBottom: 10 }}><Eyebrow>Done ({completed.length})</Eyebrow></div>
+              <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+                {completed.map(item => (
+                  <TaskItem key={item.id} item={item} canToggle={isMyList} onToggle={() => toggleItem(item)} />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
 }
 
 function TaskItem({ item, canToggle, onToggle }: { item: ChecklistItem; canToggle: boolean; onToggle: () => void }) {
-  const catColor = CAT_COLOR[item.category]
-  const catEmoji = CAT_EMOJI[item.category]
+  const { t } = useTheme()
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: item.completed ? 'rgba(255,255,255,0.02)' : '#161b22', borderRadius: 12, padding: '12px 14px', border: `1px solid ${item.completed ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.06)'}`, opacity: item.completed ? 0.65 : 1 }}>
+    <div className={canToggle ? 'oc-row' : undefined}
+      style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '13px 10px', borderTop: `0.5px solid ${t.border}` }}>
       <button onClick={canToggle ? onToggle : undefined}
-        style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${item.completed ? '#16a34a' : catColor}`, background: item.completed ? '#16a34a' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: canToggle ? 'pointer' : 'default', flexShrink: 0, marginTop: 1 }}>
-        {item.completed && <span style={{ color: '#fff', fontSize: 11, fontWeight: 900 }}>✓</span>}
-      </button>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 13, color: item.completed ? '#64748b' : '#e2e8f0', fontWeight: 600, textDecoration: item.completed ? 'line-through' : 'none' }}>{item.title}</div>
-        <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-          <span style={{ fontSize: 10, background: `${catColor}20`, color: catColor, padding: '2px 8px', borderRadius: 99 }}>{catEmoji} {item.category}</span>
-          {item.completed && item.completedAt && (
-            <span style={{ fontSize: 10, color: '#475569' }}>Done {new Date(item.completedAt).toLocaleDateString('en-IN')}</span>
-          )}
+        aria-pressed={item.completed}
+        style={{
+          width: 17, height: 17, borderRadius: 4, flexShrink: 0, marginTop: 2,
+          border: `1px solid ${item.completed ? t.text2 : t.border2}`,
+          background: item.completed ? t.text2 : 'none',
+          cursor: canToggle ? 'pointer' : 'default',
+        }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontSize: 14, fontWeight: 400,
+          color: item.completed ? t.text3 : t.text,
+          textDecoration: item.completed ? 'line-through' : 'none',
+        }}>
+          {item.title}
+        </div>
+        <div style={{ fontSize: 12, color: t.text3, marginTop: 3 }}>
+          {item.category}
+          {item.completed && item.completedAt &&
+            ` · done ${new Date(item.completedAt).toLocaleDateString('en-IN')}`}
         </div>
       </div>
-      {!canToggle && <div style={{ fontSize: 10, color: '#475569' }}>👁️ View only</div>}
+      {!canToggle && <span style={{ fontSize: 12, color: t.text3, flexShrink: 0 }}>View only</span>}
     </div>
   )
 }

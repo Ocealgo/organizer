@@ -1,4 +1,4 @@
-import { useState, useEffect, ReactNode } from "react";
+import { useState, useEffect, useRef, ReactNode } from "react";
 import { signOut } from "firebase/auth";
 import { auth } from "./firebase";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -250,6 +250,7 @@ function TopBar({
           Ocealgo
         </span>
         <span
+          className="oc-md-up"
           style={{
             fontSize: 11,
             fontWeight: 400,
@@ -269,19 +270,144 @@ function TopBar({
       <nav
         style={{
           display: "flex",
-          gap: 18,
+          gap: 16,
           alignItems: "center",
           flexShrink: 0,
         }}
       >
         <NotificationBell />
-        {showUsers && <TextAction onClick={onUsers}>Team</TextAction>}
-        <TextAction onClick={onThemeToggle}>
-          {theme === "dark" ? "Light" : "Dark"}
-        </TextAction>
-        <TextAction onClick={onSignOut}>Sign out</TextAction>
+
+        {/* Wide screens: actions inline */}
+        <div
+          className="oc-md-up"
+          style={{ display: "flex", gap: 16, alignItems: "center" }}
+        >
+          {showUsers && <TextAction onClick={onUsers}>Team</TextAction>}
+          <TextAction onClick={onThemeToggle}>
+            {theme === "dark" ? "Light" : "Dark"}
+          </TextAction>
+          <TextAction onClick={onSignOut}>Sign out</TextAction>
+        </div>
+
+        {/* Narrow screens: same actions behind one menu, so nothing wraps */}
+        <div className="oc-sm-only">
+          <HeaderMenu
+            roleLabel={roleLabel}
+            showUsers={showUsers}
+            theme={theme}
+            onUsers={onUsers}
+            onThemeToggle={onThemeToggle}
+            onSignOut={onSignOut}
+          />
+        </div>
       </nav>
     </header>
+  );
+}
+
+function HeaderMenu({
+  roleLabel,
+  showUsers,
+  theme,
+  onUsers,
+  onThemeToggle,
+  onSignOut,
+}: {
+  roleLabel: string;
+  showUsers: boolean;
+  theme: string;
+  onUsers: () => void;
+  onThemeToggle: () => void;
+  onSignOut: () => void;
+}) {
+  const { t } = useTheme();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const item = (label: string, action: () => void) => (
+    <button
+      key={label}
+      className="oc-row"
+      onClick={() => {
+        setOpen(false);
+        action();
+      }}
+      style={{
+        display: "block",
+        width: "100%",
+        textAlign: "left",
+        background: "none",
+        border: "none",
+        borderTop: `0.5px solid ${t.border}`,
+        padding: "12px 16px",
+        fontSize: 14,
+        fontWeight: 400,
+        color: t.text,
+        cursor: "pointer",
+      }}
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        className="oc-action"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        style={{
+          background: "none",
+          border: "none",
+          padding: 0,
+          fontSize: 13,
+          fontWeight: 400,
+          color: t.text2,
+          cursor: "pointer",
+          whiteSpace: "nowrap",
+        }}
+      >
+        Menu
+      </button>
+
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 12px)",
+            right: 0,
+            width: "min(220px, calc(100vw - 40px))",
+            background: t.bg2,
+            border: `0.5px solid ${t.border}`,
+            borderRadius: 8,
+            overflow: "hidden",
+            zIndex: 1000,
+          }}
+        >
+          <div
+            style={{
+              padding: "11px 16px",
+              fontSize: 12,
+              fontWeight: 400,
+              color: t.text3,
+            }}
+          >
+            {roleLabel}
+          </div>
+          {showUsers && item("Team", onUsers)}
+          {item(theme === "dark" ? "Light theme" : "Dark theme", onThemeToggle)}
+          {item("Sign out", onSignOut)}
+        </div>
+      )}
+    </div>
   );
 }
 

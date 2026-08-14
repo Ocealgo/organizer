@@ -1,22 +1,26 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore'
 import { db } from '../../firebase'
 import { AppUser, UserRole, Permission, PermissionMap } from '../../types'
 import { useAuth } from '../../context/AuthContext'
+import { useTheme } from '../../context/ThemeContext'
 import { useConfirm } from '../../hooks/useConfirm'
+import { PageHeader, TabBar, EmptyState, GhostButton, Eyebrow } from '../../components/ui'
 import {
-  ROLE_LABELS, ASSIGNABLE_ROLES, MANAGER_ASSIGNABLE_ROLES,
+  ROLE_LABELS_PLAIN, ASSIGNABLE_ROLES, MANAGER_ASSIGNABLE_ROLES,
   PERMISSION_GROUPS, DEFAULT_SALES_MANAGER_PERMISSIONS,
   isAdminRole,
 } from '../../auth/permissions'
 
 interface Props { onBack: () => void }
+type Tab = 'pending' | 'active' | 'deactivated'
 
 export default function UserManagement({ onBack }: Props) {
   const { appUser } = useAuth()
+  const { t } = useTheme()
   const { modal, showDanger } = useConfirm()
   const [users, setUsers] = useState<AppUser[]>([])
-  const [tab, setTab] = useState<'pending' | 'active' | 'deactivated'>('pending')
+  const [tab, setTab] = useState<Tab>('pending')
   const [updating, setUpdating] = useState<string | null>(null)
 
   // Admins manage everyone. A sales manager may only approve or reject a
@@ -58,7 +62,7 @@ export default function UserManagement({ onBack }: Props) {
 
   // Deactivate instead of delete — keeps the Firebase Auth account intact
   const deactivateUser = async (uid: string, name: string) => {
-    if (!await showDanger('Deactivate User?', `${name} won't be able to log in. You can reactivate them anytime.`, 'Deactivate')) return
+    if (!await showDanger('Deactivate this account?', `${name} will not be able to log in. You can bring them back at any time.`, 'Deactivate')) return
     setUpdating(uid)
     await updateDoc(doc(db, 'users', uid), { status: 'deactivated' })
     setUpdating(null)
@@ -91,39 +95,33 @@ export default function UserManagement({ onBack }: Props) {
     })
   }
 
-  const TAB_COUNTS = { pending: pending.length, active: active.length, deactivated: deactivated.length }
-
   return (
-    <div style={{ minHeight: '100vh', background: '#0d1117', paddingBottom: 40 }}>
-      {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg,#78350f,#d97706)', padding: '24px 20px 16px' }}>
-        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fde68a', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 16 }}>← Back</button>
-        <div style={{ color: '#fde68a', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>
-          {viewerIsAdmin ? 'Admin Panel 👑' : 'Sales Manager 📊'}
-        </div>
-        <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 16 }}>User Management</div>
+    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 56 }}>
+      <PageHeader
+        eyebrow={viewerIsAdmin ? 'Admin' : 'Sales manager'}
+        title="Team"
+        subtitle={viewerIsAdmin
+          ? 'Accounts are deactivated rather than deleted, so the same email can be brought back later.'
+          : 'You can approve or reject new signups into offline sales. Role changes and deactivation stay with an admin.'}
+        onBack={onBack}
+      />
 
-        <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 10, padding: '8px 12px', marginBottom: 14, fontSize: 11, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>
-          {viewerIsAdmin
-            ? 'ℹ️ Users are deactivated instead of deleted. This allows the same email to be re-added by reactivating their account.'
-            : 'ℹ️ You can approve or reject new signups into the Offline Sales role. Role changes and deactivation are admin-only.'}
-        </div>
+      <TabBar
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { id: 'pending', label: `Pending (${pending.length})` },
+          { id: 'active', label: `Active (${active.length})` },
+          { id: 'deactivated', label: `Deactivated (${deactivated.length})` },
+        ]}
+      />
 
-        <div style={{ display: 'flex', gap: 6 }}>
-          {(['pending', 'active', 'deactivated'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)}
-              style={{ flex: 1, background: tab === t ? 'rgba(255,255,255,0.2)' : 'transparent', color: tab === t ? '#fff' : 'rgba(255,255,255,0.5)', border: tab === t ? '1px solid rgba(255,255,255,0.3)' : '1px solid transparent', borderRadius: 20, padding: '7px 6px', fontSize: 11, fontWeight: 700 }}>
-              {t === 'pending' ? `⏳ Pending (${TAB_COUNTS.pending})` : t === 'active' ? `👥 Active (${TAB_COUNTS.active})` : `🚫 Deactivated (${TAB_COUNTS.deactivated})`}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
         {tab === 'pending' && (
           pending.length === 0 ? (
-            <EmptyState emoji="✅" title="No pending requests" />
+            <EmptyState title="Nobody is waiting"
+              body="New signups appear here for you to approve or turn down." />
           ) : pending.map(u => (
             <PendingCard key={u.uid} user={u} updating={updating} roles={assignableRoles}
               onApprove={approveUser} onReject={rejectUser} />
@@ -132,7 +130,8 @@ export default function UserManagement({ onBack }: Props) {
 
         {tab === 'active' && (
           active.length === 0 ? (
-            <EmptyState emoji="👥" title="No active users yet" />
+            <EmptyState title="No active accounts yet"
+              body="Once you approve a signup, the account shows up here." />
           ) : active.map(u => (
             <UserCard key={u.uid} user={u} updating={updating}
               currentUser={appUser!}
@@ -146,7 +145,8 @@ export default function UserManagement({ onBack }: Props) {
 
         {tab === 'deactivated' && (
           deactivated.length === 0 ? (
-            <EmptyState emoji="🚫" title="No deactivated users" />
+            <EmptyState title="Nobody has been deactivated"
+              body="Accounts you switch off are kept here so you can bring them back." />
           ) : deactivated.map(u => (
             <DeactivatedCard key={u.uid} user={u} updating={updating}
               roles={assignableRoles} canReactivate={viewerIsAdmin}
@@ -159,120 +159,141 @@ export default function UserManagement({ onBack }: Props) {
   )
 }
 
-// ── EMPTY STATE ───────────────────────────────────────────────────────────────
-function EmptyState({ emoji, title }: { emoji: string; title: string }) {
+// ── shared bits ──────────────────────────────────────────────────────────────
+function useChip() {
+  const { t } = useTheme()
+  return (active: boolean) => ({
+    background: 'none',
+    border: `0.5px solid ${active ? t.text2 : t.border}`,
+    borderRadius: 99,
+    padding: '6px 13px',
+    fontSize: 12,
+    fontWeight: 400 as const,
+    color: active ? t.text : t.text3,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
+  })
+}
+
+function CardShell({ children }: { children: React.ReactNode }) {
+  const { t } = useTheme()
   return (
-    <div style={{ textAlign: 'center', padding: 40, color: '#475569' }}>
-      <div style={{ fontSize: 40, marginBottom: 12 }}>{emoji}</div>
-      <div style={{ fontSize: 16, fontWeight: 700 }}>{title}</div>
+    <div style={{ borderTop: `0.5px solid ${t.border}`, padding: '18px 0' }}>{children}</div>
+  )
+}
+
+function Identity({ user, note }: { user: AppUser; note?: string }) {
+  const { t } = useTheme()
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: 15, fontWeight: 500, color: t.text }}>{user.name}</div>
+      <div style={{ fontSize: 13, color: t.text3, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {user.email}
+      </div>
+      {note && <div style={{ fontSize: 13, color: t.text3, marginTop: 2 }}>{note}</div>}
     </div>
   )
 }
 
-// ── PENDING CARD ──────────────────────────────────────────────────────────────
+// ── PENDING ──────────────────────────────────────────────────────────────────
 function PendingCard({ user, updating, roles, onApprove, onReject }: {
   user: AppUser; updating: string | null; roles: UserRole[]
   onApprove: (uid: string, role: UserRole) => void
   onReject: (uid: string) => void
 }) {
+  const { t } = useTheme()
+  const chip = useChip()
   const [role, setRole] = useState<UserRole>(roles.includes('offline_sales') ? 'offline_sales' : roles[0])
   const isUpdating = updating === user.uid
 
   return (
-    <div style={{ background: '#161b22', borderRadius: 16, padding: 16, border: '1px solid #d97706aa' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-        <div style={{ width: 44, height: 44, background: 'linear-gradient(135deg,#d97706,#f59e0b)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 18 }}>
-          {user.name[0].toUpperCase()}
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 800, fontSize: 15 }}>{user.name}</div>
-          <div style={{ color: '#64748b', fontSize: 12 }}>{user.email}</div>
-          <div style={{ color: '#d97706', fontSize: 11, marginTop: 2 }}>⏳ Awaiting approval</div>
-        </div>
-      </div>
+    <CardShell>
+      <Identity user={user} note="Waiting for approval" />
 
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, letterSpacing: 1 }}>ASSIGN ROLE</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ marginTop: 14 }}>
+        <div style={{ marginBottom: 8 }}><Eyebrow>Give them the role of</Eyebrow></div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {roles.map(r => (
-            <button key={r} onClick={() => setRole(r)}
-              style={{ background: role === r ? 'rgba(22,163,74,0.15)' : 'rgba(255,255,255,0.04)', color: role === r ? '#16a34a' : '#64748b', border: `1.5px solid ${role === r ? '#16a34a' : 'rgba(255,255,255,0.06)'}`, borderRadius: 10, padding: '9px 12px', fontSize: 12, fontWeight: 700, textAlign: 'left' }}>
-              {ROLE_LABELS[r]}
+            <button key={r} className="oc-action" onClick={() => setRole(r)} style={chip(role === r)}>
+              {ROLE_LABELS_PLAIN[r]}
             </button>
           ))}
         </div>
         {role === 'sales_manager' && (
-          <div style={{ marginTop: 8, fontSize: 11, color: '#0891b2', background: 'rgba(8,145,178,0.08)', border: '1px solid rgba(8,145,178,0.2)', borderRadius: 8, padding: '8px 10px', lineHeight: 1.5 }}>
-            📊 Starts with full visibility and no money actions. Fine-tune their access on their card in the Active tab.
+          <div style={{ marginTop: 10, fontSize: 13, color: t.text3, lineHeight: 1.5 }}>
+            Starts with full visibility and no money actions. Fine-tune their access
+            on their card in the Active tab.
           </div>
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={() => onApprove(user.uid, role)} disabled={isUpdating}
-          style={{ flex: 1, background: 'rgba(22,163,74,0.15)', color: '#16a34a', border: '1.5px solid rgba(22,163,74,0.3)', borderRadius: 10, padding: '11px', fontSize: 13, fontWeight: 800, opacity: isUpdating ? 0.5 : 1 }}>
-          ✅ Approve
-        </button>
-        <button onClick={() => onReject(user.uid)} disabled={isUpdating}
-          style={{ flex: 1, background: 'rgba(220,38,38,0.1)', color: '#dc2626', border: '1.5px solid rgba(220,38,38,0.2)', borderRadius: 10, padding: '11px', fontSize: 13, fontWeight: 800, opacity: isUpdating ? 0.5 : 1 }}>
-          ❌ Reject
-        </button>
+      <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+        <GhostButton onClick={() => onApprove(user.uid, role)} disabled={isUpdating}>
+          Approve
+        </GhostButton>
+        <GhostButton onClick={() => onReject(user.uid)} disabled={isUpdating}>
+          Turn down
+        </GhostButton>
       </div>
-    </div>
+    </CardShell>
   )
 }
 
-// ── PERMISSION EDITOR ─────────────────────────────────────────────────────────
+// ── PERMISSION EDITOR ────────────────────────────────────────────────────────
 function PermissionEditor({ user, onChange }: {
   user: AppUser
   onChange: (uid: string, current: PermissionMap, key: Permission, value: boolean) => void
 }) {
+  const { t } = useTheme()
   const [open, setOpen] = useState(false)
   const perms = user.permissions ?? {}
-  const granted = PERMISSION_GROUPS.flatMap(g => g.items).filter(i => perms[i.key] === true).length
-  const total = PERMISSION_GROUPS.flatMap(g => g.items).length
+  const all = PERMISSION_GROUPS.flatMap(g => g.items)
+  const granted = all.filter(i => perms[i.key] === true).length
 
   return (
-    <div style={{ marginTop: 12, background: 'rgba(8,145,178,0.05)', border: '1px solid rgba(8,145,178,0.2)', borderRadius: 12, overflow: 'hidden' }}>
-      <button onClick={() => setOpen(o => !o)}
-        style={{ width: '100%', background: 'none', border: 'none', padding: '11px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
-        <span style={{ fontSize: 12, fontWeight: 800, color: '#0891b2' }}>
-          🔐 Permissions <span style={{ color: '#64748b', fontWeight: 600 }}>({granted}/{total})</span>
-        </span>
-        <span style={{ color: '#64748b', fontSize: 13 }}>{open ? '▲' : '▼'}</span>
+    <div style={{ marginTop: 14 }}>
+      <button className="oc-action" onClick={() => setOpen(o => !o)}
+        style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, color: t.text2, cursor: 'pointer' }}>
+        {open ? 'Hide' : 'Show'} permissions ({granted} of {all.length})
       </button>
 
       {open && (
-        <div style={{ padding: '0 14px 14px' }}>
+        <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 18 }}>
           {PERMISSION_GROUPS.map(group => (
-            <div key={group.title} style={{ marginTop: 10 }}>
-              <div style={{ fontSize: 10, color: '#64748b', fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>
-                {group.title}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <div key={group.title}>
+              <div style={{ marginBottom: 8 }}><Eyebrow>{group.title}</Eyebrow></div>
+              <div>
                 {group.items.map(item => {
                   const on = perms[item.key] === true
                   return (
-                    <button key={item.key}
+                    <button key={item.key} className="oc-row"
                       onClick={() => onChange(user.uid, perms, item.key, !on)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', padding: '7px 0', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
+                      aria-pressed={on}
+                      style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 12, width: '100%',
+                        textAlign: 'left', background: 'none', border: 'none',
+                        borderTop: `0.5px solid ${t.border}`, padding: '11px 6px', cursor: 'pointer',
+                      }}>
                       <span style={{
-                        width: 34, height: 20, borderRadius: 99, flexShrink: 0, position: 'relative',
-                        background: on ? '#16a34a' : 'rgba(255,255,255,0.12)',
-                        transition: 'background 0.15s',
+                        width: 30, height: 18, borderRadius: 99, flexShrink: 0, marginTop: 1,
+                        position: 'relative',
+                        background: on ? t.text2 : 'transparent',
+                        border: `0.5px solid ${on ? t.text2 : t.border2}`,
                       }}>
                         <span style={{
-                          position: 'absolute', top: 2, left: on ? 16 : 2,
-                          width: 16, height: 16, borderRadius: '50%', background: '#fff',
-                          transition: 'left 0.15s',
+                          position: 'absolute', top: 2, left: on ? 13 : 2,
+                          width: 12, height: 12, borderRadius: '50%',
+                          background: on ? t.bg : t.text3,
                         }} />
                       </span>
-                      <span style={{ flex: 1 }}>
-                        <span style={{ fontSize: 12, color: on ? '#e2e8f0' : '#64748b', fontWeight: on ? 600 : 400 }}>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: 'block', fontSize: 14, fontWeight: 400, color: on ? t.text : t.text3 }}>
                           {item.label}
                         </span>
                         {item.hint && (
-                          <span style={{ display: 'block', fontSize: 10, color: '#475569', marginTop: 1 }}>{item.hint}</span>
+                          <span style={{ display: 'block', fontSize: 12, color: t.text3, marginTop: 2 }}>
+                            {item.hint}
+                          </span>
                         )}
                       </span>
                     </button>
@@ -287,7 +308,7 @@ function PermissionEditor({ user, onChange }: {
   )
 }
 
-// ── ACTIVE USER CARD ──────────────────────────────────────────────────────────
+// ── ACTIVE ───────────────────────────────────────────────────────────────────
 function UserCard({ user, updating, currentUser, viewerIsAdmin, roles, onDeactivate, onRoleChange, onPermissionChange }: {
   user: AppUser; updating: string | null; currentUser: AppUser
   viewerIsAdmin: boolean; roles: UserRole[]
@@ -295,47 +316,44 @@ function UserCard({ user, updating, currentUser, viewerIsAdmin, roles, onDeactiv
   onRoleChange: (uid: string, role: UserRole, current?: PermissionMap) => void
   onPermissionChange: (uid: string, current: PermissionMap, key: Permission, value: boolean) => void
 }) {
+  const { t } = useTheme()
+  const chip = useChip()
   const isSuper = user.role === 'super_admin'
   const isUpdating = updating === user.uid
   const canDeactivate = viewerIsAdmin && !isSuper && currentUser.uid !== user.uid
   const canEditRole = viewerIsAdmin && !isSuper && user.status === 'approved'
 
   return (
-    <div style={{ background: '#161b22', borderRadius: 16, padding: 16, border: `1px solid ${user.status === 'rejected' ? 'rgba(220,38,38,0.2)' : 'rgba(255,255,255,0.06)'}` }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ width: 44, height: 44, background: isSuper ? 'linear-gradient(135deg,#d97706,#f59e0b)' : 'linear-gradient(135deg,#1a5c42,#22c55e)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 18 }}>
-          {user.name[0].toUpperCase()}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: 15 }}>{user.name} {isSuper ? '👑' : ''}</div>
-          <div style={{ color: '#64748b', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</div>
-          <div style={{ marginTop: 4, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-            {user.status === 'rejected'
-              ? <span style={{ fontSize: 11, color: '#dc2626', background: 'rgba(220,38,38,0.1)', padding: '2px 8px', borderRadius: 99 }}>❌ Rejected</span>
-              : <span style={{ fontSize: 11, color: '#16a34a', background: 'rgba(22,163,74,0.1)', padding: '2px 8px', borderRadius: 99 }}>✅ Active</span>
-            }
-            <span style={{ fontSize: 11, color: '#94a3b8' }}>{ROLE_LABELS[user.role]}</span>
-          </div>
-        </div>
+    <CardShell>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+        <Identity user={user}
+          note={`${ROLE_LABELS_PLAIN[user.role]}${user.status === 'rejected' ? ' · turned down' : ''}`} />
         {canDeactivate && (
-          <button onClick={() => onDeactivate(user.uid, user.name)} disabled={isUpdating}
-            style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.2)', color: '#dc2626', borderRadius: 10, padding: '8px 12px', fontSize: 12, fontWeight: 700, opacity: isUpdating ? 0.5 : 1 }}>
-            🚫 Deactivate
-          </button>
+          <GhostButton onClick={() => onDeactivate(user.uid, user.name)} disabled={isUpdating}
+            style={{ flexShrink: 0 }}>
+            Deactivate
+          </GhostButton>
         )}
       </div>
 
       {canEditRole && (
-        <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, letterSpacing: 1 }}>ROLE</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        <div style={{ marginTop: 14 }}>
+          <div style={{ marginBottom: 8 }}><Eyebrow>Role</Eyebrow></div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {roles.map(r => (
-              <button key={r} onClick={() => onRoleChange(user.uid, r, user.permissions)} disabled={isUpdating}
-                style={{ background: user.role === r ? 'rgba(8,145,178,0.15)' : 'rgba(255,255,255,0.04)', color: user.role === r ? '#0891b2' : '#64748b', border: `1px solid ${user.role === r ? 'rgba(8,145,178,0.3)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 8, padding: '7px 12px', fontSize: 11, fontWeight: 700, textAlign: 'left', opacity: isUpdating ? 0.5 : 1 }}>
-                {user.role === r ? '✓ ' : ''}{ROLE_LABELS[r]}
+              <button key={r} className="oc-action" disabled={isUpdating}
+                onClick={() => onRoleChange(user.uid, r, user.permissions)}
+                style={chip(user.role === r)}>
+                {ROLE_LABELS_PLAIN[r]}
               </button>
             ))}
           </div>
+        </div>
+      )}
+
+      {isSuper && (
+        <div style={{ fontSize: 13, color: t.text3, marginTop: 10 }}>
+          The super admin account cannot be changed from here.
         </div>
       )}
 
@@ -343,57 +361,49 @@ function UserCard({ user, updating, currentUser, viewerIsAdmin, roles, onDeactiv
       {viewerIsAdmin && user.role === 'sales_manager' && user.status === 'approved' && (
         <PermissionEditor user={user} onChange={onPermissionChange} />
       )}
-    </div>
+    </CardShell>
   )
 }
 
-// ── DEACTIVATED CARD ──────────────────────────────────────────────────────────
+// ── DEACTIVATED ──────────────────────────────────────────────────────────────
 function DeactivatedCard({ user, updating, roles, canReactivate, onReactivate }: {
   user: AppUser; updating: string | null; roles: UserRole[]; canReactivate: boolean
   onReactivate: (uid: string, role: UserRole) => void
 }) {
+  const { t } = useTheme()
+  const chip = useChip()
   const [role, setRole] = useState<UserRole>(
     roles.includes(user.role) ? user.role : (roles.includes('offline_sales') ? 'offline_sales' : roles[0]),
   )
   const isUpdating = updating === user.uid
 
   return (
-    <div style={{ background: '#161b22', borderRadius: 16, padding: 16, border: '1px solid rgba(255,255,255,0.04)', opacity: 0.75 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-        <div style={{ width: 44, height: 44, background: 'rgba(100,116,139,0.3)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 18, color: '#64748b' }}>
-          {user.name[0].toUpperCase()}
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 800, fontSize: 15, color: '#64748b' }}>{user.name}</div>
-          <div style={{ color: '#475569', fontSize: 12 }}>{user.email}</div>
-          <div style={{ fontSize: 11, color: '#475569', marginTop: 2 }}>🚫 Deactivated</div>
-        </div>
-      </div>
+    <CardShell>
+      <Identity user={user} note="Deactivated" />
 
       {canReactivate ? (
         <>
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, letterSpacing: 1 }}>REACTIVATE WITH ROLE</div>
+          <div style={{ marginTop: 14 }}>
+            <div style={{ marginBottom: 8 }}><Eyebrow>Bring back as</Eyebrow></div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {roles.map(r => (
-                <button key={r} onClick={() => setRole(r)}
-                  style={{ background: role === r ? 'rgba(22,163,74,0.15)' : 'rgba(255,255,255,0.04)', color: role === r ? '#16a34a' : '#64748b', border: `1px solid ${role === r ? '#16a34a' : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700 }}>
-                  {ROLE_LABELS[r]}
+                <button key={r} className="oc-action" onClick={() => setRole(r)} style={chip(role === r)}>
+                  {ROLE_LABELS_PLAIN[r]}
                 </button>
               ))}
             </div>
           </div>
-
-          <button onClick={() => onReactivate(user.uid, role)} disabled={isUpdating}
-            style={{ width: '100%', background: 'rgba(22,163,74,0.15)', color: '#16a34a', border: '1.5px solid rgba(22,163,74,0.3)', borderRadius: 10, padding: '11px', fontSize: 13, fontWeight: 800, opacity: isUpdating ? 0.5 : 1 }}>
-            {isUpdating ? 'Reactivating...' : '✅ Reactivate User'}
-          </button>
+          <div style={{ marginTop: 16 }}>
+            <GhostButton onClick={() => onReactivate(user.uid, role)} disabled={isUpdating}>
+              {isUpdating ? 'Bringing back…' : 'Bring this account back'}
+            </GhostButton>
+          </div>
         </>
       ) : (
-        <div style={{ fontSize: 11, color: '#475569', textAlign: 'center', padding: '8px 0' }}>
-          Only an admin can reactivate accounts.
+        <div style={{ fontSize: 13, color: t.text3, marginTop: 10 }}>
+          Only an admin can bring an account back.
         </div>
       )}
-    </div>
+    </CardShell>
   )
 }

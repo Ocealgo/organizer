@@ -3,12 +3,15 @@ import { collection, addDoc, onSnapshot, updateDoc, doc, query, orderBy } from '
 import { db } from '../../firebase'
 import { PinnedNote } from '../../types'
 import { useAuth } from '../../context/AuthContext'
+import { useTheme } from '../../context/ThemeContext'
 import { useConfirm } from '../../hooks/useConfirm'
+import { EmptyState, GhostButton, PrimaryButton, inputStyle } from '../../components/ui'
 
 const MAX_PINS = 10
 
 export default function PinnedNotesView() {
   const { appUser } = useAuth()
+  const { t } = useTheme()
   const [notes, setNotes] = useState<PinnedNote[]>([])
   const [showAdd, setShowAdd] = useState(false)
   const [content, setContent] = useState('')
@@ -52,9 +55,8 @@ export default function PinnedNotesView() {
   }
 
   const unarchiveNote = async (id: string) => {
-    // Check if there's room
     if (active.length >= MAX_PINS) {
-      await showAlert('Pins Full', `Max ${MAX_PINS} pinned notes. Archive one first.`)
+      await showAlert('All ten pins are in use', 'Archive one note before bringing this back.')
       return
     }
     await updateDoc(doc(db, 'pinned_notes', id), { archived: false })
@@ -65,92 +67,89 @@ export default function PinnedNotesView() {
     const mins = Math.floor(diff / 60000)
     const hrs  = Math.floor(diff / 3600000)
     const days = Math.floor(diff / 86400000)
-    if (mins < 1)  return 'just now'
+    if (mins < 1)  return 'Just now'
     if (mins < 60) return `${mins}m ago`
     if (hrs < 24)  return `${hrs}h ago`
     return `${days}d ago`
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {/* Header info */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: 12, color: '#64748b' }}>
-          {active.length}/{MAX_PINS} pins used
-          {active.length >= MAX_PINS && <span style={{ color: '#d97706', marginLeft: 6 }}>• Adding new will archive oldest</span>}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ fontSize: 13, color: t.text3 }}>
+          {active.length} of {MAX_PINS} pins used
+          {active.length >= MAX_PINS && (
+            <span style={{ color: t.warn }}> · a new note will archive the oldest</span>
+          )}
         </div>
-        <button onClick={() => setShowAdd(!showAdd)}
-          style={{ background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', color: '#93c5fd', borderRadius: 10, padding: '7px 14px', fontSize: 12, fontWeight: 700 }}>
-          📌 Pin Note
-        </button>
+        <GhostButton onClick={() => setShowAdd(!showAdd)}>
+          {showAdd ? 'Cancel' : 'Pin a note'}
+        </GhostButton>
       </div>
 
-      {/* Capacity bar */}
-      <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 99, height: 4, overflow: 'hidden' }}>
-        <div style={{ width: `${(active.length / MAX_PINS) * 100}%`, height: '100%', background: active.length >= MAX_PINS ? '#dc2626' : 'linear-gradient(90deg,#1e40af,#3b82f6)', borderRadius: 99, transition: 'width 0.5s' }} />
-      </div>
-
-      {/* Add form */}
       {showAdd && (
-        <div style={{ background: '#161b22', borderRadius: 14, padding: 14, border: '1px solid rgba(59,130,246,0.2)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <textarea value={content} onChange={e => setContent(e.target.value)}
-            placeholder="Quick note for the team... (e.g. Rajan wants 500 pkts June — confirm price)"
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <textarea
+            value={content}
+            onChange={e => setContent(e.target.value)}
+            placeholder="Something the team should see — e.g. Rajan wants 500 packets in June, confirm the price first"
             rows={3}
-            style={{ background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '11px 14px', fontSize: 14, color: '#fff', outline: 'none', width: '100%', boxSizing: 'border-box', resize: 'none' }} />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => { setShowAdd(false); setContent('') }} style={{ flex: 1, background: 'rgba(255,255,255,0.04)', border: 'none', color: '#64748b', borderRadius: 10, padding: 10, fontSize: 13, fontWeight: 700 }}>Cancel</button>
-            <button onClick={handleAdd} disabled={saving || !content.trim()} style={{ flex: 2, background: saving ? '#475569' : 'linear-gradient(135deg,#1e3a5f,#1e40af)', color: '#fff', border: 'none', borderRadius: 10, padding: 10, fontSize: 13, fontWeight: 800 }}>
-              {saving ? 'Pinning...' : 'Pin Note 📌'}
-            </button>
+            style={{ ...inputStyle(t), resize: 'none', lineHeight: 1.6 }}
+          />
+          <div>
+            <PrimaryButton onClick={handleAdd} disabled={saving || !content.trim()}>
+              {saving ? 'Pinning…' : 'Pin it'}
+            </PrimaryButton>
           </div>
         </div>
       )}
 
-      {/* Active notes */}
       {active.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: 32, color: '#475569' }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>📌</div>
-          <div style={{ fontWeight: 700 }}>No pinned notes yet</div>
-          <div style={{ fontSize: 13, marginTop: 6 }}>Pin quick notes for the founding team</div>
-        </div>
-      ) : active.map((note, i) => (
-        <div key={note.id}
-          style={{ background: '#161b22', borderRadius: 14, padding: 16, border: '1px solid rgba(59,130,246,0.15)', position: 'relative' }}>
-          {/* Pin number */}
-          <div style={{ position: 'absolute', top: -8, left: 12, background: '#1e40af', color: '#fff', fontSize: 9, fontWeight: 900, padding: '2px 8px', borderRadius: 99 }}>
-            📌 {i + 1}
-          </div>
-          <div style={{ fontSize: 14, color: '#e2e8f0', lineHeight: 1.6, marginBottom: 10, marginTop: 4 }}>{note.content}</div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <span style={{ fontSize: 11, color: '#3b82f6', fontWeight: 600 }}>— {note.createdByName}</span>
-              <span style={{ fontSize: 11, color: '#475569' }}>{timeAgo(note.createdAt)}</span>
+        <EmptyState
+          title="Nothing pinned"
+          body="Pin a short note when something needs to stay in front of the team — a price to confirm, a promise made, a number to chase."
+          actionLabel={showAdd ? undefined : 'Pin a note'}
+          onAction={showAdd ? undefined : () => setShowAdd(true)}
+        />
+      ) : (
+        <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+          {active.map(note => (
+            <div key={note.id} style={{ borderTop: `0.5px solid ${t.border}`, padding: '16px 0' }}>
+              <div style={{ fontSize: 15, fontWeight: 400, color: t.text, lineHeight: 1.6 }}>
+                {note.content}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 10 }}>
+                <span style={{ fontSize: 12, color: t.text3 }}>
+                  {note.createdByName} · {timeAgo(note.createdAt)}
+                </span>
+                <button className="oc-action" onClick={() => archiveNote(note.id!)}
+                  style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: t.text2, cursor: 'pointer' }}>
+                  Archive
+                </button>
+              </div>
             </div>
-            <button onClick={() => archiveNote(note.id!)}
-              style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.15)', color: '#dc2626', borderRadius: 8, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>
-              Archive
-            </button>
-          </div>
+          ))}
         </div>
-      ))}
+      )}
 
-      {/* Archived section */}
       {archived.length > 0 && (
         <div>
-          <button onClick={() => setShowArchived(!showArchived)}
-            style={{ background: 'none', border: 'none', color: '#475569', fontSize: 12, cursor: 'pointer', padding: '4px 0', fontWeight: 700 }}>
-            {showArchived ? '▼' : '▶'} Archived ({archived.length})
+          <button className="oc-action" onClick={() => setShowArchived(!showArchived)}
+            style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, color: t.text2, cursor: 'pointer' }}>
+            {showArchived ? 'Hide' : 'Show'} archived ({archived.length})
           </button>
           {showArchived && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+            <div style={{ borderBottom: `0.5px solid ${t.border}`, marginTop: 12 }}>
               {archived.map(note => (
-                <div key={note.id} style={{ background: 'rgba(255,255,255,0.02)', borderRadius: 12, padding: 14, border: '1px solid rgba(255,255,255,0.04)', opacity: 0.6 }}>
-                  <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5, marginBottom: 8 }}>{note.content}</div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 11, color: '#475569' }}>— {note.createdByName} · {new Date(note.createdAt).toLocaleDateString('en-IN')}</span>
-                    <button onClick={() => unarchiveNote(note.id!)}
-                      style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.15)', color: '#3b82f6', borderRadius: 8, padding: '3px 8px', fontSize: 10, cursor: 'pointer' }}>
-                      Unpin
+                <div key={note.id} style={{ borderTop: `0.5px solid ${t.border}`, padding: '14px 0' }}>
+                  <div style={{ fontSize: 14, color: t.text3, lineHeight: 1.6 }}>{note.content}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 8 }}>
+                    <span style={{ fontSize: 12, color: t.text3 }}>
+                      {note.createdByName} · {new Date(note.createdAt).toLocaleDateString('en-IN')}
+                    </span>
+                    <button className="oc-action" onClick={() => unarchiveNote(note.id!)}
+                      style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: t.accent, cursor: 'pointer' }}>
+                      Bring back
                     </button>
                   </div>
                 </div>

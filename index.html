@@ -29,6 +29,13 @@
         .oc-modules, .oc-stats { grid-template-columns: 1fr; }
       }
 
+      /* Header responsive switch — the nav never wraps or overflows. */
+      .oc-sm-only { display: none; }
+      @media (max-width: 599px) {
+        .oc-md-up { display: none !important; }
+        .oc-sm-only { display: block; }
+      }
+
       @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after { transition: none !important; animation: none !important; }
       }
