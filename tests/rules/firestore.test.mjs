@@ -704,6 +704,169 @@ describe('sales manager — approving signups', () => {
   })
 })
 
+describe('field app — duty sessions', () => {
+  const duty = (uid, over = {}) => ({
+    uid, name: uid, date: '2026-08-01',
+    startAt: 1000, startOdometerKm: 12000,
+    startOdometerPhoto: `field/${uid}/s1/start.jpg`,
+    startLocation: { lat: 9.93, lng: 76.26, accuracy: 12, capturedAt: 1000 },
+    status: 'active', createdAt: 1000,
+    ...over,
+  })
+
+  it('an officer CAN open their own duty session', async () => {
+    await assertSucceeds(setDoc(doc(asUser(U.rep), 'duty_sessions', 'd1'), duty(U.rep)))
+  })
+
+  it('an officer CANNOT open a session in someone else\'s name', async () => {
+    await assertFails(setDoc(doc(asUser(U.rep), 'duty_sessions', 'd1'), duty(U.rep2)))
+  })
+
+  it('an officer CANNOT open a session that is already closed out', async () => {
+    await assertFails(setDoc(doc(asUser(U.rep), 'duty_sessions', 'd1'),
+      duty(U.rep, { endOdometerKm: 12200, status: 'closed' })))
+  })
+
+  it('an officer CAN close their own open session', async () => {
+    await seed((db) => setDoc(doc(db, 'duty_sessions', 'd1'), duty(U.rep)))
+    await assertSucceeds(updateDoc(doc(asUser(U.rep), 'duty_sessions', 'd1'), {
+      endAt: 5000, endOdometerKm: 12180, endOdometerPhoto: 'field/rep_1/s1/end.jpg',
+      claimedDistanceKm: 180, status: 'closed',
+    }))
+  })
+
+  it('an officer CANNOT rewrite their starting odometer reading', async () => {
+    await seed((db) => setDoc(doc(db, 'duty_sessions', 'd1'), duty(U.rep)))
+    await assertFails(updateDoc(doc(asUser(U.rep), 'duty_sessions', 'd1'),
+      { startOdometerKm: 11000 }))
+  })
+
+  it('an officer CANNOT swap out the starting odometer photo', async () => {
+    await seed((db) => setDoc(doc(db, 'duty_sessions', 'd1'), duty(U.rep)))
+    await assertFails(updateDoc(doc(asUser(U.rep), 'duty_sessions', 'd1'),
+      { startOdometerPhoto: 'field/rep_1/s1/other.jpg' }))
+  })
+
+  it('an officer CANNOT reopen a closed session', async () => {
+    await seed((db) => setDoc(doc(db, 'duty_sessions', 'd1'),
+      duty(U.rep, { status: 'closed', endOdometerKm: 12180 })))
+    await assertFails(updateDoc(doc(asUser(U.rep), 'duty_sessions', 'd1'),
+      { endOdometerKm: 12500 }))
+  })
+
+  it('an officer CANNOT touch another officer\'s session', async () => {
+    await seed((db) => setDoc(doc(db, 'duty_sessions', 'd2'), duty(U.rep2)))
+    await assertFails(updateDoc(doc(asUser(U.rep), 'duty_sessions', 'd2'), { status: 'closed' }))
+    await assertFails(getDoc(doc(asUser(U.rep), 'duty_sessions', 'd2')))
+  })
+
+  it('a manager with view_reports CAN read any session', async () => {
+    await seed((db) => setDoc(doc(db, 'duty_sessions', 'd2'), duty(U.rep2)))
+    await assertSucceeds(getDoc(doc(asUser(U.mgr), 'duty_sessions', 'd2')))
+  })
+})
+
+describe('field app — location trace', () => {
+  const ping = (uid, over = {}) => ({
+    uid, sessionId: 'd1', date: '2026-08-01',
+    lat: 9.93, lng: 76.26, accuracy: 15, at: 1200, ...over,
+  })
+
+  it('an officer CAN append their own pings', async () => {
+    await assertSucceeds(setDoc(doc(asUser(U.rep), 'location_pings', 'p1'), ping(U.rep)))
+  })
+
+  it('an officer CANNOT append pings under another uid', async () => {
+    await assertFails(setDoc(doc(asUser(U.rep), 'location_pings', 'p1'), ping(U.rep2)))
+  })
+
+  it('the trace is immutable — nobody can edit a ping', async () => {
+    await seed((db) => setDoc(doc(db, 'location_pings', 'p1'), ping(U.rep)))
+    await assertFails(updateDoc(doc(asUser(U.rep), 'location_pings', 'p1'), { lat: 0 }))
+    await assertFails(updateDoc(doc(asUser(U.admin), 'location_pings', 'p1'), { lat: 0 }))
+  })
+
+  it('only a super admin can delete pings — retention, not user action', async () => {
+    await seed((db) => setDoc(doc(db, 'location_pings', 'p1'), ping(U.rep)))
+    await assertFails(deleteDoc(doc(asUser(U.rep), 'location_pings', 'p1')))
+    await assertFails(deleteDoc(doc(asUser(U.admin), 'location_pings', 'p1')))
+    await assertSucceeds(deleteDoc(doc(asUser(U.sa), 'location_pings', 'p1')))
+  })
+})
+
+describe('field app — outlet visits', () => {
+  const visit = (uid, over = {}) => ({
+    sessionId: 'd1', uid, name: uid, date: '2026-08-01',
+    partyId: 'p1', partyName: 'Test Shop', outletType: 'grocery',
+    punchInAt: 2000,
+    punchInLocation: { lat: 9.93, lng: 76.26, accuracy: 14, capturedAt: 2000 },
+    stock: [], competitors: [], photos: [],
+    orderPlaced: false, status: 'open', createdAt: 2000,
+    ...over,
+  })
+
+  it('an officer CAN punch in to an outlet', async () => {
+    await assertSucceeds(setDoc(doc(asUser(U.rep), 'outlet_visits', 'v1'), visit(U.rep)))
+  })
+
+  it('an officer CANNOT create a visit already punched out', async () => {
+    await assertFails(setDoc(doc(asUser(U.rep), 'outlet_visits', 'v1'),
+      visit(U.rep, { punchOutAt: 3000, status: 'closed' })))
+  })
+
+  it('an officer CAN punch out with remarks', async () => {
+    await seed((db) => setDoc(doc(db, 'outlet_visits', 'v1'), visit(U.rep)))
+    await assertSucceeds(updateDoc(doc(asUser(U.rep), 'outlet_visits', 'v1'), {
+      remarksCategory: 'no_order_competitor',
+      remarksReason: 'Heavy competitor discounting',
+      remarksText: 'Owner says the rival brand is running a 20 percent scheme this month.',
+      punchOutAt: 3000, durationMinutes: 17, status: 'closed',
+    }))
+  })
+
+  it('an officer CANNOT move the punch-in time or location after the fact', async () => {
+    await seed((db) => setDoc(doc(db, 'outlet_visits', 'v1'), visit(U.rep)))
+    await assertFails(updateDoc(doc(asUser(U.rep), 'outlet_visits', 'v1'), { punchInAt: 1 }))
+    await assertFails(updateDoc(doc(asUser(U.rep), 'outlet_visits', 'v1'),
+      { punchInLocation: { lat: 0, lng: 0, accuracy: 1, capturedAt: 1 } }))
+  })
+
+  it('an officer CANNOT reassign a visit to a different outlet', async () => {
+    await seed((db) => setDoc(doc(db, 'outlet_visits', 'v1'), visit(U.rep)))
+    await assertFails(updateDoc(doc(asUser(U.rep), 'outlet_visits', 'v1'), { partyId: 'p2' }))
+  })
+
+  it('an officer CANNOT edit a visit once punched out', async () => {
+    await seed((db) => setDoc(doc(db, 'outlet_visits', 'v1'),
+      visit(U.rep, { status: 'closed', punchOutAt: 3000 })))
+    await assertFails(updateDoc(doc(asUser(U.rep), 'outlet_visits', 'v1'),
+      { remarksText: 'rewriting history after the fact' }))
+  })
+
+  it('a manager with view_reports CAN read any outlet visit', async () => {
+    await seed((db) => setDoc(doc(db, 'outlet_visits', 'v2'), visit(U.rep2)))
+    await assertSucceeds(getDoc(doc(asUser(U.mgr), 'outlet_visits', 'v2')))
+    await assertFails(getDoc(doc(asUser(U.rep), 'outlet_visits', 'v2')))
+  })
+})
+
+describe('field app — routes', () => {
+  const route = { name: 'Kochi North', outletIds: ['p1'], assignedTo: ['rep_1'], active: true, createdBy: 'admin_1', createdByName: 'admin_1', createdAt: 1 }
+
+  it('any approved user CAN read routes — they pick their beat from them', async () => {
+    await seed((db) => setDoc(doc(db, 'sales_routes', 'r1'), route))
+    await assertSucceeds(getDoc(doc(asUser(U.rep), 'sales_routes', 'r1')))
+  })
+
+  it('an officer CANNOT create or edit a route', async () => {
+    await assertFails(setDoc(doc(asUser(U.rep), 'sales_routes', 'r2'), route))
+  })
+
+  it('an admin CAN create a route', async () => {
+    await assertSucceeds(setDoc(doc(asUser(U.admin), 'sales_routes', 'r2'), route))
+  })
+})
+
 describe('workspace and audit trail', () => {
   it('a rep CANNOT read admin reminders', async () => {
     await seed((db) => setDoc(doc(db, 'reminders', 'rm1'),

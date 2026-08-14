@@ -9,9 +9,19 @@
     "emulators": "firebase emulators:start --only firestore,auth",
     "test:rules": "firebase emulators:exec --only firestore --project demo-ocealgo \"node --test\"",
     "rules:deploy:dev": "firebase deploy --only firestore:rules --project dev",
-    "rules:deploy:prod": "firebase deploy --only firestore:rules --project prod"
+    "rules:deploy:prod": "firebase deploy --only firestore:rules --project prod",
+    "storage:deploy:dev": "firebase deploy --only storage --project dev",
+    "storage:deploy:prod": "firebase deploy --only storage --project prod",
+    "cap:sync": "npm run build && npx cap sync",
+    "android": "npm run build && npx cap sync android && npx cap open android"
   },
   "dependencies": {
+    "@capacitor/camera": "^8.2.2",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/device": "^8.0.3",
+    "@capacitor/geolocation": "^8.2.2",
+    "@capacitor/network": "^8.0.1",
+    "@capacitor/preferences": "^8.0.1",
     "firebase": "^10.7.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -19,6 +29,8 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0",
     "@firebase/rules-unit-testing": "^3.0.4",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",

@@ -51,6 +51,38 @@ export interface ContentPost {
 export type PartyType = 'distributor' | 'retailer'
 export type PartyCategory = 'FMCG' | 'Pharma' | 'General Store' | 'Supermarket' | 'Online' | 'Other'
 
+/**
+ * Outlet channel, per the Sales Officer spec §3.2. Distinct from PartyCategory,
+ * which is the older commercial grouping — this one drives which fields the
+ * visit form makes mandatory.
+ */
+export type OutletType =
+  | 'grocery'      // Groceries / Supermarkets
+  | 'distributor'  // Distributors / Stockists
+  | 'pharmacy'     // Medical shops / Pharmacies
+  | 'cosmetics'    // Cosmetics shops
+  | 'hospital'     // Hospitals / Clinics
+  | 'general'      // General retail
+
+export const OUTLET_TYPE_LABEL: Record<OutletType, string> = {
+  grocery: 'Grocery / Supermarket',
+  distributor: 'Distributor / Stockist',
+  pharmacy: 'Medical shop / Pharmacy',
+  cosmetics: 'Cosmetics shop',
+  hospital: 'Hospital / Clinic',
+  general: 'General retail',
+}
+
+/** A single position fix. `isMock` comes from Android's mock-provider flag. */
+export interface GeoPoint {
+  lat: number
+  lng: number
+  accuracy: number          // metres — reject or flag anything over ~100
+  capturedAt: number
+  capturedBy?: string
+  isMock?: boolean
+}
+
 export interface Party {
   id?: string; name: string; type: PartyType; category: PartyCategory
   phone: string; address: string; place: string
@@ -63,6 +95,14 @@ export interface Party {
   email?: string
   addedBy: string; addedByName: string; createdAt: number
   stock?: Record<string, number>   // productId → packets currently held
+
+  // ── Sales Officer spec additions ──
+  outletType?: OutletType
+  /** Registered shop position. Captured on first visit, correctable by admin. */
+  coordinates?: GeoPoint
+  contactPersonName?: string       // hospitals / institutional
+  contactPersonRole?: string
+  creditLimit?: number             // distributors — checked before order booking
 }
 
 // ── STOCK CONFIG ──────────────────────────────────────────────────────────────
@@ -193,12 +233,24 @@ export interface Holiday {
 
 // ── EXPENSE ───────────────────────────────────────────────────────────────────
 export type AllowanceType = 'HQ' | 'EX' | 'OS'
-export type ExpenseCategory = 'bus_fare' | 'fuel' | 'food' | 'lodging' | 'printing' | 'other'
+export type ExpenseCategory =
+  | 'bus_fare' | 'fuel' | 'food' | 'lodging' | 'printing' | 'other'
+  // ── Sales Officer spec §4.1 ──
+  | 'taxi' | 'toll' | 'parking'
+
+/** Categories where the spec makes a bill photo compulsory. */
+export const PROOF_REQUIRED_CATEGORIES: ExpenseCategory[] = [
+  'taxi', 'bus_fare', 'lodging', 'toll', 'parking',
+]
 
 export interface ExpenseConfig {
   hq: number
   ex: number
   os: number
+  /** ₹ per km, used to auto-calculate the fuel claim from the day's odometer. */
+  ratePerKm?: number
+  /** A food bill is required above this amount. */
+  foodBillThreshold?: number
   updatedAt?: number
   updatedBy?: string
 }
@@ -231,6 +283,14 @@ export interface ExpenseEntry {
   amount: number
   notes?: string
   createdAt: number
+
+  // ── Sales Officer spec §4.1 ──
+  /** Storage path of the bill or receipt. Compulsory for PROOF_REQUIRED_CATEGORIES. */
+  billPhotoPath?: string
+  /** True when the amount came from distance × rate rather than being typed. */
+  autoCalculated?: boolean
+  distanceKm?: number
+  dutySessionId?: string
 }
 
 // ── ALERT ─────────────────────────────────────────────────────────────────────
@@ -565,4 +625,245 @@ export interface VisitLogAuditEntry {
   partyId?: string
   partyName?: string
   detail?: string
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SALES OFFICER FIELD APP
+// Implements the Sales Officer Mobile App functional specification.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── DUTY SESSION (spec §2) ───────────────────────────────────────────────────
+export type DutyStatus = 'active' | 'closed'
+
+/**
+ * One working day for one Sales Officer. Opened by the day punch-in and closed
+ * by the punch-out. Everything else in the field app hangs off this.
+ */
+export interface DutySession {
+  id?: string
+  uid: string
+  name: string
+  date: string                    // YYYY-MM-DD, local
+
+  routeId?: string
+  routeName?: string
+
+  // Punch-in
+  startAt: number
+  startLocation: GeoPoint
+  startOdometerKm: number
+  startOdometerPhoto: string      // Storage path
+  startBatteryPct?: number
+
+  // Punch-out
+  endAt?: number
+  endLocation?: GeoPoint
+  endOdometerKm?: number
+  endOdometerPhoto?: string
+  endBatteryPct?: number
+
+  /** endOdometerKm − startOdometerKm. What the officer claims. */
+  claimedDistanceKm?: number
+  /** Distance derived from the location trace. What actually happened. */
+  trackedDistanceKm?: number
+  /** Positive means the claim exceeds the trace. Flagged above 15% per spec §4.1. */
+  distanceDeviationPct?: number
+
+  outletsPlanned?: number
+  outletsVisited?: number
+
+  status: DutyStatus
+  createdAt: number
+}
+
+// ── LOCATION TRACE ───────────────────────────────────────────────────────────
+/**
+ * One position sample during a duty session. Written in batches from the device
+ * buffer, not one document per fix. Subject to a retention policy — these are
+ * the highest-volume documents in the system by an order of magnitude.
+ */
+export interface LocationPing {
+  id?: string
+  uid: string
+  sessionId: string
+  date: string
+  lat: number
+  lng: number
+  accuracy: number
+  at: number
+  isMock?: boolean
+}
+
+// ── ROUTE / BEAT (spec §2.3) ─────────────────────────────────────────────────
+export interface SalesRoute {
+  id?: string
+  name: string
+  description?: string
+  outletIds: string[]
+  assignedTo: string[]            // uids of officers who may select this beat
+  active: boolean
+  createdBy: string
+  createdByName: string
+  createdAt: number
+}
+
+// ── VISIT OUTCOME TAXONOMY (spec §5.1) ───────────────────────────────────────
+export type VisitOutcomeCategory =
+  | 'order_booked'
+  | 'no_order_stock_available'
+  | 'no_order_commercial'
+  | 'no_order_competitor'
+  | 'no_order_operational'
+  | 'institutional'
+
+export const VISIT_OUTCOME_LABEL: Record<VisitOutcomeCategory, string> = {
+  order_booked: 'Order booked',
+  no_order_stock_available: 'No order — stock available',
+  no_order_commercial: 'No order — commercial reason',
+  no_order_competitor: 'No order — competitor action',
+  no_order_operational: 'No order — operational',
+  institutional: 'Institutional / hospital',
+}
+
+/** Second-level reason. Mandatory for every no-order outcome. */
+export const VISIT_OUTCOME_REASONS: Record<VisitOutcomeCategory, readonly string[]> = {
+  order_booked: [
+    'Standard restock',
+    'New product introduction',
+    'Promotional scheme accepted',
+  ],
+  no_order_stock_available: [
+    'Adequate inventory on hand',
+    'Next order expected in the following cycle',
+  ],
+  no_order_commercial: [
+    'Payment dispute',
+    'Overdue credit balance',
+    'Scheme margin dissatisfaction',
+  ],
+  no_order_competitor: [
+    'Heavy competitor discounting',
+    'Competitor gifting or scheme active',
+    'Stocked with an alternative brand',
+  ],
+  no_order_operational: [
+    'Key decision maker unavailable',
+    'Shop closed during visit',
+    'Stock delivery delayed',
+  ],
+  institutional: [
+    'Product trial requested',
+    'Procurement committee review',
+    'Tender submitted',
+  ],
+} as const
+
+/** Categories that count as a no-order visit. */
+export const NO_ORDER_CATEGORIES: VisitOutcomeCategory[] = [
+  'no_order_stock_available',
+  'no_order_commercial',
+  'no_order_competitor',
+  'no_order_operational',
+]
+
+/** Spec §5.2 — free-text remarks must reach this length before punch-out. */
+export const MIN_REMARKS_LENGTH = 15
+
+// ── OUTLET VISIT (spec §3) ───────────────────────────────────────────────────
+export type OutletPhotoKind =
+  | 'shelf'          // groceries
+  | 'display_strip'  // cosmetics
+  | 'counter'        // pharmacies
+  | 'godown'         // distributors
+  | 'other'
+
+export interface OutletPhoto {
+  kind: OutletPhotoKind
+  path: string                    // Storage path
+  at: number
+  location?: GeoPoint
+}
+
+export interface OutletStockLine {
+  productId: string
+  productName: string
+  qtyOnShelf: number
+}
+
+export interface CompetitorObservation {
+  brand: string
+  present: boolean
+  pricePerPack?: number
+  schemeNote?: string
+}
+
+export type VisitSessionStatus = 'open' | 'closed'
+
+/**
+ * One outlet visit inside a duty session. Opened by the outlet punch-in and
+ * closed by the punch-out, which the app blocks until the mandatory remarks in
+ * spec §5.2 are satisfied.
+ */
+export interface OutletVisit {
+  id?: string
+  sessionId: string               // parent DutySession
+  uid: string
+  name: string
+  date: string
+
+  partyId: string
+  partyName: string
+  outletType: OutletType
+
+  // Punch-in
+  punchInAt: number
+  punchInLocation: GeoPoint
+  /** Metres from the outlet's registered coordinates, when it has any. */
+  distanceFromOutletM?: number
+  withinGeofence?: boolean
+  /** Required when the officer punched in outside the tolerance. */
+  geoOverrideReason?: string
+
+  // Execution
+  stock: OutletStockLine[]
+  competitors: CompetitorObservation[]
+  photos: OutletPhoto[]
+
+  orderPlaced: boolean
+  allocationId?: string
+  indentId?: string
+  paymentTransactionId?: string
+
+  // Category-specific mandatory fields (spec §3.2)
+  contactPersonName?: string      // hospital
+  sampleLogNote?: string          // hospital
+  creditLimitChecked?: boolean    // distributor
+  counterPresence?: boolean       // pharmacy
+  customerFeedback?: string       // cosmetics
+
+  // Compulsory remarks (spec §5)
+  remarksCategory?: VisitOutcomeCategory
+  remarksReason?: string
+  remarksText?: string
+
+  // Punch-out
+  punchOutAt?: number
+  punchOutLocation?: GeoPoint
+  durationMinutes?: number
+
+  status: VisitSessionStatus
+  createdAt: number
+}
+
+/**
+ * Spec §5.2, expressed once so the form, the punch-out button and any future
+ * server-side check all agree. Returns null when the visit may be closed.
+ */
+export function validateVisitForPunchOut(v: Partial<OutletVisit>): string | null {
+  if (!v.remarksCategory) return 'Select a visit outcome category.'
+  if (NO_ORDER_CATEGORIES.includes(v.remarksCategory) && !v.remarksReason)
+    return 'Select the specific no-order reason.'
+  if ((v.remarksText ?? '').trim().length < MIN_REMARKS_LENGTH)
+    return `Remarks must be at least ${MIN_REMARKS_LENGTH} characters describing the conversation.`
+  return null
 }

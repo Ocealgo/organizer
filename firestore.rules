@@ -412,6 +412,82 @@ service cloud.firestore {
         || (approved() && resource.data.userId == request.auth.uid);
     }
 
+    // ═════════════════════════════════════════════════════════════════════════
+    // SALES OFFICER FIELD APP
+    // Field records are evidence. An officer writes their own and closes them;
+    // once closed only an admin may touch them, because the value of a punch-out
+    // time or an odometer reading is that it cannot be revised afterwards.
+    // ═════════════════════════════════════════════════════════════════════════
+
+    // ── DUTY SESSIONS ───────────────────────────────────────────────────────
+    match /duty_sessions/{id} {
+      allow read: if isAdmin()
+        || hasPerm('view_reports')
+        || resource.data.uid == request.auth.uid;
+
+      allow create: if approved()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'active'
+        && request.resource.data.startOdometerKm >= 0
+        && request.resource.data.startOdometerPhoto is string
+        && !('endOdometerKm' in request.resource.data);
+
+      // The officer may only close their own open session. The start reading,
+      // its photo and the start time can never be rewritten.
+      allow update: if approved()
+        && resource.data.uid == request.auth.uid
+        && resource.data.status == 'active'
+        && isUnchanged('uid')
+        && isUnchanged('startAt')
+        && isUnchanged('startOdometerKm')
+        && isUnchanged('startOdometerPhoto');
+
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── LOCATION TRACE ──────────────────────────────────────────────────────
+    // High volume and append-only. Deletion is a retention job, not a user action.
+    match /location_pings/{id} {
+      allow read: if isAdmin()
+        || hasPerm('view_reports')
+        || resource.data.uid == request.auth.uid;
+      allow create: if approved()
+        && request.resource.data.uid == request.auth.uid;
+      allow update: if false;
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── OUTLET VISITS ───────────────────────────────────────────────────────
+    match /outlet_visits/{id} {
+      allow read: if isAdmin()
+        || hasPerm('view_reports')
+        || resource.data.uid == request.auth.uid;
+
+      allow create: if approved()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'open'
+        && !('punchOutAt' in request.resource.data);
+
+      // Execution and punch-out, by the officer, while the visit is still open.
+      allow update: if approved()
+        && resource.data.uid == request.auth.uid
+        && resource.data.status == 'open'
+        && isUnchanged('uid')
+        && isUnchanged('partyId')
+        && isUnchanged('punchInAt')
+        && isUnchanged('punchInLocation');
+
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── ROUTES / BEATS ──────────────────────────────────────────────────────
+    match /sales_routes/{id} {
+      allow read: if approved();
+      allow write: if isAdmin();
+    }
+
     // ── ALERTS ──────────────────────────────────────────────────────────────
     // READ SCOPING: NotificationBell subscribes to the entire collection and
     // filters recipients in JavaScript, so per-recipient rules would break it.

@@ -1,0 +1,54 @@
+rules_version = '2';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ocealgo — Cloud Storage rules
+//
+// Everything here is field evidence: odometer photos, shelf and display photos,
+// expense bills. It is written once by the officer who captured it and read by
+// management. Nothing is editable or deletable by a client, because the whole
+// point of the photo is that it cannot be changed after the fact.
+//
+// Layout:  field/{uid}/{sessionId}/{kind}-{timestamp}.jpg
+// ─────────────────────────────────────────────────────────────────────────────
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function userData() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function approved() {
+      return signedIn() && userData().status == 'approved';
+    }
+
+    // Anyone who reviews field work: admins and sales managers.
+    function isManagement() {
+      return approved() && userData().role in ['admin', 'super_admin', 'sales_manager'];
+    }
+
+    function validPhoto() {
+      return request.resource.size < 6 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    match /field/{uid}/{allPaths=**} {
+      allow read: if isOwner(uid) || isManagement();
+      allow create: if isOwner(uid) && validPhoto();
+      // Evidence is immutable. Retention is handled server-side, not by clients.
+      allow update, delete: if false;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
