@@ -26,7 +26,7 @@ export default function ConfirmModal({ message, detail, confirmLabel, cancelLabe
       <div style={{ position: 'relative', zIndex: 1, background: t.card, borderRadius: 20, padding: '28px 22px 22px', maxWidth: 360, width: '100%', border: `1.5px solid ${isDanger ? 'rgba(220,38,38,0.35)' : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`, boxShadow: '0 24px 64px rgba(0,0,0,0.45)' }}>
         <div style={{ fontSize: 38, textAlign: 'center', marginBottom: 14 }}>{emoji}</div>
         <div style={{ fontSize: 17, fontWeight: 800, color: t.text, textAlign: 'center', marginBottom: detail ? 8 : 20, lineHeight: 1.3 }}>{message}</div>
-        {detail && <div style={{ fontSize: 13, color: t.text2, textAlign: 'center', marginBottom: 20, lineHeight: 1.6 }}>{detail}</div>}
+        {detail && <div style={{ fontSize: 13, color: t.text2, textAlign: 'center', marginBottom: 20, lineHeight: 1.6, whiteSpace: 'pre-line' }}>{detail}</div>}
         <div style={{ display: 'flex', gap: 10 }}>
           {!isAlert && (
             <button onClick={onCancel}
