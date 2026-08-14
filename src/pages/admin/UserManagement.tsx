@@ -104,6 +104,7 @@ export default function UserManagement({ onBack }: Props) {
           ? 'Accounts are deactivated rather than deleted, so the same email can be brought back later.'
           : 'You can approve or reject new signups into offline sales. Role changes and deactivation stay with an admin.'}
         onBack={onBack}
+        divider={false}
       />
 
       <TabBar

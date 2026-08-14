@@ -26,16 +26,19 @@ export function Eyebrow({ children }: { children: ReactNode }) {
 }
 
 // ── Page header ──────────────────────────────────────────────────────────────
-export function PageHeader({ eyebrow, title, subtitle, onBack, right }: {
+export function PageHeader({ eyebrow, title, subtitle, onBack, right, divider = true }: {
   eyebrow?: string
   title: string
   subtitle?: ReactNode
   onBack?: () => void
   right?: ReactNode
+  /** Set false when a TabBar follows — the tab strip draws the rule instead,
+   *  otherwise the tabs sit squeezed between two hairlines. */
+  divider?: boolean
 }) {
   const { t } = useTheme()
   return (
-    <div style={{ padding: '22px 20px 20px', borderBottom: `0.5px solid ${t.border}` }}>
+    <div style={{ padding: '22px 20px 20px', borderBottom: divider ? `0.5px solid ${t.border}` : 'none' }}>
       {onBack && (
         <button className="oc-action" onClick={onBack}
           style={{ background: 'none', border: 'none', padding: 0, marginBottom: 16,
@@ -74,7 +77,8 @@ export function TabBar<T extends string>({ tabs, value, onChange }: {
         {tabs.map(tab => (
           <button key={tab.id} className="oc-action" onClick={() => onChange(tab.id)}
             style={{
-              background: 'none', border: 'none', padding: '0 0 12px',
+              // Symmetric vertical padding so the strip has room to breathe.
+              background: 'none', border: 'none', padding: '15px 0 13px',
               fontSize: 14, fontWeight: value === tab.id ? 500 : 400,
               color: value === tab.id ? t.text : t.text2,
               borderBottom: `2px solid ${value === tab.id ? t.text : 'transparent'}`,

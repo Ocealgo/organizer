@@ -788,7 +788,7 @@ export default function AdminDashboard() {
   return (
     <div style={{ minHeight: "100vh", background: t.bg }}>
       {/* Attention line — what is actually waiting, in one sentence */}
-      <div style={{ padding: "30px 20px 24px", maxWidth: 720 }}>
+      <div style={{ padding: "30px 20px 10px", maxWidth: 720 }}>
         <div
           style={{
             fontSize: 11,
@@ -836,7 +836,7 @@ export default function AdminDashboard() {
               style={{
                 background: "none",
                 border: "none",
-                padding: "0 0 12px",
+                padding: "15px 0 13px",
                 fontSize: 14,
                 fontWeight: mainTab === tab.id ? 500 : 400,
                 color: mainTab === tab.id ? t.text : t.text2,

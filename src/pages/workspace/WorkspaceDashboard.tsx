@@ -24,7 +24,7 @@ export default function WorkspaceDashboard() {
         {TABS.map(x => (
           <button key={x.id} className="oc-action" onClick={() => setTab(x.id)}
             style={{
-              background: 'none', border: 'none', padding: '0 0 10px',
+              background: 'none', border: 'none', padding: '12px 0 10px',
               fontSize: 13, fontWeight: tab === x.id ? 500 : 400,
               color: tab === x.id ? t.text : t.text2,
               borderBottom: `2px solid ${tab === x.id ? t.text : 'transparent'}`,
