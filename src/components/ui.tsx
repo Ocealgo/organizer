@@ -235,3 +235,69 @@ export function inputStyle(t: ReturnType<typeof useTheme>['t']): CSSProperties {
     fontSize: 14, fontWeight: 400, color: t.text, outline: 'none',
   }
 }
+
+// ── Form field ───────────────────────────────────────────────────────────────
+/** Label above, optional hint below the label, error below the control.
+ *  The error is the only thing here that gets colour. */
+export function Field({ label, hint, error, children }: {
+  label: string; hint?: string; error?: string; children: ReactNode
+}) {
+  const { t } = useTheme()
+  return (
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 400, color: t.text, marginBottom: hint ? 3 : 7 }}>
+        {label}
+      </div>
+      {hint && <div style={{ fontSize: 12, color: t.text3, marginBottom: 7 }}>{hint}</div>}
+      {children}
+      {error && <div style={{ fontSize: 12, color: t.warn, marginTop: 6 }}>{error}</div>}
+    </div>
+  )
+}
+
+// ── Chip selector ────────────────────────────────────────────────────────────
+/** A short list of mutually exclusive choices. Selection is shown by weight and
+ *  border, never by a filled colour block. */
+export function ChipGroup<T extends string>({ options, value, onChange }: {
+  options: readonly { id: T; label: string }[] | readonly T[]
+  value: T
+  onChange: (id: T) => void
+}) {
+  const { t } = useTheme()
+  const items = options.map(o =>
+    typeof o === 'string' ? { id: o as T, label: o } : o as { id: T; label: string })
+  return (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      {items.map(o => {
+        const on = value === o.id
+        return (
+          <button key={o.id} className="oc-action" onClick={() => onChange(o.id)}
+            style={{
+              background: on ? t.tint : 'none',
+              border: `0.5px solid ${on ? t.text2 : t.border2}`,
+              borderRadius: 6, padding: '8px 13px', fontSize: 13,
+              fontWeight: on ? 500 : 400, color: on ? t.text : t.text2, cursor: 'pointer',
+            }}>
+            {o.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Inline note ──────────────────────────────────────────────────────────────
+/** A quiet strip of context above a form or list. `tone="warn"` for anything
+ *  that needs the reader to act or take care. */
+export function Note({ children, tone = 'plain' }: { children: ReactNode; tone?: 'plain' | 'warn' }) {
+  const { t } = useTheme()
+  return (
+    <div style={{
+      background: t.tint, borderRadius: 6, padding: '11px 13px',
+      fontSize: 13, fontWeight: 400, lineHeight: 1.5,
+      color: tone === 'warn' ? t.warn : t.text2,
+    }}>
+      {children}
+    </div>
+  )
+}

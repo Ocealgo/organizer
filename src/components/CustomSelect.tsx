@@ -18,7 +18,7 @@ interface Props {
 }
 
 export default function CustomSelect({ value, onChange, options, placeholder = 'Choose...', error, searchable = true }: Props) {
-  const { t, theme } = useTheme()
+  const { t } = useTheme()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const ref = useRef<HTMLDivElement>(null)
@@ -62,18 +62,15 @@ export default function CustomSelect({ value, onChange, options, placeholder = '
 
   const renderOptions = (opts: SelectOption[]) =>
     opts.map(o => (
-      <div key={o.value}
+      <div key={o.value} className="oc-row"
         onClick={() => { onChange(o.value); setOpen(false); setSearch('') }}
         style={{
-          padding: '12px 16px', cursor: 'pointer',
-          background: value === o.value ? 'rgba(8,145,178,0.15)' : 'transparent',
-          color: value === o.value ? '#0891b2' : t.text,
-          borderLeft: value === o.value ? '3px solid #0891b2' : '3px solid transparent',
-        }}
-        onMouseEnter={e => { if (value !== o.value) (e.currentTarget as HTMLElement).style.background = theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }}
-        onMouseLeave={e => { if (value !== o.value) (e.currentTarget as HTMLElement).style.background = 'transparent' }}>
-        <div style={{ fontSize: 14, fontWeight: value === o.value ? 700 : 500 }}>{o.label}</div>
-        {o.sub && <div style={{ fontSize: 12, color: t.text3, marginTop: 2 }}>{o.sub}</div>}
+          padding: '12px 14px', cursor: 'pointer',
+          background: value === o.value ? t.tint : 'transparent',
+          color: t.text,
+        }}>
+        <div style={{ fontSize: 14, fontWeight: value === o.value ? 500 : 400 }}>{o.label}</div>
+        {o.sub && <div style={{ fontSize: 12, fontWeight: 400, color: t.text3, marginTop: 2 }}>{o.sub}</div>}
       </div>
     ))
 
@@ -81,37 +78,41 @@ export default function CustomSelect({ value, onChange, options, placeholder = '
     <div ref={ref} style={{ position: 'relative' }}>
       <div onClick={() => { setOpen(!open); setSearch('') }}
         style={{
-          width: '100%', background: t.bg3,
-          border: `1.5px solid ${error ? '#dc2626' : open ? '#0891b2' : t.border2}`,
-          borderRadius: 12, padding: '13px 16px', fontSize: 15,
+          width: '100%', background: 'transparent',
+          border: `0.5px solid ${error ? t.warn : open ? t.text2 : t.border2}`,
+          borderRadius: 6, padding: '11px 13px', fontSize: 14, fontWeight: 400,
           color: selected ? t.text : t.text3, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
           boxSizing: 'border-box',
         }}>
-        <span>{selected ? selected.label : placeholder}</span>
-        <span style={{ color: t.text3, fontSize: 12, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'none' }}>▼</span>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {selected ? selected.label : placeholder}
+        </span>
+        <span aria-hidden style={{
+          color: t.text3, fontSize: 9, flexShrink: 0,
+          transition: 'transform .12s ease', transform: open ? 'rotate(180deg)' : 'none',
+        }}>▼</span>
       </div>
 
       {open && (
         <div style={{
           position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, zIndex: 1000,
-          background: t.bg3, border: `1px solid ${t.border2}`,
-          borderRadius: 12, overflow: 'hidden',
-          boxShadow: theme === 'dark' ? '0 12px 40px rgba(0,0,0,0.5)' : '0 8px 32px rgba(0,0,0,0.12)',
+          background: t.bg2, border: `0.5px solid ${t.border2}`,
+          borderRadius: 6, overflow: 'hidden',
         }}>
           {searchable && (
-            <div style={{ padding: '10px 12px', borderBottom: `1px solid ${t.border}` }}>
+            <div style={{ padding: 10, borderBottom: `0.5px solid ${t.border}` }}>
               <input
                 ref={inputRef}
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Search..."
+                placeholder="Search"
                 onClick={e => e.stopPropagation()}
                 style={{
-                  width: '100%', background: t.bg2,
-                  border: `1px solid ${t.border}`,
-                  borderRadius: 8, padding: '8px 12px',
-                  fontSize: 16, color: t.text, outline: 'none', boxSizing: 'border-box',
+                  width: '100%', background: 'transparent',
+                  border: `0.5px solid ${t.border}`,
+                  borderRadius: 6, padding: '9px 11px',
+                  fontSize: 14, fontWeight: 400, color: t.text, outline: 'none', boxSizing: 'border-box',
                 }}
               />
             </div>
@@ -119,15 +120,19 @@ export default function CustomSelect({ value, onChange, options, placeholder = '
 
           <div style={{ maxHeight: 'min(260px, 50vh)', overflowY: 'auto' }}>
             {filtered.length === 0 ? (
-              <div style={{ padding: '16px', textAlign: 'center', color: t.text3, fontSize: 13 }}>
-                No results for "{search}"
+              <div style={{ padding: 16, color: t.text3, fontSize: 13, fontWeight: 400 }}>
+                Nothing matches “{search}”.
               </div>
             ) : (
               <>
                 {ungrouped.length > 0 && renderOptions(ungrouped)}
                 {Object.entries(groups).map(([group, opts]) => (
                   <div key={group}>
-                    <div style={{ padding: '8px 16px 4px', fontSize: 11, color: t.text3, letterSpacing: 2, textTransform: 'uppercase', fontWeight: 700, borderTop: ungrouped.length > 0 ? `1px solid ${t.border}` : 'none' }}>
+                    <div style={{
+                      padding: '10px 14px 5px', fontSize: 11, color: t.text3,
+                      letterSpacing: '0.09em', textTransform: 'uppercase', fontWeight: 400,
+                      borderTop: ungrouped.length > 0 ? `0.5px solid ${t.border}` : 'none',
+                    }}>
                       {group}
                     </div>
                     {renderOptions(opts)}

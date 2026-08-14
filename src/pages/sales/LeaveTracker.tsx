@@ -5,6 +5,11 @@ import { LeaveRecord, AppUser, Holiday } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr, localMonthStr } from '../../utils/date'
+import DateInput from '../../components/DateInput'
+import {
+  PageHeader, TabBar, StatGrid, StatCard, Section, EmptyState,
+  ChipGroup, GhostButton, PrimaryButton, inputStyle,
+} from '../../components/ui'
 
 interface Props { onBack: () => void }
 
@@ -13,8 +18,28 @@ type LeaveTab = 'today' | 'month' | 'all' | 'holidays'
 const todayStr = () => localDateStr()
 const thisMonth = () => localMonthStr()
 
+const STATUS_LABEL: Record<string, string> = {
+  pending_approval: 'Awaiting approval',
+  active: 'Approved',
+  unmark_requested: 'Unmark requested',
+}
+
+/** Audit entries are stored as machine tokens; nobody should have to read those. */
+const ACTION_LABEL: Record<string, string> = {
+  leave_marked: 'Leave requested',
+  leave_approved: 'Leave approved',
+  leave_rejected: 'Leave rejected',
+  unmark_requested: 'Unmark requested',
+  unmark_approved: 'Unmark approved',
+  unmark_rejected: 'Unmark rejected',
+}
+
+const longDate = (d: string) =>
+  new Date(d + 'T00:00:00').toLocaleDateString('en-IN',
+    { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })
+
 export default function LeaveTracker({ onBack }: Props) {
-  const { t, theme } = useTheme()
+  const { t } = useTheme()
   const { modal, showConfirm, showAlert } = useConfirm()
 
   const [leaveRecords, setLeaveRecords] = useState<LeaveRecord[]>([])
@@ -50,9 +75,9 @@ export default function LeaveTracker({ onBack }: Props) {
 
   const handleApproveLeave = async (leave: LeaveRecord) => {
     const confirmed = await showConfirm(
-      'Approve Leave Request?',
-      `${leave.name} · ${leave.leaveType === 'half_day' ? 'Half Day' : 'Full Day'} · ${leave.date}${leave.reason ? ` · ${leave.reason}` : ''}`,
-      '✅ Approve'
+      'Approve this leave?',
+      `${leave.name} · ${leave.leaveType === 'half_day' ? 'Half day' : 'Full day'} · ${longDate(leave.date)}${leave.reason ? `\n\n${leave.reason}` : ''}`,
+      'Approve',
     )
     if (!confirmed) return
     await updateDoc(doc(db, 'leave_records', leave.id!), {
@@ -63,7 +88,7 @@ export default function LeaveTracker({ onBack }: Props) {
     })
     await addDoc(collection(db, 'alerts'), {
       type: 'leave_approved',
-      message: `✅ Your ${leave.leaveType === 'full_day' ? 'Full Day' : 'Half Day'} leave on ${leave.date} has been approved`,
+      message: `Your ${leave.leaveType === 'full_day' ? 'full day' : 'half day'} leave on ${leave.date} was approved.`,
       relatedId: leave.id!, read: false, createdAt: Date.now(),
       toUid: leave.uid,
     })
@@ -71,9 +96,9 @@ export default function LeaveTracker({ onBack }: Props) {
 
   const handleRejectLeave = async (leave: LeaveRecord) => {
     const confirmed = await showConfirm(
-      'Reject Leave Request?',
-      `${leave.name} · ${leave.date}`,
-      '❌ Reject'
+      'Reject this leave?',
+      `${leave.name} · ${longDate(leave.date)}`,
+      'Reject',
     )
     if (!confirmed) return
     await updateDoc(doc(db, 'leave_records', leave.id!), {
@@ -85,7 +110,11 @@ export default function LeaveTracker({ onBack }: Props) {
   }
 
   const handleApproveUnmark = async (leave: LeaveRecord) => {
-    const confirmed = await showConfirm('Approve Unmark?', `Remove leave for ${leave.name} on ${leave.date}?`, '✅ Approve')
+    const confirmed = await showConfirm(
+      'Remove this leave?',
+      `${leave.name} asked to unmark their leave on ${longDate(leave.date)}. Approving removes the record.`,
+      'Remove it',
+    )
     if (!confirmed) return
     await updateDoc(doc(db, 'leave_records', leave.id!), {
       status: 'removed',
@@ -96,7 +125,11 @@ export default function LeaveTracker({ onBack }: Props) {
   }
 
   const handleRejectUnmark = async (leave: LeaveRecord) => {
-    const confirmed = await showConfirm('Reject Unmark Request?', `Keep leave active for ${leave.name} on ${leave.date}?`, '❌ Reject')
+    const confirmed = await showConfirm(
+      'Keep this leave?',
+      `The leave for ${leave.name} on ${longDate(leave.date)} stays approved.`,
+      'Keep it',
+    )
     if (!confirmed) return
     await updateDoc(doc(db, 'leave_records', leave.id!), {
       status: 'active',
@@ -107,9 +140,11 @@ export default function LeaveTracker({ onBack }: Props) {
   }
 
   const handleAddHoliday = async () => {
-    if (!newHolidayName.trim()) { await showAlert('Name required', 'Enter a holiday name.'); return }
-    if (!newHolidayDate) { await showAlert('Date required', 'Pick a date.'); return }
-    if (holidays.some(h => h.date === newHolidayDate)) { await showAlert('Already exists', `A holiday is already marked on ${newHolidayDate}.`); return }
+    if (!newHolidayName.trim()) { await showAlert('Name needed', 'Enter a name for the holiday.'); return }
+    if (!newHolidayDate) { await showAlert('Date needed', 'Pick the date of the holiday.'); return }
+    if (holidays.some(h => h.date === newHolidayDate)) {
+      await showAlert('Already marked', `${longDate(newHolidayDate)} is already a holiday.`); return
+    }
     setAddingHoliday(true)
     try {
       await addDoc(collection(db, 'holidays'), {
@@ -122,7 +157,7 @@ export default function LeaveTracker({ onBack }: Props) {
   }
 
   const handleDeleteHoliday = async (h: Holiday) => {
-    const ok = await showConfirm('Remove Holiday?', `Remove "${h.name}" on ${h.date}?`, '🗑️ Remove')
+    const ok = await showConfirm('Remove this holiday?', `${h.name} on ${longDate(h.date)}.`, 'Remove')
     if (!ok) return
     await deleteDoc(doc(db, 'holidays', h.id!))
   }
@@ -140,246 +175,225 @@ export default function LeaveTracker({ onBack }: Props) {
   const monthCount = leaveRecords.filter(l => l.date.startsWith(month) && l.status === 'active').length
   const totalPending = pendingApproval.length + pendingUnmark.length
 
-  const STATUS_LABEL: Record<string, { label: string; color: string; bg: string }> = {
-    pending_approval: { label: 'Pending', color: '#6366f1', bg: 'rgba(99,102,241,0.15)' },
-    active:           { label: 'Approved', color: '#16a34a', bg: 'rgba(22,163,74,0.12)' },
-    unmark_requested: { label: 'Unmark Req.', color: '#d97706', bg: 'rgba(245,158,11,0.15)' },
-  }
+  // A pending request, with the two decisions available on it.
+  const RequestRow = ({ leave, onYes, onNo, yes, no }: {
+    leave: LeaveRecord; onYes: () => void; onNo: () => void; yes: string; no: string
+  }) => (
+    <div style={{ borderTop: `0.5px solid ${t.border}`, padding: '16px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 500, color: t.text }}>{leave.name}</div>
+          <div style={{ fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 3 }}>
+            {longDate(leave.date)} · {leave.leaveType === 'half_day' ? 'Half day' : 'Full day'}
+            {leave.reason ? ` · ${leave.reason}` : ''}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 14, flexShrink: 0 }}>
+          <button className="oc-action" onClick={onYes}
+            style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, fontWeight: 400, color: t.text, cursor: 'pointer' }}>
+            {yes}
+          </button>
+          <button className="oc-action" onClick={onNo}
+            style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, fontWeight: 400, color: t.text3, cursor: 'pointer' }}>
+            {no}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 
   return (
     <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
-      {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg,#0f766e,#14b8a6)', padding: '20px 20px 0' }}>
-        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', padding: '6px 14px', borderRadius: 20, fontSize: 13, marginBottom: 14 }}>← Back</button>
-        <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Admin</div>
-        <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', marginBottom: 10 }}>Leave Tracker</div>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-          <span style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', fontSize: 12, fontWeight: 800, padding: '4px 12px', borderRadius: 99 }}>Today: {todayCount}</span>
-          <span style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', fontSize: 12, fontWeight: 800, padding: '4px 12px', borderRadius: 99 }}>Month: {monthCount}</span>
-          {totalPending > 0 && (
-            <span style={{ background: 'rgba(99,102,241,0.35)', color: '#fff', fontSize: 12, fontWeight: 800, padding: '4px 12px', borderRadius: 99 }}>⏳ {totalPending} pending</span>
-          )}
-        </div>
-        <div style={{ display: 'flex', gap: 0 }}>
-          {([['today', 'Today'], ['month', 'Month'], ['all', 'All'], ['holidays', '🎉 Holidays']] as [LeaveTab, string][]).map(([val, label]) => (
-            <button key={val} onClick={() => setTab(val)}
-              style={{ flex: 1, background: tab === val ? 'rgba(255,255,255,0.2)' : 'transparent', color: tab === val ? '#fff' : 'rgba(255,255,255,0.5)', border: 'none', borderRadius: '10px 10px 0 0', padding: '10px 8px', fontSize: 12, fontWeight: 800 }}>
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Attendance"
+        title="Leave"
+        subtitle={totalPending > 0
+          ? `${totalPending} request${totalPending > 1 ? 's' : ''} waiting on you`
+          : 'Nothing is waiting for a decision'}
+        onBack={onBack}
+        divider={false}
+      />
+      <TabBar
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { id: 'today', label: 'Today' },
+          { id: 'month', label: 'This month' },
+          { id: 'all', label: 'All' },
+          { id: 'holidays', label: 'Holidays' },
+        ]}
+      />
 
-      <div style={{ padding: '14px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 28 }}>
 
-        {/* ── HOLIDAYS TAB ── */}
-        {tab === 'holidays' && (<>
-          {/* Add holiday form */}
-          <div style={{ background: t.card, borderRadius: 14, padding: 14, border: `1px solid ${t.border}` }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: t.text, marginBottom: 12 }}>Add Holiday</div>
-            <input
-              value={newHolidayName}
-              onChange={e => setNewHolidayName(e.target.value)}
-              placeholder="Holiday name (e.g. Onam, Eid)"
-              style={{ width: '100%', background: t.bg3 ?? t.bg, border: `1px solid ${t.border}`, borderRadius: 8, padding: '10px 12px', fontSize: 13, color: t.text, outline: 'none', boxSizing: 'border-box', marginBottom: 8 }}
-            />
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input
-                type="date"
-                value={newHolidayDate}
-                onChange={e => setNewHolidayDate(e.target.value)}
-                style={{ flex: 1, background: t.bg3 ?? t.bg, border: `1px solid ${t.border}`, borderRadius: 8, padding: '10px 12px', fontSize: 13, color: t.text, outline: 'none' }}
-              />
-              <button onClick={handleAddHoliday} disabled={addingHoliday}
-                style={{ background: 'linear-gradient(135deg,#0f766e,#14b8a6)', border: 'none', color: '#fff', borderRadius: 8, padding: '10px 20px', fontSize: 13, fontWeight: 800, opacity: addingHoliday ? 0.6 : 1 }}>
-                {addingHoliday ? '…' : 'Add'}
-              </button>
-            </div>
-          </div>
-
-          {/* Holiday list */}
-          {holidays.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 40, color: t.text3 }}>
-              <div style={{ fontSize: 32, marginBottom: 10 }}>🎉</div>
-              <div style={{ fontWeight: 700 }}>No holidays marked</div>
-            </div>
-          ) : holidays.map(h => (
-            <div key={h.id} style={{ background: t.card, borderRadius: 12, padding: '12px 14px', border: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 22 }}>🎉</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 800, fontSize: 14, color: t.text }}>{h.name}</div>
-                <div style={{ fontSize: 12, color: t.text3 }}>{new Date(h.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })}</div>
-              </div>
-              {h.date >= localDateStr() && (
-                <button onClick={() => handleDeleteHoliday(h)}
-                  style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.2)', color: '#fca5a5', borderRadius: 8, padding: '6px 10px', fontSize: 12, fontWeight: 700 }}>
-                  Remove
-                </button>
-              )}
-            </div>
-          ))}
-        </>)}
-
-        {tab !== 'holidays' && (<>
-        {/* Pending Leave Approval Requests */}
-        {pendingApproval.length > 0 && (
-          <div style={{ background: 'rgba(99,102,241,0.06)', border: '1.5px solid rgba(99,102,241,0.2)', borderRadius: 14, overflow: 'hidden' }}>
-            <div style={{ padding: '12px 14px 8px', fontSize: 13, fontWeight: 800, color: '#6366f1', letterSpacing: 1, textTransform: 'uppercase' }}>
-              Leave Requests ({pendingApproval.length})
-            </div>
-            {pendingApproval.map(leave => (
-              <div key={leave.id} style={{ background: 'rgba(99,102,241,0.05)', margin: '0 10px 10px', borderRadius: 10, padding: '12px 14px', border: '1px solid rgba(99,102,241,0.15)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 800, fontSize: 14, color: t.text }}>{leave.name}</div>
-                    <div style={{ fontSize: 12, color: t.text3 }}>{leave.date}</div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <span style={{ fontSize: 10, fontWeight: 800, background: leave.leaveType === 'half_day' ? 'rgba(59,130,246,0.15)' : 'rgba(99,102,241,0.15)', color: leave.leaveType === 'half_day' ? '#3b82f6' : '#6366f1', padding: '3px 8px', borderRadius: 99 }}>
-                      {leave.leaveType === 'half_day' ? 'Half Day' : 'Full Day'}
-                    </span>
-                    {leave.reason && (
-                      <span style={{ fontSize: 10, fontWeight: 700, background: 'rgba(100,116,139,0.12)', color: t.text3, padding: '3px 8px', borderRadius: 99 }}>
-                        {leave.reason}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => handleApproveLeave(leave)}
-                    style={{ flex: 1, background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(22,163,74,0.25)', color: '#16a34a', borderRadius: 8, padding: '8px', fontSize: 13, fontWeight: 700 }}>
-                    Approve
-                  </button>
-                  <button onClick={() => handleRejectLeave(leave)}
-                    style={{ flex: 1, background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.25)', color: '#dc2626', borderRadius: 8, padding: '8px', fontSize: 13, fontWeight: 700 }}>
-                    Reject
-                  </button>
+        {/* ── HOLIDAYS ── */}
+        {tab === 'holidays' && (
+          <>
+            <Section label="Add a holiday">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 460 }}>
+                <input
+                  value={newHolidayName}
+                  onChange={e => setNewHolidayName(e.target.value)}
+                  placeholder="Onam, Eid, Christmas"
+                  style={inputStyle(t)}
+                />
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <DateInput type="date" value={newHolidayDate} onChange={setNewHolidayDate} />
+                  <PrimaryButton onClick={handleAddHoliday} disabled={addingHoliday}>
+                    {addingHoliday ? 'Adding' : 'Add'}
+                  </PrimaryButton>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
+            </Section>
 
-        {/* Pending Unmark Requests */}
-        {pendingUnmark.length > 0 && (
-          <div style={{ background: 'rgba(245,158,11,0.08)', border: '1.5px solid rgba(245,158,11,0.25)', borderRadius: 14, overflow: 'hidden' }}>
-            <div style={{ padding: '12px 14px 8px', fontSize: 13, fontWeight: 800, color: '#d97706', letterSpacing: 1, textTransform: 'uppercase' }}>
-              Pending Unmark Requests ({pendingUnmark.length})
-            </div>
-            {pendingUnmark.map(leave => (
-              <div key={leave.id} style={{ background: 'rgba(245,158,11,0.06)', margin: '0 10px 10px', borderRadius: 10, padding: '12px 14px', border: '1px solid rgba(245,158,11,0.2)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 800, fontSize: 14, color: t.text }}>{leave.name}</div>
-                    <div style={{ fontSize: 12, color: t.text3 }}>{leave.date}</div>
-                  </div>
-                  <span style={{ fontSize: 10, fontWeight: 800, background: leave.leaveType === 'half_day' ? 'rgba(59,130,246,0.15)' : 'rgba(245,158,11,0.15)', color: leave.leaveType === 'half_day' ? '#3b82f6' : '#f59e0b', padding: '3px 8px', borderRadius: 99 }}>
-                    {leave.leaveType === 'half_day' ? 'Half Day' : 'Full Day'}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => handleApproveUnmark(leave)}
-                    style={{ flex: 1, background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(22,163,74,0.25)', color: '#16a34a', borderRadius: 8, padding: '8px', fontSize: 13, fontWeight: 700 }}>
-                    Approve
-                  </button>
-                  <button onClick={() => handleRejectUnmark(leave)}
-                    style={{ flex: 1, background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.25)', color: '#dc2626', borderRadius: 8, padding: '8px', fontSize: 13, fontWeight: 700 }}>
-                    Reject
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Team Summary */}
-        <div style={{ background: t.card, borderRadius: 14, padding: 14, border: `1px solid ${t.border}` }}>
-          <div style={{ fontSize: 13, color: t.text3, marginBottom: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Team Summary</div>
-          {salesUsers.map(u => {
-            const total = leaveRecords.filter(l => l.uid === u.uid && l.status === 'active').length
-            const monthLeaves = leaveRecords.filter(l => l.uid === u.uid && l.date.startsWith(month) && l.status === 'active').length
-            const onLeaveToday = leaveRecords.some(l => l.uid === u.uid && l.date === today && l.status === 'active')
-            const hasPendingApproval = pendingApproval.some(l => l.uid === u.uid)
-            const hasPendingUnmark = pendingUnmark.some(l => l.uid === u.uid)
-            return (
-              <div key={u.uid} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: `1px solid ${t.border}` }}>
-                <div style={{ width: 36, height: 36, background: 'linear-gradient(135deg,#0f766e,#14b8a6)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 14, color: '#fff', flexShrink: 0 }}>
-                  {u.name[0]}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontWeight: 700, fontSize: 14, color: t.text }}>{u.name}</span>
-                    {onLeaveToday && <span style={{ fontSize: 14 }}>🏖️</span>}
-                    {hasPendingApproval && <span style={{ fontSize: 11, background: 'rgba(99,102,241,0.15)', color: '#6366f1', padding: '1px 6px', borderRadius: 99, fontWeight: 700 }}>Request</span>}
-                    {hasPendingUnmark && <span style={{ fontSize: 11, background: 'rgba(245,158,11,0.15)', color: '#d97706', padding: '1px 6px', borderRadius: 99, fontWeight: 700 }}>⏳</span>}
-                  </div>
-                  <div style={{ fontSize: 12, color: t.text3 }}>{monthLeaves} this month · {total} total</div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Person filter chips */}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          <button onClick={() => setSelectedPerson('all')}
-            style={{ background: selectedPerson === 'all' ? '#0f766e' : theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)', color: selectedPerson === 'all' ? '#fff' : t.text3, border: `1px solid ${selectedPerson === 'all' ? '#0f766e' : t.border}`, borderRadius: 20, padding: '5px 14px', fontSize: 13, fontWeight: 700 }}>
-            All
-          </button>
-          {salesUsers.map(u => (
-            <button key={u.uid} onClick={() => setSelectedPerson(u.uid)}
-              style={{ background: selectedPerson === u.uid ? '#0f766e' : theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)', color: selectedPerson === u.uid ? '#fff' : t.text3, border: `1px solid ${selectedPerson === u.uid ? '#0f766e' : t.border}`, borderRadius: 20, padding: '5px 14px', fontSize: 13, fontWeight: 700 }}>
-              {u.name}
-            </button>
-          ))}
-        </div>
-
-        {/* Leave record list */}
-        {displayed.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 40, color: t.text3 }}>
-            <div style={{ fontSize: 32, marginBottom: 10 }}>🏖️</div>
-            <div style={{ fontWeight: 700 }}>No leave records</div>
-          </div>
-        ) : displayed.slice().sort((a, b) => b.markedAt - a.markedAt).map(leave => {
-          const s = STATUS_LABEL[leave.status]
-          return (
-            <div key={leave.id} style={{ background: t.card, borderRadius: 14, padding: 14, border: `1px solid ${t.border}` }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <span style={{ fontWeight: 800, fontSize: 14, color: t.text }}>{leave.name}</span>
-                    <span style={{ fontSize: 10, fontWeight: 800, background: leave.leaveType === 'half_day' ? 'rgba(59,130,246,0.15)' : 'rgba(245,158,11,0.15)', color: leave.leaveType === 'half_day' ? '#3b82f6' : '#f59e0b', padding: '2px 8px', borderRadius: 99 }}>
-                      {leave.leaveType === 'half_day' ? 'Half Day' : 'Full Day'}
-                    </span>
-                    {leave.reason && (
-                      <span style={{ fontSize: 10, fontWeight: 700, background: 'rgba(100,116,139,0.1)', color: t.text3, padding: '2px 8px', borderRadius: 99 }}>{leave.reason}</span>
-                    )}
-                    {s && (
-                      <span style={{ fontSize: 10, fontWeight: 800, background: s.bg, color: s.color, padding: '2px 8px', borderRadius: 99 }}>{s.label}</span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 12, color: t.text3, marginTop: 2 }}>{leave.date}</div>
-                </div>
-                {leave.auditLog && leave.auditLog.length > 0 && (
-                  <button onClick={() => setExpandedAudit(expandedAudit === leave.id ? null : leave.id!)}
-                    style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)', border: `1px solid ${t.border}`, color: t.text3, borderRadius: 8, padding: '5px 10px', fontSize: 11, fontWeight: 700 }}>
-                    {expandedAudit === leave.id ? 'Hide' : 'Log'}
-                  </button>
-                )}
-              </div>
-              {expandedAudit === leave.id && leave.auditLog && (
-                <div style={{ marginTop: 10, borderTop: `1px solid ${t.border}`, paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {leave.auditLog.map((entry, i) => (
-                    <div key={i} style={{ fontSize: 12, color: t.text3 }}>
-                      <span style={{ fontWeight: 700, color: t.text2 }}>{entry.action}</span> by {entry.byName} · {new Date(entry.at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+            <Section label="Marked holidays">
+              {holidays.length === 0 ? (
+                <EmptyState title="No holidays marked" body="Add the dates the team is off so leave is not counted against them." />
+              ) : (
+                <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+                  {holidays.map(h => (
+                    <div key={h.id} style={{ display: 'flex', alignItems: 'baseline', gap: 16, borderTop: `0.5px solid ${t.border}`, padding: '14px 0' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 15, fontWeight: 500, color: t.text }}>{h.name}</div>
+                        <div style={{ fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 3 }}>{longDate(h.date)}</div>
+                      </div>
+                      {h.date >= localDateStr() && (
+                        <button className="oc-action" onClick={() => handleDeleteHoliday(h)}
+                          style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, fontWeight: 400, color: t.text2, cursor: 'pointer', flexShrink: 0 }}>
+                          Remove
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
-            </div>
-          )
-        })}
-        </>)}
+            </Section>
+          </>
+        )}
+
+        {tab !== 'holidays' && (
+          <>
+            <StatGrid>
+              <StatCard value={todayCount} label="On leave today" />
+              <StatCard value={monthCount} label="Days this month" />
+              <StatCard value={totalPending} label="Waiting on you"
+                context={totalPending > 0 ? 'Approve or reject below' : undefined} />
+            </StatGrid>
+
+            {pendingApproval.length > 0 && (
+              <Section label={`Leave requests · ${pendingApproval.length}`}>
+                <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+                  {pendingApproval.map(leave => (
+                    <RequestRow key={leave.id} leave={leave} yes="Approve" no="Reject"
+                      onYes={() => handleApproveLeave(leave)} onNo={() => handleRejectLeave(leave)} />
+                  ))}
+                </div>
+              </Section>
+            )}
+
+            {pendingUnmark.length > 0 && (
+              <Section label={`Unmark requests · ${pendingUnmark.length}`}>
+                <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+                  {pendingUnmark.map(leave => (
+                    <RequestRow key={leave.id} leave={leave} yes="Remove" no="Keep"
+                      onYes={() => handleApproveUnmark(leave)} onNo={() => handleRejectUnmark(leave)} />
+                  ))}
+                </div>
+              </Section>
+            )}
+
+            <Section label="Team">
+              {salesUsers.length === 0 ? (
+                <EmptyState title="No sales staff yet" body="Approve a sales account and their leave will be tracked here." />
+              ) : (
+                <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+                  {salesUsers.map(u => {
+                    const total = leaveRecords.filter(l => l.uid === u.uid && l.status === 'active').length
+                    const monthLeaves = leaveRecords.filter(l => l.uid === u.uid && l.date.startsWith(month) && l.status === 'active').length
+                    const onLeaveToday = leaveRecords.some(l => l.uid === u.uid && l.date === today && l.status === 'active')
+                    const waiting = pendingApproval.some(l => l.uid === u.uid) || pendingUnmark.some(l => l.uid === u.uid)
+                    return (
+                      <div key={u.uid} style={{ display: 'flex', alignItems: 'baseline', gap: 16, borderTop: `0.5px solid ${t.border}`, padding: '14px 0' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 15, fontWeight: 500, color: t.text }}>{u.name}</div>
+                          <div style={{ fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 3 }}>
+                            {monthLeaves} this month · {total} in total
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 14, fontWeight: 400, whiteSpace: 'nowrap',
+                                      color: waiting ? t.warn : t.text2 }}>
+                          {waiting ? 'Request waiting' : onLeaveToday ? 'On leave today' : 'Working'}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </Section>
+
+            <Section label="Records">
+              {salesUsers.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <ChipGroup
+                    value={selectedPerson}
+                    onChange={setSelectedPerson}
+                    options={[{ id: 'all', label: 'Everyone' }, ...salesUsers.map(u => ({ id: u.uid, label: u.name }))]}
+                  />
+                </div>
+              )}
+
+              {displayed.length === 0 ? (
+                <EmptyState
+                  title="No leave here"
+                  body={tab === 'today'
+                    ? 'Nobody is marked off today.'
+                    : tab === 'month'
+                      ? 'No leave has been taken this month.'
+                      : 'No leave has been recorded yet.'}
+                />
+              ) : (
+                <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+                  {displayed.slice().sort((a, b) => b.markedAt - a.markedAt).map(leave => (
+                    <div key={leave.id} style={{ borderTop: `0.5px solid ${t.border}`, padding: '14px 0' }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 15, fontWeight: 500, color: t.text }}>{leave.name}</div>
+                          <div style={{ fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 3 }}>
+                            {longDate(leave.date)} · {leave.leaveType === 'half_day' ? 'Half day' : 'Full day'}
+                            {leave.reason ? ` · ${leave.reason}` : ''}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexShrink: 0 }}>
+                          <span style={{ fontSize: 14, fontWeight: 400, whiteSpace: 'nowrap',
+                                         color: leave.status === 'active' ? t.text2 : t.warn }}>
+                            {STATUS_LABEL[leave.status] ?? leave.status}
+                          </span>
+                          {leave.auditLog && leave.auditLog.length > 0 && (
+                            <button className="oc-action"
+                              onClick={() => setExpandedAudit(expandedAudit === leave.id ? null : leave.id!)}
+                              style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, fontWeight: 400, color: t.text3, cursor: 'pointer' }}>
+                              {expandedAudit === leave.id ? 'Hide history' : 'History'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {expandedAudit === leave.id && leave.auditLog && (
+                        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                          {leave.auditLog.map((entry, i) => (
+                            <div key={i} style={{ fontSize: 13, fontWeight: 400, color: t.text3 }}>
+                              {ACTION_LABEL[entry.action] ?? entry.action} by {entry.byName} ·{' '}
+                              {new Date(entry.at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Section>
+          </>
+        )}
       </div>
 
       {modal}
