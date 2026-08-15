@@ -113,17 +113,7 @@ export function canAny(user: AppUser | null | undefined, permissions: Permission
 
 // ── Labels ───────────────────────────────────────────────────────────────────
 
-export const ROLE_LABELS: Record<UserRoleKey, string> = {
-  super_admin: '👑 Super Admin',
-  admin: '🛡️ Admin',
-  sales_manager: '📊 Sales Manager',
-  offline_sales: '🏪 Offline Sales',
-  online_sales: '🌐 Online Sales',
-  offline_marketing: '📣 Offline Marketing',
-  online_marketing: '💻 Online Marketing',
-}
-
-/** Sentence case, no emoji — for the app header and other quiet chrome. */
+/** The one place role names are spelled out for the UI. */
 export const ROLE_LABELS_PLAIN: Record<UserRoleKey, string> = {
   super_admin: 'Super admin',
   admin: 'Admin',

@@ -34,6 +34,8 @@ import CustomSelect from "../../components/CustomSelect";
 import RevisitLogger from "./RevisitLogger";
 import { localDateStr } from "../../utils/date";
 import { INDIAN_STATES } from "../../data";
+import DateInput from "../../components/DateInput";
+import { PageHeader, StatGrid, StatCard } from "../../components/ui";
 
 interface Props {
   onBack: () => void;
@@ -283,7 +285,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
           });
           await addDoc(collection(db, "alerts"), {
             type: "visit_share_requested",
-            message: `📤 ${appUser.name} shared ${shareRequestPartyName}'s visit log with you for ${selectedDate}`,
+ message:` ${appUser.name} shared ${shareRequestPartyName}'s visit log with you for ${selectedDate}`,
             relatedId: reqRef.id,
             toUid: targetUid,
             read: false,
@@ -458,7 +460,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
 
     // No revisit actions at all, or purely simple entry — just show a plain danger confirm
     if (blocked.length === 0 && deletable.length === 0) {
-      const ok = await showDanger(`Delete visit to ${entry.partyName}?`, isShared ? 'Partner will be notified' : undefined, '🗑️ Delete');
+ const ok = await showDanger(`Delete visit to ${entry.partyName}?`, isShared ?'Partner will be notified' : undefined,'Delete');
       if (!ok) return;
       setSaving(true);
       try {
@@ -482,8 +484,8 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
 
     // Keep action if: it's blocked (not in deletable list) OR it's deletable but unchecked
     const keepAction = (a: any) => {
-      if (!deletableKeys.has(a.type)) return true; // blocked → always keep
-      return !checkedKeys.has(a.type);             // deletable → keep if unchecked
+ if (!deletableKeys.has(a.type)) return true; // blocked → always keep
+ return !checkedKeys.has(a.type);             // deletable → keep if unchecked
     };
     const trueRemaining = (rl?.actions || []).filter((a: any) => keepAction(a));
     const partialDelete = trueRemaining.length > 0;
@@ -555,7 +557,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
       for (const uid of partnerUids) {
         await addDoc(collection(db, 'alerts'), {
           type: 'visit_share_requested',
-          message: `🗑️ ${appUser.name} deleted a shared visit entry for ${entry.partyName} on ${selectedDate}`,
+ message:` ${appUser.name} deleted a shared visit entry for ${entry.partyName} on ${selectedDate}`,
           relatedId: todayLog.id, toUid: uid, read: false, createdAt: Date.now(),
         });
       }
@@ -574,7 +576,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
       const isShared = (updatedEntry.sharedWith || []).some((id) => id !== appUser.uid);
       await updateDoc(doc(db, 'visit_logs', todayLog.id), {
         visits: newVisits,
-        auditLog: arrayUnion(auditWrite('entry_edited', updatedEntry, `outcome → ${updatedEntry.outcome}`)),
+ auditLog: arrayUnion(auditWrite('entry_edited', updatedEntry,`outcome → ${updatedEntry.outcome}`)),
         updatedAt: Date.now(),
       });
       if (isShared) {
@@ -582,7 +584,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
         for (const uid of partnerUids) {
           await addDoc(collection(db, 'alerts'), {
             type: 'visit_share_requested',
-            message: `✏️ ${appUser.name} edited a shared visit entry for ${editSimpleEntry.partyName} on ${selectedDate}`,
+ message:` ${appUser.name} edited a shared visit entry for ${editSimpleEntry.partyName} on ${selectedDate}`,
             relatedId: todayLog.id, toUid: uid, read: false, createdAt: Date.now(),
           });
         }
@@ -615,7 +617,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
           for (const uid of (oldEntry.sharedWith || []).filter((id) => id !== appUser.uid)) {
             await addDoc(collection(db, 'alerts'), {
               type: 'visit_share_requested',
-              message: `✏️ ${appUser.name} edited a shared revisit entry for ${oldEntry.partyName} on ${selectedDate}`,
+ message:` ${appUser.name} edited a shared revisit entry for ${oldEntry.partyName} on ${selectedDate}`,
               relatedId: todayLog.id, toUid: uid, read: false, createdAt: Date.now(),
             });
           }
@@ -833,7 +835,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
       const interested = todayLog.totalInterested ?? visits.filter((v) => v.outcome === "interested").length;
       await addDoc(collection(db, "alerts"), {
         type: "visit_log_submitted",
-        message: `📋 ${appUser!.name} submitted visit log · ${visits.length} visit${visits.length !== 1 ? "s" : ""} · ${interested} interested`,
+ message:` ${appUser!.name} submitted visit log · ${visits.length} visit${visits.length !== 1 ?"s" :""} · ${interested} interested`,
         relatedId: todayLog.id, read: false, createdAt: Date.now(),
       });
     }
@@ -842,10 +844,10 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
 
   const statusLabel = (s: string) =>
     s === "active"
-      ? "🟢 Active"
+      ?"Active"
       : s === "inactive"
-        ? "⛔ Inactive"
-        : "🟡 Prospect";
+        ?"Inactive"
+        :"Prospect";
 
   const partyOptions = parties
     .filter(
@@ -854,7 +856,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
     )
     .map((p) => ({
       value: p.id!,
-      label: `${p.type === "distributor" ? "🚚" : "🏪"} ${p.name}`,
+ label:`${p.type ==="distributor" ?"" :""} ${p.name}`,
       sub: `${statusLabel((p as any).status)} · ${p.place || p.address || ""}`,
       group: p.type === "distributor" ? "Distributors" : "Retailers",
     }));
@@ -887,16 +889,16 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
           <div style={{ position: 'fixed', inset: 0, zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 16px' }}>
             <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }} onClick={() => setDeleteModal(null)} />
             <div style={{ position: 'relative', zIndex: 1, background: t.card, borderRadius: 20, padding: '24px 20px', width: '100%', maxWidth: 440, border: `1.5px solid ${t.border}`, boxShadow: '0 24px 64px rgba(0,0,0,0.5)', maxHeight: '90vh', overflowY: 'auto' }}>
-              <div style={{ fontSize: 16, fontWeight: 800, color: t.text, marginBottom: 4 }}>Delete visit to {deleteModal.entry.partyName}</div>
+              <div style={{ fontSize: 16, fontWeight: 500, color: t.text, marginBottom: 4 }}>Delete visit to {deleteModal.entry.partyName}</div>
               <div style={{ fontSize: 12, color: t.text3, marginBottom: 20 }}>Choose what to remove</div>
 
               {deleteModal.blocked.length > 0 && (
                 <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#dc2626', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Cannot be deleted</div>
+                  <div style={{ fontSize: 11, fontWeight: 500, color: t.warn, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Cannot be deleted</div>
                   {deleteModal.blocked.map((r, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.15)', borderRadius: 10, marginBottom: 6 }}>
-                      <span style={{ fontSize: 13 }}>🔒</span>
-                      <span style={{ fontSize: 13, color: '#dc2626' }}>{r}</span>
+                      <span style={{ fontSize: 13 }}></span>
+                      <span style={{ fontSize: 13, color: t.warn }}>{r}</span>
                     </div>
                   ))}
                 </div>
@@ -904,7 +906,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
 
               {deleteModal.deletable.length > 0 && (
                 <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: t.text3, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Choose what to delete</div>
+                  <div style={{ fontSize: 11, fontWeight: 500, color: t.text3, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Choose what to delete</div>
                   {deleteModal.deletable.map((item, i) => (
                     <button
                       key={item.key}
@@ -914,27 +916,27 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                       } : prev)}
                       style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', background: item.checked ? 'rgba(220,38,38,0.07)' : t.bg3, border: `1.5px solid ${item.checked ? 'rgba(220,38,38,0.3)' : t.border}`, borderRadius: 10, padding: '10px 12px', marginBottom: 6, textAlign: 'left', cursor: 'pointer' }}
                     >
-                      <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${item.checked ? '#dc2626' : t.border}`, background: item.checked ? '#dc2626' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        {item.checked && <span style={{ color: '#fff', fontSize: 11, fontWeight: 900 }}>✓</span>}
+                      <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${item.checked ? t.warn : t.border}`, background: item.checked ? t.warn : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {item.checked && <span style={{ color: t.bg, fontSize: 11, fontWeight: 500 }}></span>}
                       </div>
-                      <span style={{ fontSize: 13, color: item.checked ? '#dc2626' : t.text2 }}>{item.label}</span>
+                      <span style={{ fontSize: 13, color: item.checked ? t.warn : t.text2 }}>{item.label}</span>
                     </button>
                   ))}
                 </div>
               )}
 
               {deleteModal.isShared && (
-                <div style={{ fontSize: 12, color: '#d97706', marginBottom: 16 }}>⚠️ Partner will be notified</div>
+                <div style={{ fontSize: 12, color: t.warn, marginBottom: 16 }}> Partner will be notified</div>
               )}
 
               <div style={{ display: 'flex', gap: 10 }}>
-                <button onClick={() => setDeleteModal(null)} style={{ flex: 1, background: t.bg3, border: `1px solid ${t.border}`, borderRadius: 12, padding: '13px', fontSize: 14, fontWeight: 700, color: t.text2 }}>Cancel</button>
+                <button onClick={() => setDeleteModal(null)} style={{ flex: 1, background: t.bg3, border: `1px solid ${t.border}`, borderRadius: 12, padding: '13px', fontSize: 14, fontWeight: 500, color: t.text2 }}>Cancel</button>
                 <button
                   onClick={handleConfirmDelete}
                   disabled={saving || deleteModal.deletable.every((d) => !d.checked)}
-                  style={{ flex: 2, background: 'linear-gradient(135deg,#7f1d1d,#dc2626)', color: '#fff', border: 'none', borderRadius: 12, padding: '13px', fontSize: 14, fontWeight: 800, opacity: deleteModal.deletable.every((d) => !d.checked) ? 0.4 : 1 }}
+                  style={{ flex: 2, background: t.text, color: t.bg, border: 'none', borderRadius: 12, padding: '13px', fontSize: 14, fontWeight: 500, opacity: deleteModal.deletable.every((d) => !d.checked) ? 0.4 : 1 }}
                 >
-                  {saving ? 'Deleting...' : deleteModal.blocked.length > 0 ? '🗑️ Remove selected' : '🗑️ Delete'}
+                  {saving ?'Deleting...' : deleteModal.blocked.length > 0 ?'Remove selected' :'Delete'}
                 </button>
               </div>
             </div>
@@ -945,19 +947,19 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
         {editSimpleEntry && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
             <div style={{ background: t.card, borderRadius: '20px 20px 0 0', padding: '20px 16px 32px', maxHeight: '85vh', overflowY: 'auto' }}>
-              <div style={{ fontWeight: 800, fontSize: 16, color: t.text, marginBottom: 4 }}>Edit Visit — {editSimpleEntry.partyName}</div>
+              <div style={{ fontWeight: 500, fontSize: 16, color: t.text, marginBottom: 4 }}>Edit Visit — {editSimpleEntry.partyName}</div>
               {selectedDate !== localDateStr() && (
-                <div style={{ fontSize: 12, color: '#f59e0b', marginBottom: 12 }}>⚠️ Editing past log — {selectedDate}</div>
+                <div style={{ fontSize: 12, color: t.warn, marginBottom: 12 }}> Editing past log — {selectedDate}</div>
               )}
               <div style={{ fontSize: 13, color: t.text3, marginBottom: 14 }}>Outcome</div>
               <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
                 {(['interested', 'not_interested', 'follow_up'] as VisitOutcome[]).map((o) => (
                   <button key={o} onClick={() => setEditSimpleEntry({ ...editSimpleEntry, outcome: o })}
-                    style={{ flex: 1, padding: '10px 4px', borderRadius: 10, fontSize: 12, fontWeight: 700,
+                    style={{ flex: 1, padding: '10px 4px', borderRadius: 10, fontSize: 12, fontWeight: 500,
                       background: editSimpleEntry.outcome === o ? 'rgba(22,163,74,0.15)' : t.bg3,
-                      color: editSimpleEntry.outcome === o ? '#16a34a' : t.text2,
+                      color: editSimpleEntry.outcome === o ? t.text2 : t.text2,
                       border: `1px solid ${editSimpleEntry.outcome === o ? 'rgba(22,163,74,0.3)' : t.border}` }}>
-                    {o === 'interested' ? '✅ Interested' : o === 'not_interested' ? '❌ Not Int.' : '🔄 Follow Up'}
+                    {o ==='interested' ?'Interested' : o ==='not_interested' ?'Not Int.' :'Follow Up'}
                   </button>
                 ))}
               </div>
@@ -967,9 +969,9 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {NOT_INTERESTED_REASONS.map((r) => (
                       <button key={r} onClick={() => setEditSimpleEntry({ ...editSimpleEntry, notInterestedReason: r as NotInterestedReason })}
-                        style={{ padding: '6px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                        style={{ padding: '6px 12px', borderRadius: 20, fontSize: 12, fontWeight: 500,
                           background: editSimpleEntry.notInterestedReason === r ? 'rgba(220,38,38,0.15)' : t.bg3,
-                          color: editSimpleEntry.notInterestedReason === r ? '#dc2626' : t.text2,
+                          color: editSimpleEntry.notInterestedReason === r ? t.warn : t.text2,
                           border: `1px solid ${editSimpleEntry.notInterestedReason === r ? 'rgba(220,38,38,0.3)' : t.border}` }}>
                         {r}
                       </button>
@@ -979,11 +981,11 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
               )}
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                 <button onClick={() => setEditSimpleEntry(null)}
-                  style={{ flex: 1, padding: '12px', borderRadius: 12, background: t.bg3, color: t.text2, border: `1px solid ${t.border}`, fontSize: 14, fontWeight: 700 }}>
+                  style={{ flex: 1, padding: '12px', borderRadius: 12, background: t.bg3, color: t.text2, border: `1px solid ${t.border}`, fontSize: 14, fontWeight: 500 }}>
                   Cancel
                 </button>
                 <button onClick={handleSaveSimpleEdit} disabled={saving}
-                  style={{ flex: 2, padding: '12px', borderRadius: 12, background: 'linear-gradient(135deg,#0d3d2e,#1a5c42)', color: '#fff', border: 'none', fontSize: 14, fontWeight: 700 }}>
+                  style={{ flex: 2, padding: '12px', borderRadius: 12, background: t.text, color: t.bg, border: 'none', fontSize: 14, fontWeight: 500 }}>
                   {saving ? 'Saving…' : 'Save Changes'}
                 </button>
               </div>
@@ -1019,7 +1021,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
               <div
                 style={{
                   fontSize: 20,
-                  fontWeight: 900,
+                  fontWeight: 500,
                   color: t.text,
                   marginBottom: 6,
                 }}
@@ -1051,7 +1053,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                   {
                     label: "Orders",
                     val: todayRevisitLogs.filter((rl) => rl.actions?.some((a: any) => a.type === "new_order")).length,
-                    color: "#16a34a",
+                    color: t.text2,
                     bg: "rgba(22,163,74,0.1)",
                   },
                 ].map((s) => (
@@ -1066,7 +1068,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                     }}
                   >
                     <div
-                      style={{ fontSize: 22, fontWeight: 900, color: s.color }}
+                      style={{ fontSize: 22, fontWeight: 500, color: s.color }}
                     >
                       {s.val}
                     </div>
@@ -1101,7 +1103,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                     borderRadius: 14,
                     padding: "14px",
                     fontSize: 14,
-                    fontWeight: 700,
+                    fontWeight: 500,
                   }}
                 >
                   Keep Logging
@@ -1113,126 +1115,53 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                   }}
                   style={{
                     flex: 2,
-                    background: "linear-gradient(135deg,#065f46,#047857)",
-                    color: "#fff",
+                    background: t.text,
+                    color: t.bg,
                     border: "none",
                     borderRadius: 14,
                     padding: "14px",
                     fontSize: 15,
-                    fontWeight: 900,
+                    fontWeight: 500,
                   }}
                 >
-                  Done ✓
+ Done 
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        <div
-          style={{
-            background: "linear-gradient(135deg,#0d3d2e,#1a5c42)",
-            padding: "20px 20px 20px",
-          }}
-        >
-          <div style={{ marginBottom: 14 }}>
-            <button
-              onClick={onBack}
-              style={{
-                background: "rgba(255,255,255,0.1)",
-                border: "none",
-                color: "#6ee7b7",
-                padding: "6px 14px",
-                borderRadius: 20,
-                fontSize: 13,
-              }}
-            >
-              ← Back
-            </button>
-          </div>
-          <div
-            style={{
-              color: "#6ee7b7",
-              fontSize: 11,
-              letterSpacing: 3,
-              textTransform: "uppercase",
-              marginBottom: 4,
-            }}
-          >
-            Visit Log
-          </div>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: 4,
-            }}
-          >
-            <div style={{ fontSize: 22, fontWeight: 900, color: "#fff" }}>
-              {selectedDate}
+        <PageHeader
+          eyebrow="Visit log"
+          title={new Date(selectedDate + "T00:00:00").toLocaleDateString("en-IN", {
+            weekday: "long", day: "numeric", month: "long",
+          })}
+          subtitle={
+            new Date(selectedDate + "T00:00:00").getDay() === 0
+              ? "Sunday is a day off"
+              : undefined
+          }
+          onBack={onBack}
+          right={
+            <div style={{ width: 150 }}>
+              <DateInput
+                type="date"
+                value={selectedDate}
+                max={localDateStr()}
+                onChange={(v) => { if (v <= localDateStr()) setSelectedDate(v); }}
+              />
             </div>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => {
-                if (e.target.value <= localDateStr())
-                  setSelectedDate(e.target.value);
-              }}
-              max={localDateStr()}
-              style={{
-                background: "rgba(255,255,255,0.12)",
-                border: "1px solid rgba(255,255,255,0.25)",
-                borderRadius: 10,
-                padding: "6px 10px",
-                color: "#fff",
-                fontSize: 13,
-                outline: "none",
-                colorScheme: "dark",
-              }}
+          }
+        />
+
+        <div style={{ padding: "20px 20px 0" }}>
+          <StatGrid>
+            <StatCard value={visits.length} label="Outlets visited" />
+            <StatCard
+              value={todayRevisitLogs.filter((rl) => rl.actions?.some((a: any) => a.type === "new_order")).length}
+              label="Orders booked"
             />
-          </div>
-          {new Date(selectedDate + 'T00:00:00').getDay() === 0 && (
-            <div style={{ marginBottom: 8 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.12)', padding: '3px 10px', borderRadius: 99 }}>
-                🔴 Sunday · Off Day
-              </span>
-            </div>
-          )}
-          <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-            {[
-              { label: "Visited", val: visits.length, color: "#fff" },
-              {
-                label: "Orders",
-                val: todayRevisitLogs.filter((rl) => rl.actions?.some((a: any) => a.type === "new_order")).length,
-                color: "#86efac",
-              },
-            ].map((s) => (
-              <div
-                key={s.label}
-                style={{
-                  flex: 1,
-                  background: "rgba(0,0,0,0.2)",
-                  borderRadius: 12,
-                  padding: "12px 8px",
-                  textAlign: "center",
-                }}
-              >
-                <div style={{ fontSize: 24, fontWeight: 900, color: s.color }}>
-                  {s.val}
-                </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "rgba(255,255,255,0.6)",
-                    marginTop: 2,
-                  }}
-                >
-                  {s.label}
-                </div>
-              </div>
-            ))}
-          </div>
+          </StatGrid>
         </div>
 
         <div
@@ -1247,9 +1176,9 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
             onClick={() => !isBlocked && setStep("selectShop")}
             disabled={isBlocked}
             style={{
-              background: isBlocked ? 'rgba(255,255,255,0.05)' : "linear-gradient(135deg,#0d3d2e,#1a5c42)",
-              color: isBlocked ? 'rgba(255,255,255,0.3)' : "#fff",
-              border: isBlocked ? '1px solid rgba(255,255,255,0.08)' : "none",
+              background: isBlocked ? t.tint : t.text,
+              color: isBlocked ? t.text3 : t.bg,
+              border: isBlocked ? `0.5px solid ${t.border}` : "none",
               borderRadius: 16,
               padding: "18px 20px",
               display: "flex",
@@ -1260,10 +1189,10 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
               opacity: isBlocked ? 0.5 : 1,
             }}
           >
-            <span style={{ fontSize: 28 }}>📋</span>
+            <span style={{ fontSize: 28 }}></span>
             <div style={{ textAlign: "left" }}>
-              <div style={{ fontWeight: 800, fontSize: 17 }}>Log a Visit</div>
-              <div style={{ fontSize: 14, color: isHolidayDay ? '#86efac' : isLeaveDay ? '#fbbf24' : isSundaySelected ? 'rgba(255,255,255,0.3)' : "#a7f3d0", marginTop: 2 }}>
+              <div style={{ fontWeight: 500, fontSize: 17 }}>Log a Visit</div>
+              <div style={{ fontSize: 14, color: isHolidayDay ? t.text2 : isLeaveDay ? t.warn : isSundaySelected ? t.text3 : t.text3, marginTop: 2 }}>
                 {isSundaySelected ? 'Disabled on Sundays' : isLeaveDay ? "You're on leave today" : isHolidayDay ? "Public holiday" : 'Distributor or Retailer visit'}
               </div>
             </div>
@@ -1281,7 +1210,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                 gap: 12,
               }}
             >
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#0ea5e9" }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: t.text2 }}>
                 Pending shared visit requests
               </div>
               {pendingShareRequests.map((request) => (
@@ -1304,7 +1233,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                   >
                     <div>
                       <div
-                        style={{ fontSize: 13, fontWeight: 700, color: t.text }}
+                        style={{ fontSize: 13, fontWeight: 500, color: t.text }}
                       >
                         {request.partyName}
                       </div>
@@ -1330,11 +1259,11 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                       <button
                         onClick={() => handleAcceptShareRequest(request)}
                         style={{
-                          background: "linear-gradient(135deg,#0d9488,#14b8a6)",
+                          background: t.text,
                           border: "none",
                           borderRadius: 12,
                           padding: "8px 12px",
-                          color: "#fff",
+                          color: t.bg,
                           fontSize: 12,
                         }}
                       >
@@ -1381,7 +1310,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                   }}
                 >
                   <div>
-                    <div style={{ fontSize: 18, fontWeight: 900, color: t.text }}>
+                    <div style={{ fontSize: 18, fontWeight: 500, color: t.text }}>
                       Share {shareRequestPartyName}'s visits
                     </div>
                     <div style={{ fontSize: 13, color: t.text2, marginTop: 4 }}>
@@ -1422,8 +1351,8 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                             flex: "1 1 45%",
                             minWidth: 120,
                             textAlign: "left",
-                            background: unavailable ? "rgba(255,255,255,0.03)" : selected ? "#0ea5e9" : t.bg3,
-                            color: unavailable ? t.text3 : selected ? "#fff" : t.text,
+                            background: unavailable ? t.tint : selected ? t.text2 : t.bg3,
+                            color: unavailable ? t.text3 : selected ? t.bg : t.text,
                             border: `1px solid ${unavailable ? t.border : selected ? "#0d9488" : t.border}`,
                             borderRadius: 12,
                             padding: "10px 12px",
@@ -1439,14 +1368,14 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                           <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                             <span>{user.name}</span>
                             {alreadyShared && (
-                              <span style={{ fontSize: 11, color: "#16a34a" }}>✓ Already shared</span>
+                              <span style={{ fontSize: 11, color: t.text2 }}> Already shared</span>
                             )}
                             {hasPendingForUser && (
-                              <span style={{ fontSize: 11, color: "#f59e0b" }}>⏳ Awaiting response</span>
+                              <span style={{ fontSize: 11, color: t.warn }}> Awaiting response</span>
                             )}
                           </span>
                           {selected && !unavailable && (
-                            <span style={{ fontSize: 12, opacity: 0.85 }}>✓</span>
+                            <span style={{ fontSize: 12, opacity: 0.85 }}></span>
                           )}
                         </button>
                       );
@@ -1464,13 +1393,13 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                     width: "100%",
                     background: isConfirmShareDisabled
                       ? t.bg3
-                      : "linear-gradient(135deg,#0d9488,#14b8a6)",
-                    color: isConfirmShareDisabled ? t.text2 : "#fff",
+                      : t.text,
+                    color: isConfirmShareDisabled ? t.text2 : t.bg,
                     border: "none",
                     borderRadius: 14,
                     padding: "14px",
                     fontSize: 14,
-                    fontWeight: 700,
+                    fontWeight: 500,
                     cursor: isConfirmShareDisabled ? "not-allowed" : "pointer",
                   }}
                 >
@@ -1482,8 +1411,8 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
 
           {/* Past log warning */}
           {selectedDate !== localDateStr() && visits.length > 0 && (
-            <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#f59e0b', fontWeight: 600 }}>
-              ⚠️ Editing past log — {selectedDate}. All changes are tracked.
+            <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: t.warn, fontWeight: 500 }}>
+ Editing past log — {selectedDate}. All changes are tracked.
             </div>
           )}
 
@@ -1494,7 +1423,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                 style={{
                   fontSize: 13,
                   color: t.text2,
-                  fontWeight: 700,
+                  fontWeight: 500,
                   letterSpacing: 1,
                   textTransform: "uppercase",
                   marginTop: 4,
@@ -1543,15 +1472,6 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                       ? new Date(v.loggedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
                       : "";
                     const actions: any[] = (v.isRevisit || isNew) && rl?.actions ? rl.actions : [];
-                    const entryEmoji = actions.some((a) => a.type === "new_order") ? "📦"
-                      : actions.some((a) => a.type === "payment_collection") ? "💰"
-                      : actions.some((a) => a.type === "stock_update") ? "📊"
-                      : actions.some((a) => a.type === "no_longer_active") ? "⛔"
-                      : isNew ? "🆕"
-                      : v.isRevisit ? "🤝"
-                      : v.outcome === "interested" ? "✅"
-                      : v.outcome === "not_interested" ? "❌"
-                      : "🔄";
                     return (
                       <div
                         key={vi}
@@ -1563,8 +1483,8 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                         }}
                       >
                         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                          {isNew && <span style={{ fontSize: 10, fontWeight: 800, color: '#6366f1', background: 'rgba(99,102,241,0.12)', padding: '2px 7px', borderRadius: 99, letterSpacing: 1 }}>NEW</span>}
-                          {timeStr && <span style={{ fontSize: 11, color: t.text3, fontWeight: 600 }}>{timeStr}</span>}
+                          {isNew && <span style={{ fontSize: 10, fontWeight: 500, color: t.text2, background: 'rgba(99,102,241,0.12)', padding: '2px 7px', borderRadius: 99, letterSpacing: 1 }}>NEW</span>}
+                          {timeStr && <span style={{ fontSize: 11, color: t.text3, fontWeight: 500 }}>{timeStr}</span>}
                           {canEdit && (
                             <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
                               {!isNew && (
@@ -1578,13 +1498,13 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                                       setEditSimpleEntry({ ...v });
                                     }
                                   }}
-                                  style={{ fontSize: 13, background: 'rgba(255,255,255,0.06)', border: `1px solid ${t.border}`, borderRadius: 6, padding: '2px 7px', color: t.text3, cursor: 'pointer' }}
-                                >✏️</button>
+                                  style={{ fontSize: 13, background: t.tint, border: `1px solid ${t.border}`, borderRadius: 6, padding: '2px 7px', color: t.text3, cursor: 'pointer' }}
+                                ></button>
                               )}
                               <button
                                 onClick={() => handleDeleteEntry(v)}
-                                style={{ fontSize: 13, background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.15)', borderRadius: 6, padding: '2px 7px', color: '#dc2626', cursor: 'pointer' }}
-                              >🗑️</button>
+                                style={{ fontSize: 13, background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.15)', borderRadius: 6, padding: '2px 7px', color: t.warn, cursor: 'pointer' }}
+                              ></button>
                             </div>
                           )}
                         </div>
@@ -1594,11 +1514,11 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                           const displayQty = liveAlloc?.packets ?? action.quantity;
                           const displayAmt = livePay?.amount ?? action.amount;
                           const label =
-                            action.type === "stock_update" ? `📊 Stock Updated · Balance: ${action.balanceQty} pkts`
-                            : action.type === "new_order" ? `📦 New Order · ${displayQty} ${action.productName}`
-                            : action.type === "payment_collection" ? `💰 Payment ₹${displayAmt?.toLocaleString()}`
-                            : action.type === "relationship_visit" ? `🤝 Relationship Visit${action.notes ? ` · ${action.notes}` : ""}`
-                            : action.type === "no_longer_active" ? `⛔ No Longer Active · ${action.reason}`
+ action.type ==="stock_update" ?`Stock Updated · Balance: ${action.balanceQty} pkts`
+                            : action.type ==="new_order" ?`New Order · ${displayQty} ${action.productName}`
+                            : action.type ==="payment_collection" ?`Payment ₹${displayAmt?.toLocaleString()}`
+                            : action.type ==="relationship_visit" ?`Relationship Visit${action.notes ?` · ${action.notes}` :""}`
+                            : action.type ==="no_longer_active" ?`No Longer Active · ${action.reason}`
                             : null;
                           if (!label) return null;
                           const isOrder = action.type === "new_order" && !!action.allocationId && !!onViewAllocation;
@@ -1608,21 +1528,21 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                             <div
                               key={ai}
                               onClick={isOrder ? () => onViewAllocation!(action.allocationId) : isPayment ? () => onViewPayment!(rl!.partyId, action.transactionId) : undefined}
-                              style={{ fontSize: 13, color: isTappable ? "#16a34a" : t.text2, marginBottom: 2, display: "flex", alignItems: "center", gap: 4, cursor: isTappable ? "pointer" : "default" }}
+                              style={{ fontSize: 13, color: isTappable ? t.text2 : t.text2, marginBottom: 2, display: "flex", alignItems: "center", gap: 4, cursor: isTappable ? "pointer" : "default" }}
                             >
                               {label}
-                              {isTappable && <span style={{ fontSize: 11, color: "#16a34a" }}>↗</span>}
+                              {isTappable && <span style={{ fontSize: 11, color: t.text2 }}>↗</span>}
                             </div>
                           );
                         })}
                         {!v.isRevisit && !isNew && v.outcome === "interested" && v.productName && (
-                          <div style={{ fontSize: 13, color: "#16a34a" }}>{v.productName} — allocation created</div>
+                          <div style={{ fontSize: 13, color: t.text2 }}>{v.productName} — allocation created</div>
                         )}
                         {!v.isRevisit && !isNew && v.outcome === "not_interested" && (
-                          <div style={{ fontSize: 13, color: "#dc2626" }}>{v.notInterestedReason}</div>
+                          <div style={{ fontSize: 13, color: t.warn }}>{v.notInterestedReason}</div>
                         )}
                         {!v.isRevisit && !isNew && v.outcome === "follow_up" && (
-                          <div style={{ fontSize: 13, color: "#d97706" }}>Follow up needed</div>
+                          <div style={{ fontSize: 13, color: t.warn }}>Follow up needed</div>
                         )}
                       </div>
                     );
@@ -1635,7 +1555,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                   if (allNew && !hasRevisitLog) return null
 
                   const vParty = parties.find((p) => p.id === partyId);
-                  const typeLabel = vParty?.type === "distributor" ? "🚚 Distributor" : "🏪 Retailer";
+ const typeLabel = vParty?.type ==="distributor" ?"Distributor" :"Retailer";
                   const hasOrder = entries.some((v) => {
                     const rl = v.revisitLogId ? todayRevisitLogs.find((r) => r.id === v.revisitLogId) : null;
                     return rl?.actions?.some((a: any) => a.type === "new_order");
@@ -1654,16 +1574,16 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                       <div key={`${partyId}_shared`} style={{ background: t.card, borderRadius: 14, padding: "14px 16px", border: `1px solid ${borderColor}` }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, gap: 10 }}>
                           <div>
-                            <div style={{ fontWeight: 700, fontSize: 15, color: t.text }}>{entries[0].partyName}</div>
+                            <div style={{ fontWeight: 500, fontSize: 15, color: t.text }}>{entries[0].partyName}</div>
                             <div style={{ fontSize: 11, color: t.text3, marginTop: 1 }}>{typeLabel}</div>
                             {sharedWithNames.length > 0 && (
-                              <div style={{ fontSize: 12, color: "#0ea5e9", marginTop: 4 }}>
+                              <div style={{ fontSize: 12, color: t.text2, marginTop: 4 }}>
                                 Shared with {sharedWithNames.join(", ")}
                               </div>
                             )}
                           </div>
                           {entries.length > 1 && (
-                            <span style={{ fontSize: 11, color: t.text3, fontWeight: 700 }}>{entries.length} visits</span>
+                            <span style={{ fontSize: 11, color: t.text3, fontWeight: 500 }}>{entries.length} visits</span>
                           )}
                         </div>
                         {renderEntries(entries, true)}
@@ -1680,23 +1600,23 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                     <div key={groupType === 'new_after_share' ? `${partyId}_new` : partyId} style={{ background: t.card, borderRadius: 14, padding: "14px 16px", border: `1px solid ${borderColor}` }}>
                       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10, gap: 10 }}>
                         <div>
-                          <div style={{ fontWeight: 700, fontSize: 15, color: t.text }}>{entries[0].partyName}</div>
+                          <div style={{ fontWeight: 500, fontSize: 15, color: t.text }}>{entries[0].partyName}</div>
                           <div style={{ fontSize: 11, color: t.text3, marginTop: 1 }}>{typeLabel}</div>
                           {groupType === 'new_after_share' && (
-                            <div style={{ fontSize: 11, color: "#f59e0b", marginTop: 3 }}>New log after share</div>
+                            <div style={{ fontSize: 11, color: t.warn, marginTop: 3 }}>New log after share</div>
                           )}
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
                           {appUser?.uid === todayLog?.salesPersonId && (
                             pendingFor.length > 0 ? (
-                              <span style={{ fontSize: 12, background: "rgba(245,158,11,0.1)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 12, padding: "8px 10px", fontWeight: 600 }}>
-                                ⏳ Awaiting {pendingFor.map((r) => r.toName?.split(" ")[0] || r.toName).join(", ")}
+                              <span style={{ fontSize: 12, background: "rgba(245,158,11,0.1)", color: t.warn, border: "1px solid rgba(245,158,11,0.25)", borderRadius: 12, padding: "8px 10px", fontWeight: 500 }}>
+ Awaiting {pendingFor.map((r) => r.toName?.split("")[0] || r.toName).join(",")}
                               </span>
                             ) : (
                               <>
                                 <button
                                   onClick={() => openSharePanel(partyId, entries[0].partyName)}
-                                  style={{ fontSize: 12, background: "rgba(14,165,233,0.1)", color: "#0ea5e9", border: "1px solid rgba(14,165,233,0.25)", borderRadius: 12, padding: "8px 10px" }}
+                                  style={{ fontSize: 12, background: "rgba(14,165,233,0.1)", color: t.text2, border: "1px solid rgba(14,165,233,0.25)", borderRadius: 12, padding: "8px 10px" }}
                                 >
                                   Share with partner
                                 </button>
@@ -1709,7 +1629,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                             )
                           )}
                           {entries.length > 1 && (
-                            <span style={{ fontSize: 11, color: t.text3, fontWeight: 700 }}>{entries.length} visits</span>
+                            <span style={{ fontSize: 11, color: t.text3, fontWeight: 500 }}>{entries.length} visits</span>
                           )}
                         </div>
                       </div>
@@ -1717,7 +1637,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                       {vParty && ((vParty as any).status === "active" || entries.some(e => (e as any).isNew)) && (
                         <button
                           onClick={() => { setSelectedParty(vParty); setStep("revisit"); }}
-                          style={{ marginTop: 10, width: "100%", background: entries.some(e => (e as any).isNew) ? "rgba(99,102,241,0.07)" : "rgba(22,163,74,0.07)", border: `1px dashed ${entries.some(e => (e as any).isNew) ? "rgba(99,102,241,0.35)" : "rgba(22,163,74,0.35)"}`, borderRadius: 10, padding: "9px 14px", fontSize: 13, fontWeight: 700, color: entries.some(e => (e as any).isNew) ? "#6366f1" : "#16a34a", cursor: "pointer" }}
+                          style={{ marginTop: 10, width: "100%", background: entries.some(e => (e as any).isNew) ? "rgba(99,102,241,0.07)" : "rgba(22,163,74,0.07)", border: `1px dashed ${entries.some(e => (e as any).isNew) ? "rgba(99,102,241,0.35)" : "rgba(22,163,74,0.35)"}`, borderRadius: 10, padding: "9px 14px", fontSize: 13, fontWeight: 500, color: entries.some(e => (e as any).isNew) ? t.text2 : t.text2, cursor: "pointer" }}
                         >
                           {entries.some(e => (e as any).isNew) ? "+ Log Actions for New Party" : "+ Add More Log"}
                         </button>
@@ -1742,7 +1662,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
               style={{
                 fontSize: 14,
                 color: t.text2,
-                fontWeight: 700,
+                fontWeight: 500,
                 marginBottom: 10,
               }}
             >
@@ -1782,24 +1702,24 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
               background: isSundaySelected
                 ? t.bg3
                 : visits.length > 0
-                  ? "linear-gradient(135deg,#065f46,#047857)"
+                  ? t.text
                   : t.bg3,
-              color: isSundaySelected ? t.text3 : visits.length > 0 ? "#fff" : t.text2,
+              color: isSundaySelected ? t.text3 : visits.length > 0 ? t.bg : t.text2,
               border: isSundaySelected || visits.length === 0 ? `1.5px solid ${t.border}` : "none",
               borderRadius: 16,
               padding: "18px",
               fontSize: 17,
-              fontWeight: 900,
+              fontWeight: 500,
               cursor: isSundaySelected && visits.length > 0 ? 'not-allowed' : 'pointer',
               opacity: isSundaySelected && visits.length > 0 ? 0.5 : 1,
               boxShadow: !isSundaySelected && visits.length > 0 ? "0 8px 24px rgba(4,120,87,0.35)" : "none",
             }}
           >
             {visits.length === 0
-              ? "← Back to Dashboard"
+              ?"← Back to Dashboard"
               : todayLog?.updatedAt && todayLog.updatedAt !== todayLog.createdAt
-                ? `📝 Update Entry — ${visits.length} visit${visits.length > 1 ? "s" : ""}`
-                : `✅ Submit Day Log — ${visits.length} visit${visits.length > 1 ? "s" : ""}`}
+                ?`Update Entry — ${visits.length} visit${visits.length > 1 ?"s" :""}`
+                :`Submit Day Log — ${visits.length} visit${visits.length > 1 ?"s" :""}`}
           </button>
         </div>
       </div>
@@ -1809,33 +1729,12 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
   if (step === "selectShop")
     return (
       <div style={{ minHeight: "100vh", background: t.bg, paddingBottom: 40 }}>
-        <div
-          style={{
-            background: "linear-gradient(135deg,#0d3d2e,#1a5c42)",
-            padding: "20px 20px 20px",
-          }}
-        >
-          <button
-            onClick={() => setStep("home")}
-            style={{
-              background: "rgba(255,255,255,0.1)",
-              border: "none",
-              color: "#6ee7b7",
-              padding: "6px 14px",
-              borderRadius: 20,
-              fontSize: 13,
-              marginBottom: 14,
-            }}
-          >
-            ← Back
-          </button>
-          <div style={{ fontSize: 20, fontWeight: 900, color: "#fff" }}>
-            Select Party
-          </div>
-          <div style={{ fontSize: 14, color: "#a7f3d0", marginTop: 4 }}>
-            Active → Revisit · Prospect → Mark outcome
-          </div>
-        </div>
+        <PageHeader
+          eyebrow="Visit log"
+          title="Pick who you visited"
+          subtitle="An active party opens a revisit. A prospect asks you for the outcome."
+          onBack={() => setStep("home")}
+        />
 
         <div
           style={{
@@ -1850,9 +1749,9 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
             {(
               [
                 { val: "all", label: "All" },
-                { val: "active", label: "🟢 Active" },
-                { val: "prospect", label: "🟡 Prospect" },
-                { val: "inactive", label: "⛔ Inactive" },
+                { val:"active", label:"Active" },
+                { val:"prospect", label:"Prospect" },
+                { val:"inactive", label:"Inactive" },
               ] as const
             ).map((s) => (
               <button
@@ -1872,18 +1771,18 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                   color:
                     visitPartyStatus === s.val
                       ? s.val === "active"
-                        ? "#16a34a"
+                        ? t.text2
                         : s.val === "prospect"
-                          ? "#d97706"
+                          ? t.warn
                           : s.val === "inactive"
-                            ? "#dc2626"
-                            : "#16a34a"
+                            ? t.warn
+                            : t.text2
                       : t.text2,
-                  border: `1px solid ${visitPartyStatus === s.val ? (s.val === "active" ? "#16a34a" : s.val === "prospect" ? "#d97706" : s.val === "inactive" ? "#dc2626" : "#16a34a") : t.border}`,
+                  border: `1px solid ${visitPartyStatus === s.val ? (s.val === "active" ? t.text2 : s.val === "prospect" ? t.warn : s.val === "inactive" ? t.warn : t.text2) : t.border}`,
                   borderRadius: 20,
                   padding: "6px 14px",
                   fontSize: 13,
-                  fontWeight: 700,
+                  fontWeight: 500,
                   whiteSpace: "nowrap",
                 }}
               >
@@ -1900,7 +1799,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
               setSelectedParty(p);
               setStep("revisit");
             }}
-            placeholder="🔍 Search by name, place, area..."
+ placeholder="Search by name, place, area..."
             options={partyOptions}
             searchable
           />
@@ -1924,9 +1823,8 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
               gap: 12,
             }}
           >
-            <span style={{ fontSize: 26 }}>🆕</span>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>Add New Party</div>
+                        <div>
+              <div style={{ fontWeight: 500, fontSize: 16 }}>Add New Party</div>
               <div style={{ fontSize: 13, color: t.text2, marginTop: 2 }}>
                 Not in the list yet
               </div>
@@ -1936,7 +1834,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
           <div style={{ display: "flex", gap: 16 }}>
             <div style={{ fontSize: 13, color: t.text3 }}>Active → Revisit</div>
             <div style={{ fontSize: 13, color: t.text3 }}>
-              Prospect → First outcome
+ Prospect → First outcome
             </div>
           </div>
         </div>
@@ -1947,33 +1845,12 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
   if (step === "addNewShop")
     return (
       <div style={{ minHeight: "100vh", background: t.bg, paddingBottom: 40 }}>
-        <div
-          style={{
-            background: "linear-gradient(135deg,#0d3d2e,#1a5c42)",
-            padding: "20px 20px 20px",
-          }}
-        >
-          <button
-            onClick={() => setStep("selectShop")}
-            style={{
-              background: "rgba(255,255,255,0.1)",
-              border: "none",
-              color: "#6ee7b7",
-              padding: "6px 14px",
-              borderRadius: 20,
-              fontSize: 13,
-              marginBottom: 14,
-            }}
-          >
-            ← Back
-          </button>
-          <div style={{ fontSize: 20, fontWeight: 900, color: "#fff" }}>
-            New Party
-          </div>
-          <div style={{ fontSize: 13, color: "#a7f3d0", marginTop: 4 }}>
-            Added as Prospect
-          </div>
-        </div>
+        <PageHeader
+          eyebrow="Visit log"
+          title="Add a new party"
+          subtitle="They start as a prospect until they place an order."
+          onBack={() => setStep("selectShop")}
+        />
         <div
           style={{
             padding: "16px 16px",
@@ -1991,15 +1868,15 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                   flex: 1,
                   background:
                     newShop.type === tp ? "rgba(8,145,178,0.15)" : t.bg3,
-                  color: newShop.type === tp ? "#0891b2" : t.text2,
-                  border: `1.5px solid ${newShop.type === tp ? "#0891b2" : t.border2}`,
+                  color: newShop.type === tp ? t.text2 : t.text2,
+                  border: `1.5px solid ${newShop.type === tp ? t.text2 : t.border2}`,
                   borderRadius: 12,
                   padding: "13px",
                   fontSize: 15,
-                  fontWeight: 800,
+                  fontWeight: 500,
                 }}
               >
-                {tp === "distributor" ? "🚚 Distributor" : "🏪 Retailer"}
+                {tp ==="distributor" ?"Distributor" :"Retailer"}
               </button>
             ))}
           </div>
@@ -2024,15 +1901,15 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                   }
                   placeholder="Independent — no distributor"
                   options={[
-                    { value: "", label: "🟢 Independent retailer" },
+                    { value:"", label:"Independent retailer" },
                     ...parties
                       .filter((p) => p.type === "distributor")
-                      .map((d) => ({ value: d.id!, label: `🚚 ${d.name}` })),
+                      .map((d) => ({ value: d.id!, label:` ${d.name}` })),
                   ]}
                 />
                 {newShop.underDistributorId && (
-                  <div style={{ fontSize: 11, color: "#d97706", marginTop: 6 }}>
-                    ⚠️ Allocation will be blocked — must go through the
+                  <div style={{ fontSize: 11, color: t.warn, marginTop: 6 }}>
+ Allocation will be blocked — must go through the
                     distributor
                   </div>
                 )}
@@ -2128,13 +2005,13 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
             <button
               onClick={() => setShowNewShopEmail(true)}
               style={{
-                background: "rgba(255,255,255,0.04)",
-                border: "1.5px dashed rgba(255,255,255,0.12)",
+                background: t.tint,
+                border: `0.5px dashed ${t.border2}`,
                 borderRadius: 12,
                 padding: "12px 16px",
                 fontSize: 13,
                 color: t.text3,
-                fontWeight: 700,
+                fontWeight: 500,
                 textAlign: "left",
                 width: "100%",
               }}
@@ -2207,17 +2084,17 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
             style={{
               background:
                 !newShop.name.trim() || saving
-                  ? "#475569"
-                  : "linear-gradient(135deg,#0d3d2e,#1a5c42)",
-              color: "#fff",
+                  ? t.text3
+                  : t.text,
+              color: t.bg,
               border: "none",
               borderRadius: 14,
               padding: 17,
               fontSize: 16,
-              fontWeight: 800,
+              fontWeight: 500,
             }}
           >
-            {saving ? "Saving..." : "Add & Continue →"}
+            {saving ?"Saving..." :"Add & Continue →"}
           </button>
         </div>
       </div>

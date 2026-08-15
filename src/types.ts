@@ -94,7 +94,7 @@ export interface Party {
   pincode?: string
   email?: string
   addedBy: string; addedByName: string; createdAt: number
-  stock?: Record<string, number>   // productId → packets currently held
+ stock?: Record<string, number>   // productId → packets currently held
 
   // ── Sales Officer spec additions ──
   outletType?: OutletType
@@ -114,7 +114,7 @@ export interface ProductStock {
 export interface StockConfig {
   packetsPerCarton: number
   updatedAt: number
-  productStock?: Record<string, ProductStock>  // productId → stock
+ productStock?: Record<string, ProductStock>  // productId → stock
   // Legacy single-pool fields (kept for backward compat)
   total: number
   locked: number
@@ -899,8 +899,8 @@ export function validateVisitForPunchOut(v: Partial<OutletVisit>): string | null
  * records a manual correction.
  */
 export type StockMoveReason =
-  | 'dispatch_in'    // company → this party
-  | 'dispatch_out'   // this distributor → one of their retailers
+  |'dispatch_in'    // company → this party
+  |'dispatch_out'   // this distributor → one of their retailers
   | 'indent_in'      // retailer received against an indent
   | 'indent_out'     // distributor sent against an indent
   | 'sale'           // sold off the shelf, seen on a revisit

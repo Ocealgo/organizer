@@ -87,8 +87,7 @@ const EMPTY = (uid: string, name: string): PersonStats => ({
 })
 
 export default function SalesReport({ onBack }: Props) {
-  const { t, theme } = useTheme()
-  const isDark = theme === 'dark'
+  const { t } = useTheme()
 
   const [mode, setMode] = useState<RangeMode>('month')
   const [day, setDay] = useState(localDateStr())
@@ -387,17 +386,18 @@ export default function SalesReport({ onBack }: Props) {
   // ── ui bits ────────────────────────────────────────────────────────────────
   const chip = (active: boolean): CSSProperties => ({
     flex: 1,
-    background: active ? 'rgba(8,145,178,0.15)' : isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
-    color: active ? '#0891b2' : t.text3,
-    border: `1.5px solid ${active ? '#0891b2' : t.border}`,
-    borderRadius: 10, padding: '9px 6px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+    background: active ? t.tint : 'none',
+    color: active ? t.text : t.text2,
+    border: `0.5px solid ${active ? t.text2 : t.border2}`,
+    borderRadius: 6, padding: '9px 6px', fontSize: 13,
+    fontWeight: active ? 500 : 400, cursor: 'pointer',
   })
 
   const Stat = ({ label, value, color, sub }: { label: string; value: string | number; color?: string; sub?: string }) => (
     <div style={{ background: t.card, borderRadius: 12, padding: '12px 10px', textAlign: 'center', border: `1px solid ${t.border}` }}>
-      <div style={{ fontSize: 20, fontWeight: 900, color: color ?? t.text }}>{value}</div>
-      <div style={{ fontSize: 11, color: t.text3, marginTop: 2 }}>{label}</div>
-      {sub && <div style={{ fontSize: 10, color: t.text3, marginTop: 1 }}>{sub}</div>}
+      <div style={{ fontSize: 20, fontWeight: 500, color: color ?? t.text }}>{value}</div>
+      <div style={{ fontSize: 12, fontWeight: 400, color: t.text3, marginTop: 3 }}>{label}</div>
+      {sub && <div style={{ fontSize: 11, fontWeight: 400, color: t.text3, marginTop: 2 }}>{sub}</div>}
     </div>
   )
 
@@ -450,8 +450,8 @@ export default function SalesReport({ onBack }: Props) {
               onChange={setScope}
               placeholder="Whole team"
               options={[
-                { value: 'all', label: '👥 Whole team' },
-                ...salesUsers.map(u => ({ value: u.uid, label: `🏪 ${u.name}` })),
+                { value:'all', label:'Whole team' },
+                ...salesUsers.map(u => ({ value: u.uid, label:` ${u.name}` })),
               ]}
             />
           </div>
@@ -466,7 +466,7 @@ export default function SalesReport({ onBack }: Props) {
         ) : (
           <>
             {/* Team summary */}
-            <div style={{ fontSize: 11, color: t.text3, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase' }}>
+            <div style={{ fontSize: 11, color: t.text3, fontWeight: 400, letterSpacing: '0.09em', textTransform: 'uppercase' }}>
               {scope === 'all' ? 'Team totals' : `${rows[0]?.name ?? ''} totals`}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>

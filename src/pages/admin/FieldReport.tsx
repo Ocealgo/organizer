@@ -254,7 +254,7 @@ export default function FieldReport({ onBack }: Props) {
                         )}
                         {s.startBatteryPct !== undefined && (
                           <Detail label="Battery"
-                            value={`${s.startBatteryPct}%${s.endBatteryPct !== undefined ? ` → ${s.endBatteryPct}%` : ''}`} />
+ value={`${s.startBatteryPct}%${s.endBatteryPct !== undefined ?` → ${s.endBatteryPct}%` :''}`} />
                         )}
 
                         {(s.startOdometerPhoto || s.endOdometerPhoto) && (

@@ -26,6 +26,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { useConfirm } from "../../hooks/useConfirm";
 import { localDateStr, localDateOffset } from "../../utils/date";
 import { recordStockMoves } from "../../data/stockLedger";
+import { PageHeader, Note } from "../../components/ui";
 
 interface EditMode {
   revisitLogId: string;
@@ -159,19 +160,16 @@ export default function RevisitLogger({
 
   const actionOptions: {
     key: ActionKey;
-    emoji: string;
     label: string;
     sub: string;
   }[] = [
     {
       key: "stock_update",
-      emoji: "📊",
       label: "Stock Update",
       sub: "Log current stock level",
     },
     {
       key: "new_order",
-      emoji: "📦",
       label: "New Order",
       sub: "They want more stock — create allocation",
     },
@@ -179,7 +177,6 @@ export default function RevisitLogger({
       ? [
           {
             key: "payment_collection" as ActionKey,
-            emoji: "💰",
             label: "Cash Collected",
             sub:
               outstandingAmount > 0
@@ -190,13 +187,11 @@ export default function RevisitLogger({
       : []),
     {
       key: "relationship_visit",
-      emoji: "🤝",
       label: "Relationship Visit",
       sub: "Visited, maintained relationship",
     },
     ...((party as any).status === "active" ? [{
       key: "no_longer_active" as ActionKey,
-      emoji: "⚠️",
       label: "No Longer Active",
       sub: "Will be moved back to Prospect",
     }] : []),
@@ -362,7 +357,7 @@ export default function RevisitLogger({
     const confirmed = await showConfirm(
       editMode ? "Update Order" : "Confirm Order",
       isUnderDistributor
-        ? `${qty} ${orderProduct.unitLabel} of ${orderProduct.name} → ${(party as any).underDistributorName}`
+        ?`${qty} ${orderProduct.unitLabel} of ${orderProduct.name} → ${(party as any).underDistributorName}`
         : `${qty} ${orderProduct.unitLabel} of ${orderProduct.name} · ₹${total.toLocaleString()} · ${orderPayment}`,
     );
     if (!confirmed) return;
@@ -621,14 +616,14 @@ export default function RevisitLogger({
       disabled={disabled}
       style={{
         background: disabled
-          ? "#334155"
-          : "linear-gradient(135deg,#0d3d2e,#1a5c42)",
-        color: "#fff",
+          ? t.text3
+          : t.text,
+        color: t.bg,
         border: "none",
         borderRadius: 12,
         padding: "14px",
         fontSize: 15,
-        fontWeight: 800,
+        fontWeight: 500,
         opacity: disabled ? 0.4 : 1,
         marginTop: 4,
       }}
@@ -639,123 +634,28 @@ export default function RevisitLogger({
 
   return (
     <div style={{ minHeight: "100vh", background: t.bg, paddingBottom: 40 }}>
-      {/* Header */}
-      <div
-        style={{
-          background: "linear-gradient(135deg,#0d3d2e,#1a5c42)",
-          padding: "20px 20px 20px",
-        }}
-      >
-        <button
-          onClick={onBack}
-          style={{
-            background: "rgba(255,255,255,0.1)",
-            border: "none",
-            color: "#6ee7b7",
-            padding: "6px 14px",
-            borderRadius: 20,
-            fontSize: 13,
-            marginBottom: 14,
-          }}
-        >
-          ← Back
-        </button>
-        <div style={{ fontSize: 13, color: "#a7f3d0" }}>
-          {party.type === "distributor" ? "🚚 Distributor" : "🏪 Retailer"}
+      <PageHeader
+        eyebrow={party.type === "distributor" ? "Distributor" : "Retailer"}
+        title={party.name}
+        subtitle={[
+          party.place || party.address,
+          (party as any).status === "active" ? "active" : "prospect",
+          party.type === "retailer"
+            ? ((party as any).underDistributorName
+                ? `under ${(party as any).underDistributorName}`
+                : "independent")
+            : null,
+        ].filter(Boolean).join(" · ")}
+        onBack={onBack}
+      />
+
+      {outstandingAmount > 0 && (
+        <div style={{ padding: "20px 20px 0" }}>
+          <Note tone="warn">
+            {`₹${outstandingAmount.toLocaleString("en-IN")} is still owed on credit. Collect it before taking a new order.`}
+          </Note>
         </div>
-        <div style={{ fontSize: 22, fontWeight: 900, color: "#fff" }}>
-          {party.name}
-        </div>
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 6,
-            alignItems: "center",
-            marginTop: 4,
-          }}
-        >
-          <span style={{ fontSize: 13, color: "#a7f3d0" }}>
-            {party.place || party.address}
-          </span>
-          <span
-            style={{
-              fontSize: 13,
-              color: (party as any).status === "active" ? "#86efac" : "#fde68a",
-            }}
-          >
-            · {(party as any).status === "active" ? "🟢 Active" : "🟡 Prospect"}
-          </span>
-          {party.type === "retailer" && (
-            <span
-              style={{
-                background: "rgba(255,255,255,0.15)",
-                borderRadius: 99,
-                padding: "2px 10px",
-                fontSize: 11,
-                fontWeight: 700,
-                color: "#fff",
-              }}
-            >
-              {(party as any).underDistributorName
-                ? `Under ${(party as any).underDistributorName}`
-                : "Independent"}
-            </span>
-          )}
-        </div>
-        {outstandingAmount > 0 && (
-          <div
-            style={{
-              background: "rgba(220,38,38,0.2)",
-              border: "1px solid rgba(220,38,38,0.35)",
-              borderRadius: 12,
-              padding: "10px 14px",
-              marginTop: 12,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <div>
-              <div
-                style={{
-                  fontSize: 10,
-                  color: "#fca5a5",
-                  textTransform: "uppercase",
-                  letterSpacing: 1,
-                  fontWeight: 700,
-                }}
-              >
-                Outstanding Credit
-              </div>
-              <div
-                style={{
-                  fontSize: 22,
-                  fontWeight: 900,
-                  color: "#f87171",
-                  lineHeight: 1.2,
-                }}
-              >
-                ₹{outstandingAmount.toLocaleString()}
-              </div>
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 11, color: "#fca5a5" }}>
-                Unpaid credit
-              </div>
-              <div
-                style={{
-                  fontSize: 10,
-                  color: "rgba(252,165,165,0.7)",
-                  marginTop: 2,
-                }}
-              >
-                Collect before new order
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+      )}
 
       <div
         style={{
@@ -773,8 +673,8 @@ export default function RevisitLogger({
               borderRadius: 12,
               padding: "10px 14px",
               fontSize: 13,
-              color: "#16a34a",
-              fontWeight: 600,
+              color: t.text2,
+              fontWeight: 500,
             }}
           >
             {confirmedActions.length} action
@@ -824,7 +724,7 @@ export default function RevisitLogger({
                     : isExpanded
                       ? "rgba(22,163,74,0.1)"
                       : t.card,
-                  border: `2px solid ${isDone ? "#16a34a" : isExpanded ? "#16a34a" : t.border}`,
+                  border: `2px solid ${isDone ? t.text2 : isExpanded ? t.text2 : t.border}`,
                   borderRadius: isExpanded ? "14px 14px 0 0" : 14,
                   padding: "16px 18px",
                   display: "flex",
@@ -838,16 +738,15 @@ export default function RevisitLogger({
                       : "pointer",
                 }}
               >
-                <span style={{ fontSize: 26 }}>{opt.emoji}</span>
                 <div style={{ flex: 1 }}>
                   <div
                     style={{
-                      fontWeight: 700,
+                      fontWeight: 500,
                       fontSize: 16,
                       color: isDone
-                        ? "#16a34a"
+                        ? t.text2
                         : isExpanded
-                          ? "#16a34a"
+                          ? t.text2
                           : t.text,
                     }}
                   >
@@ -861,8 +760,8 @@ export default function RevisitLogger({
                       outstandingAmount > 0 && (
                         <div
                           style={{
-                            color: "#fca5a5",
-                            fontWeight: 600,
+                            color: t.warn,
+                            fontWeight: 500,
                             marginTop: 4,
                           }}
                         >
@@ -874,12 +773,12 @@ export default function RevisitLogger({
                 </div>
                 {!(opt.key === "no_longer_active" && outstandingAmount > 0) &&
                   (isDone ? (
-                    <span style={{ color: (opt.key === 'payment_collection' && paymentConfirmed) || (opt.key === 'new_order' && orderDispatched) ? "#94a3b8" : "#16a34a", fontSize: editMode ? 11 : 20, fontWeight: 900 }}>
-                      {opt.key === 'new_order' && orderDispatched ? '🔒 Dispatched' : opt.key === 'payment_collection' && paymentConfirmed ? '🔒 Admin confirmed' : editMode ? '✓ tap to edit' : '✓'}
+                    <span style={{ color: (opt.key === 'payment_collection' && paymentConfirmed) || (opt.key === 'new_order' && orderDispatched) ? t.text3 : t.text2, fontSize: editMode ? 11 : 20, fontWeight: 500 }}>
+                      {opt.key ==='new_order' && orderDispatched ?'Dispatched' : opt.key ==='payment_collection' && paymentConfirmed ?'Admin confirmed' : editMode ?'tap to edit' :''}
                     </span>
                   ) : (
                     <span style={{ color: t.text3, fontSize: 16 }}>
-                      {isExpanded ? "▲" : "▼"}
+                      {isExpanded ?"▲" :"▼"}
                     </span>
                   ))}
               </button>
@@ -931,7 +830,7 @@ export default function RevisitLogger({
                                 stockProductId === p.id
                                   ? "rgba(22,163,74,0.12)"
                                   : t.bg3,
-                              border: `1.5px solid ${stockProductId === p.id ? "#16a34a" : t.border}`,
+                              border: `1.5px solid ${stockProductId === p.id ? t.text2 : t.border}`,
                               borderRadius: 10,
                               padding: "10px 14px",
                               display: "flex",
@@ -940,15 +839,15 @@ export default function RevisitLogger({
                               textAlign: "left",
                             }}
                           >
-                            <span style={{ fontSize: 18 }}>📦</span>
+                            <span style={{ fontSize: 18 }}></span>
                             <div style={{ flex: 1 }}>
                               <div
                                 style={{
-                                  fontWeight: 700,
+                                  fontWeight: 500,
                                   fontSize: 14,
                                   color:
                                     stockProductId === p.id
-                                      ? "#16a34a"
+                                      ? t.text2
                                       : t.text,
                                 }}
                               >
@@ -960,7 +859,7 @@ export default function RevisitLogger({
                               </div>
                             </div>
                             {stockProductId === p.id && (
-                              <span style={{ color: "#16a34a" }}>✓</span>
+                              <span style={{ color: t.text2 }}></span>
                             )}
                           </button>
                         ))}
@@ -974,7 +873,7 @@ export default function RevisitLogger({
                               borderRadius: 10,
                               padding: "10px 12px",
                               fontSize: 12,
-                              color: "#d97706",
+                              color: t.warn,
                             }}
                           >
                             Opening stock is zero — enter the current balance
@@ -984,7 +883,7 @@ export default function RevisitLogger({
                             <div
                               style={{
                                 fontSize: 10,
-                                color: "#6ee7b7",
+                                color: t.accent,
                                 marginBottom: 4,
                                 textTransform: "uppercase",
                                 letterSpacing: 1,
@@ -1000,12 +899,12 @@ export default function RevisitLogger({
                               style={{
                                 ...inputStyle,
                                 fontSize: 18,
-                                fontWeight: 900,
+                                fontWeight: 500,
                               }}
                             />
                           </div>
                           {confirmBtn(
-                            "Update Stock ✓",
+                            "Update stock",
                             handleConfirmStockUpdate,
                             (parseInt(manualBalance) || 0) <= 0,
                           )}
@@ -1019,10 +918,10 @@ export default function RevisitLogger({
                               borderRadius: 10,
                               padding: "10px 12px",
                               fontSize: 12,
-                              color: "#0891b2",
+                              color: t.text2,
                             }}
                           >
-                            💡 Enter qty sold — balance calculates automatically
+ Enter qty sold — balance calculates automatically
                           </div>
                           <div
                             style={{
@@ -1047,8 +946,8 @@ export default function RevisitLogger({
                                 style={{
                                   ...inputStyle,
                                   fontSize: 16,
-                                  fontWeight: 900,
-                                  color: "#94a3b8",
+                                  fontWeight: 500,
+                                  color: t.text3,
                                   display: "flex",
                                   alignItems: "center",
                                 }}
@@ -1078,7 +977,7 @@ export default function RevisitLogger({
                                 style={{
                                   ...inputStyle,
                                   fontSize: 16,
-                                  fontWeight: 700,
+                                  fontWeight: 500,
                                 }}
                               />
                             </div>
@@ -1087,7 +986,7 @@ export default function RevisitLogger({
                             <div
                               style={{
                                 fontSize: 10,
-                                color: "#6ee7b7",
+                                color: t.accent,
                                 marginBottom: 4,
                                 textTransform: "uppercase",
                                 letterSpacing: 1,
@@ -1099,8 +998,8 @@ export default function RevisitLogger({
                               style={{
                                 ...inputStyle,
                                 fontSize: 18,
-                                fontWeight: 900,
-                                color: stockBalance > 0 ? "#6ee7b7" : "#f87171",
+                                fontWeight: 500,
+                                color: stockBalance > 0 ? t.accent : t.warn,
                                 background: "rgba(22,163,74,0.08)",
                                 display: "flex",
                                 alignItems: "center",
@@ -1110,7 +1009,7 @@ export default function RevisitLogger({
                             </div>
                           </div>
                           {confirmBtn(
-                            "Update Stock ✓",
+                            "Update stock",
                             handleConfirmStockUpdate,
                             stockSold <= 0,
                           )}
@@ -1130,10 +1029,10 @@ export default function RevisitLogger({
                             borderRadius: 10,
                             padding: "10px 12px",
                             fontSize: 12,
-                            color: "#0891b2",
+                            color: t.text2,
                           }}
                         >
-                          🚚 Stock via{" "}
+ Stock via{""}
                           <strong>{(party as any).underDistributorName}</strong>
                         </div>
                       )}
@@ -1163,7 +1062,7 @@ export default function RevisitLogger({
                                 orderProduct?.id === p.id
                                   ? "rgba(22,163,74,0.12)"
                                   : t.bg3,
-                              border: `1.5px solid ${orderProduct?.id === p.id ? "#16a34a" : t.border}`,
+                              border: `1.5px solid ${orderProduct?.id === p.id ? t.text2 : t.border}`,
                               borderRadius: 10,
                               padding: "12px 14px",
                               display: "flex",
@@ -1172,15 +1071,15 @@ export default function RevisitLogger({
                               textAlign: "left",
                             }}
                           >
-                            <span style={{ fontSize: 20 }}>📦</span>
+                            <span style={{ fontSize: 20 }}></span>
                             <div style={{ flex: 1 }}>
                               <div
                                 style={{
-                                  fontWeight: 700,
+                                  fontWeight: 500,
                                   fontSize: 14,
                                   color:
                                     orderProduct?.id === p.id
-                                      ? "#16a34a"
+                                      ? t.text2
                                       : t.text,
                                 }}
                               >
@@ -1191,7 +1090,7 @@ export default function RevisitLogger({
                               </div>
                             </div>
                             {orderProduct?.id === p.id && (
-                              <span style={{ color: "#16a34a" }}>✓</span>
+                              <span style={{ color: t.text2 }}></span>
                             )}
                           </button>
                         ))}
@@ -1212,10 +1111,10 @@ export default function RevisitLogger({
                                       padding: "3px 10px",
                                       borderRadius: 20,
                                       fontSize: 11,
-                                      fontWeight: 700,
-                                      border: `1.5px solid ${orderUnit === u ? "#16a34a" : t.border}`,
+                                      fontWeight: 500,
+                                      border: `1.5px solid ${orderUnit === u ? t.text2 : t.border}`,
                                       background: orderUnit === u ? "rgba(22,163,74,0.12)" : t.bg3,
-                                      color: orderUnit === u ? "#16a34a" : t.text3,
+                                      color: orderUnit === u ? t.text2 : t.text3,
                                       cursor: "pointer",
                                     }}
                                   >
@@ -1231,7 +1130,7 @@ export default function RevisitLogger({
                               placeholder={orderUnit === "carton" ? "No. of cartons" : `No. of ${orderProduct.unitLabel}`}
                               style={{
                                 ...inputStyle,
-                                borderColor: orderQty && parseInt(orderQty) <= 0 ? "#dc2626" : undefined,
+                                borderColor: orderQty && parseInt(orderQty) <= 0 ? t.warn : undefined,
                               }}
                             />
                             {orderUnit === "carton" && orderQty && parseInt(orderQty) > 0 && (
@@ -1240,7 +1139,7 @@ export default function RevisitLogger({
                               </div>
                             )}
                             {orderQty && parseInt(orderQty) <= 0 && (
-                              <div style={{ fontSize: 12, color: "#dc2626", marginTop: 6, fontWeight: 600 }}>
+                              <div style={{ fontSize: 12, color: t.warn, marginTop: 6, fontWeight: 500 }}>
                                 Quantity must be greater than zero
                               </div>
                             )}
@@ -1274,9 +1173,9 @@ export default function RevisitLogger({
                                     <div
                                       style={{
                                         fontSize: 13,
-                                        color: "#6ee7b7",
+                                        color: t.accent,
                                         marginTop: 5,
-                                        fontWeight: 600,
+                                        fontWeight: 500,
                                       }}
                                     >
                                       Total: ₹
@@ -1292,8 +1191,8 @@ export default function RevisitLogger({
                               <div style={{ display: "flex", gap: 8 }}>
                                 {(
                                   [
-                                    ["cash", "💵 Cash"],
-                                    ["credit", "📋 Credit"],
+                                    ["cash","Cash"],
+                                    ["credit","Credit"],
                                   ] as const
                                 ).map(([val, label]) => (
                                   <button
@@ -1310,14 +1209,14 @@ export default function RevisitLogger({
                                       color:
                                         orderPayment === val
                                           ? val === "cash"
-                                            ? "#16a34a"
-                                            : "#d97706"
+                                            ? t.text2
+                                            : t.warn
                                           : t.text2,
-                                      border: `1.5px solid ${orderPayment === val ? (val === "cash" ? "#16a34a" : "#d97706") : t.border}`,
+                                      border: `1.5px solid ${orderPayment === val ? (val === "cash" ? t.text2 : t.warn) : t.border}`,
                                       borderRadius: 10,
                                       padding: "10px",
                                       fontSize: 13,
-                                      fontWeight: 800,
+                                      fontWeight: 500,
                                     }}
                                   >
                                     {label}
@@ -1346,7 +1245,7 @@ export default function RevisitLogger({
                             </>
                           )}
                           {confirmBtn(
-                            "Place Order ✓",
+                            "Place order",
                             handleConfirmNewOrder,
                             !orderQty ||
                               parseInt(orderQty) <= 0 ||
@@ -1366,17 +1265,17 @@ export default function RevisitLogger({
                         const cleared = typedAmt > 0 && remaining === 0;
                         return (
                           <div style={{ background: cleared ? "rgba(22,163,74,0.12)" : "rgba(22,163,74,0.08)", border: `1px solid ${cleared ? "rgba(22,163,74,0.4)" : "rgba(22,163,74,0.2)"}`, borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                            <div style={{ fontSize: 12, color: "#16a34a", fontWeight: 700 }}>
-                              {cleared ? "✓ Fully cleared" : "Outstanding"}
+                            <div style={{ fontSize: 12, color: t.text2, fontWeight: 500 }}>
+                              {cleared ?"Fully cleared" :"Outstanding"}
                             </div>
                             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                               {typedAmt > 0 && (
                                 <>
-                                  <span style={{ fontSize: 13, color: "#94a3b8", textDecoration: "line-through" }}>₹{outstandingAmount.toLocaleString()}</span>
-                                  <span style={{ fontSize: 12, color: "#64748b" }}>→</span>
+                                  <span style={{ fontSize: 13, color: t.text3, textDecoration: "line-through" }}>₹{outstandingAmount.toLocaleString()}</span>
+                                  <span style={{ fontSize: 12, color: t.text3 }}>→</span>
                                 </>
                               )}
-                              <span style={{ fontSize: 15, fontWeight: 900, color: cleared ? "#16a34a" : remaining < outstandingAmount ? "#f59e0b" : "#16a34a" }}>
+                              <span style={{ fontSize: 15, fontWeight: 500, color: cleared ? t.text2 : remaining < outstandingAmount ? t.warn : t.text2 }}>
                                 ₹{remaining.toLocaleString()}
                               </span>
                             </div>
@@ -1403,7 +1302,7 @@ export default function RevisitLogger({
                           style={{
                             ...inputStyle,
                             fontSize: 22,
-                            fontWeight: 900,
+                            fontWeight: 500,
                           }}
                         />
                       </div>
@@ -1428,10 +1327,10 @@ export default function RevisitLogger({
                         >
                           {(
                             [
-                              ["cash", "💵 Cash"],
-                              ["upi", "📱 UPI"],
-                              ["cheque", "📄 Cheque"],
-                              ["bank_transfer", "🏦 Bank Transfer"],
+                              ["cash","Cash"],
+                              ["upi","UPI"],
+                              ["cheque","Cheque"],
+                              ["bank_transfer","Bank Transfer"],
                             ] as const
                           ).map(([val, label]) => (
                             <button
@@ -1443,12 +1342,12 @@ export default function RevisitLogger({
                                     ? "rgba(22,163,74,0.15)"
                                     : t.bg3,
                                 color:
-                                  paymentMethod === val ? "#16a34a" : t.text2,
-                                border: `1.5px solid ${paymentMethod === val ? "#16a34a" : t.border}`,
+                                  paymentMethod === val ? t.text2 : t.text2,
+                                border: `1.5px solid ${paymentMethod === val ? t.text2 : t.border}`,
                                 borderRadius: 10,
                                 padding: "9px 8px",
                                 fontSize: 12,
-                                fontWeight: 700,
+                                fontWeight: 500,
                               }}
                             >
                               {label}
@@ -1487,11 +1386,11 @@ export default function RevisitLogger({
                               <div
                                 style={{
                                   fontSize: 12,
-                                  color: "#dc2626",
-                                  fontWeight: 700,
+                                  color: t.warn,
+                                  fontWeight: 500,
                                 }}
                               >
-                                ⚠️ Amount exceeds outstanding balance of ₹
+ Amount exceeds outstanding balance of ₹
                                 {outstandingAmount.toLocaleString()}
                               </div>
                             )}
@@ -1499,15 +1398,15 @@ export default function RevisitLogger({
                               <div
                                 style={{
                                   fontSize: 12,
-                                  color: "#dc2626",
-                                  fontWeight: 700,
+                                  color: t.warn,
+                                  fontWeight: 500,
                                 }}
                               >
-                                ⚠️ Amount must be greater than zero
+ Amount must be greater than zero
                               </div>
                             )}
                             {confirmBtn(
-                              "Log Payment ✓",
+                              "Log payment",
                               handleConfirmPayment,
                               invalid,
                             )}
@@ -1540,7 +1439,7 @@ export default function RevisitLogger({
                           style={{ ...inputStyle, resize: "none" }}
                         />
                       </div>
-                      {confirmBtn("Confirm Visit ✓", handleConfirmRelationship)}
+                      {confirmBtn("Confirm Visit", handleConfirmRelationship)}
                     </>
                   )}
 
@@ -1558,8 +1457,8 @@ export default function RevisitLogger({
                         <div
                           style={{
                             fontSize: 13,
-                            fontWeight: 700,
-                            color: "#d97706",
+                            fontWeight: 500,
+                            color: t.warn,
                             marginBottom: 4,
                           }}
                         >
@@ -1568,7 +1467,7 @@ export default function RevisitLogger({
                         <div
                           style={{
                             fontSize: 12,
-                            color: "#fbbf24",
+                            color: t.warn,
                             lineHeight: 1.5,
                           }}
                         >
@@ -1608,8 +1507,8 @@ export default function RevisitLogger({
                                 inactiveReason === r
                                   ? "rgba(217,119,6,0.12)"
                                   : t.bg3,
-                              color: inactiveReason === r ? "#d97706" : t.text2,
-                              border: `1.5px solid ${inactiveReason === r ? "#d97706" : t.border}`,
+                              color: inactiveReason === r ? t.warn : t.text2,
+                              border: `1.5px solid ${inactiveReason === r ? t.warn : t.border}`,
                               borderRadius: 10,
                               padding: "11px 14px",
                               fontSize: 14,
@@ -1617,13 +1516,13 @@ export default function RevisitLogger({
                               fontWeight: inactiveReason === r ? 700 : 400,
                             }}
                           >
-                            {inactiveReason === r ? "● " : "○ "}
+                            {inactiveReason === r ?"" :""}
                             {r}
                           </button>
                         ))}
                       </div>
                       {confirmBtn(
-                        "Move to Prospect ✓",
+                        "Move back to prospect",
                         handleConfirmNoLongerActive,
                         !inactiveReason,
                       )}
@@ -1640,25 +1539,25 @@ export default function RevisitLogger({
           disabled={saving}
           style={{
             background: saving
-              ? "#475569"
+              ? t.text3
               : confirmedActions.length > 0
-                ? "linear-gradient(135deg,#065f46,#047857)"
+                ? t.text
                 : t.bg3,
-            color: confirmedActions.length > 0 ? "#fff" : t.text2,
+            color: confirmedActions.length > 0 ? t.bg : t.text2,
             border:
               confirmedActions.length > 0 ? "none" : `1.5px solid ${t.border}`,
             borderRadius: 14,
             padding: 18,
             fontSize: 16,
-            fontWeight: 900,
+            fontWeight: 500,
             marginTop: 8,
           }}
         >
           {saving
             ? "Saving..."
             : confirmedActions.length > 0
-              ? `Done — ${confirmedActions.length} action${confirmedActions.length > 1 ? "s" : ""} logged ✅`
-              : "← Back"}
+              ?`Done — ${confirmedActions.length} action${confirmedActions.length > 1 ?"s" :""} logged`
+              :"← Back"}
         </button>
       </div>
       {modal}

@@ -17,15 +17,16 @@ import { db } from "../../firebase";
 import { usePostStatuses, useStockConfig } from "../../hooks/useFirebase";
 import {
   MAY_POSTS,
-  FORMAT_EMOJI,
-  PILLAR_COLORS,
   STATUS_CONFIG,
 } from "../../data";
 import { CheckIn, AppUser, Party, LeaveRecord, Permission, Product } from "../../types";
 import { can, isAdminRole } from "../../auth/permissions";
 import SalesReport from "../reports/SalesReport";
 import FieldReport from "./FieldReport";
-import { Eyebrow, StatGrid, StatCard, EmptyState, GhostButton } from "../../components/ui";
+import {
+  Eyebrow, PageHeader, Section, StatGrid, StatCard, EmptyState,
+  Field, GhostButton, PrimaryButton, inputStyle,
+} from "../../components/ui";
 import StockManager from "../stock/StockManager";
 import WorkspaceDashboard from "../workspace/WorkspaceDashboard";
 import PartyManager from "../distributors/PartyManager";
@@ -310,75 +311,56 @@ export default function AdminDashboard() {
 
   if (subScreen === "settings") return (
     <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
-      <div style={{ background: 'linear-gradient(135deg,#1a5c42,#0f3d2b)', padding: '24px 20px 20px' }}>
-        <button onClick={() => setSubScreen('dashboard')}
-          style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#6ee7b7', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 16 }}>
-          ← Back
-        </button>
-        <div style={{ color: '#6ee7b7', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Super Admin</div>
-        <div style={{ fontSize: 22, fontWeight: 500, color: '#fff', marginBottom: 2 }}>Settings</div>
-        <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>App configuration & links</div>
-      </div>
+      <PageHeader
+        eyebrow="Super admin"
+        title="Settings"
+        subtitle="App configuration and links."
+        onBack={() => setSubScreen('dashboard')}
+      />
 
-      <div style={{ padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* Mapper Link */}
-        <div style={{ background: t.card, borderRadius: 16, padding: 20, border: `1px solid ${t.border}` }}>
-          <div style={{ fontSize: 13, fontWeight: 500, color: t.text, marginBottom: 4 }}>Mapper link</div>
-          <div style={{ fontSize: 12, color: t.text3, marginBottom: 14, lineHeight: 1.5 }}>
-            The mapper converts Zoho's export format into the format the importer expects. This link will appear as a clickable step in the Import screen.
-          </div>
-          <input
-            type="url"
-            value={settingsMapperLink}
-            onChange={e => { setSettingsMapperLink(e.target.value); setSettingsSaved(false); }}
-            placeholder="https://docs.google.com/spreadsheets/..."
-            style={{
-              width: '100%', boxSizing: 'border-box',
-              background: 'rgba(255,255,255,0.06)',
-              border: `1.5px solid ${
-                settingsMapperLink && !isValidUrl(settingsMapperLink)
-                  ? '#dc2626'
-                  : t.border2
-              }`,
-              borderRadius: 12, padding: '13px 16px',
-              fontSize: 14, color: t.text, outline: 'none',
-            }}
-          />
-          {settingsMapperLink && !isValidUrl(settingsMapperLink) && (
-            <div style={{ fontSize: 12, color: '#dc2626', marginTop: 6 }}>
-              Enter a URL starting with https://
+      <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 28 }}>
+        <Section label="Mapper link">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 560 }}>
+            <div style={{ fontSize: 14, fontWeight: 400, color: t.text3, lineHeight: 1.6 }}>
+              The mapper turns a Zoho export into the column layout the importer expects. Whatever you
+              put here shows up as a step in the Import screen.
             </div>
-          )}
-          {settingsMapperLink && isValidUrl(settingsMapperLink) && (
-            <a href={settingsMapperLink} target="_blank" rel="noopener noreferrer"
-              style={{ display: 'block', marginTop: 8, fontSize: 12, color: '#6ee7b7', wordBreak: 'break-all', textDecoration: 'underline' }}>
-              {settingsMapperLink}
-            </a>
-          )}
-          <button
-            onClick={async () => {
-              setSettingsSaving(true);
-              try {
-                await setDoc(doc(db, 'config', 'settings'), { mapperLink: settingsMapperLink.trim() }, { merge: true });
-                setSettingsSaved(true);
-              } finally {
-                setSettingsSaving(false);
-              }
-            }}
-            disabled={settingsSaving || (!!settingsMapperLink && !isValidUrl(settingsMapperLink))}
-            style={{
-              marginTop: 14, width: '100%',
-              background: settingsSaved ? 'rgba(22,163,74,0.15)' : 'linear-gradient(135deg,#1a5c42,#0f3d2b)',
-              color: settingsSaved ? '#6ee7b7' : '#fff',
-              border: settingsSaved ? '1px solid rgba(22,163,74,0.3)' : 'none',
-              borderRadius: 12, padding: '14px',
-              fontSize: 14, fontWeight: 500,
-              opacity: (settingsSaving || (!!settingsMapperLink && !isValidUrl(settingsMapperLink))) ? 0.5 : 1,
-            }}
-          >
-            {settingsSaving ? 'Saving...' : settingsSaved ? 'Saved' : 'Save'}
-          </button>
-        </div>
+            <Field label="Link"
+              error={settingsMapperLink && !isValidUrl(settingsMapperLink)
+                ? 'Enter a URL starting with https://'
+                : undefined}>
+              <input
+                type="url"
+                value={settingsMapperLink}
+                onChange={e => { setSettingsMapperLink(e.target.value); setSettingsSaved(false); }}
+                placeholder="https://docs.google.com/spreadsheets/..."
+                style={inputStyle(t)}
+              />
+              {settingsMapperLink && isValidUrl(settingsMapperLink) && (
+                <a href={settingsMapperLink} target="_blank" rel="noopener noreferrer"
+                  style={{ display: 'block', marginTop: 8, fontSize: 13, fontWeight: 400,
+                           color: t.accent, wordBreak: 'break-all', textDecoration: 'none' }}>
+                  Open it
+                </a>
+              )}
+            </Field>
+            <div>
+              <PrimaryButton
+                onClick={async () => {
+                  setSettingsSaving(true);
+                  try {
+                    await setDoc(doc(db, 'config', 'settings'), { mapperLink: settingsMapperLink.trim() }, { merge: true });
+                    setSettingsSaved(true);
+                  } finally {
+                    setSettingsSaving(false);
+                  }
+                }}
+                disabled={settingsSaving || (!!settingsMapperLink && !isValidUrl(settingsMapperLink))}>
+                {settingsSaving ? 'Saving' : settingsSaved ? 'Saved' : 'Save'}
+              </PrimaryButton>
+            </div>
+          </div>
+        </Section>
 
         {/* ── Danger Zone ── */}
         {(() => {
@@ -466,7 +448,7 @@ export default function AdminDashboard() {
                 <button
                   onClick={() => setDangerStep('confirm')}
                   style={{ width: '100%', background: 'rgba(220,38,38,0.12)', border: '1.5px solid rgba(220,38,38,0.35)', color: '#dc2626', borderRadius: 12, padding: '12px', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>
-                  Delete {dangerSelected.size} collection{dangerSelected.size > 1 ? 's' : ''} →
+ Delete {dangerSelected.size} collection{dangerSelected.size > 1 ?'s' :''} →
                 </button>
               )}
 
@@ -1664,7 +1646,7 @@ export default function AdminDashboard() {
                                   {totalAct > 0 && <span style={{ fontSize: 11, color: t.text3 }}>{totalAct}</span>}
                                   {totalExp > 0 && <span style={{ fontSize: 11, color: t.text3 }}>₹{totalExp.toLocaleString('en-IN')}</span>}
                                 </div>
-                                <span style={{ fontSize: 16, color: t.text3 }}>{isExpanded ? '▾' : '▸'}</span>
+                                <span style={{ fontSize: 16, color: t.text3 }}>{isExpanded ?'▾' :'▸'}</span>
                               </div>
                             </button>
 
@@ -1686,14 +1668,14 @@ export default function AdminDashboard() {
                                   const secHdr = (label: string, key: string, count: number) => (
                                     <button onClick={() => toggleSec(key)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', padding: '10px 0 6px', cursor: 'pointer' }}>
                                       <span style={{ fontSize: 12, fontWeight: 500, color: t.text3, letterSpacing: 1, textTransform: 'uppercase' as const }}>{label} ({count})</span>
-                                      <span style={{ fontSize: 13, color: t.text3 }}>{secOpen(key) ? '▾' : '▸'}</span>
+                                      <span style={{ fontSize: 13, color: t.text3 }}>{secOpen(key) ?'▾' :'▸'}</span>
                                     </button>
                                   )
 
                                   return (
                                     <div key={uid} style={{ marginTop: 12, background: theme === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)', borderRadius: 12, padding: '10px 12px', border: `1px solid ${t.border}` }}>
                                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                                        <div style={{ width: 28, height: 28, background: 'linear-gradient(135deg,#0891b2,#0e7490)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 500, fontSize: 12, color: '#fff', flexShrink: 0 }}>
+                                        <div style={{ width: 28, height: 28, background: t.tint, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 400, fontSize: 12, color: t.text2, flexShrink: 0 }}>
                                           {personName?.[0] || '?'}
                                         </div>
                                         <span style={{ fontSize: 14, fontWeight: 500, color: t.text }}>{personName}</span>
@@ -2076,7 +2058,7 @@ export default function AdminDashboard() {
                             background:
                               wp === 100
                                 ? "#22c55e"
-                                : "linear-gradient(90deg,#1a5c42,#6ee7b7)",
+                                : t.text2,
                             borderRadius: 99,
                           }}
                         />
@@ -2088,28 +2070,23 @@ export default function AdminDashboard() {
                 {MAY_POSTS.map((post) => {
                   const s = statuses[post.id] || "pending";
                   const sc = STATUS_CONFIG[s];
-                  const pc = PILLAR_COLORS[post.pillar] || "#1a5c42";
                   return (
                     <div
                       key={post.id}
                       style={{
-                        background: t.card,
-                        borderRadius: 10,
-                        padding: "10px 12px",
                         display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        border: `1px solid ${s === "missed" ? "#dc262630" : s === "posted" ? "#16a34a20" : t.border}`,
+                        alignItems: "baseline",
+                        gap: 16,
+                        borderTop: `0.5px solid ${t.border}`,
+                        padding: "13px 0",
                       }}
                     >
-                      <div style={{ fontSize: 14 }}>
-                        {FORMAT_EMOJI[post.format]}
-                      </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div
                           style={{
-                            fontSize: 13,
-                            fontWeight: 600,
+                            fontSize: 14,
+                            fontWeight: 400,
+                            color: t.text,
                             overflow: "hidden",
                             textOverflow: "ellipsis",
                             whiteSpace: "nowrap",
@@ -2117,28 +2094,19 @@ export default function AdminDashboard() {
                         >
                           {post.topic}
                         </div>
-                        <div style={{ display: "flex", gap: 6, marginTop: 2 }}>
-                          <span style={{ fontSize: 12, color: t.text3 }}>
-                            {post.date}
-                          </span>
-                          <span style={{ fontSize: 12, color: pc }}>
-                            {post.pillar}
-                          </span>
+                        <div style={{ fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 3 }}>
+                          {post.date} · {post.pillar} · {post.format}
                         </div>
                       </div>
                       <div
                         style={{
-                          background: sc.bg,
-                          color: sc.color,
-                          fontSize: 11,
-                          fontWeight: 500,
-                          padding: "2px 8px",
-                          borderRadius: 99,
-                          border: `1px solid ${sc.color}44`,
+                          fontSize: 13,
+                          fontWeight: 400,
+                          color: sc.needsAttention ? t.warn : t.text3,
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {sc.emoji} {sc.label}
+                        {sc.label}
                       </div>
                     </div>
                   );

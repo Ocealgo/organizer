@@ -477,7 +477,7 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
 
   // Party options for list-tab filter (all parties including retailers under distributors)
   const partyOptions = parties.map(p => ({
-    value: p.id!, label: `${p.type === 'distributor' ? '🚚' : '🏪'} ${p.name}`,
+ value: p.id!, label:`${p.type ==='distributor' ?'' :''} ${p.name}`,
     sub: `${p.category} • ${p.place || p.address}`,
     group: p.type === 'distributor' ? 'Distributors' : (p as any).underDistributorId ? 'Retailers (under Distributor)' : 'Independent Retailers',
   }))
@@ -487,14 +487,14 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
     ? parties
         .filter(p => !(p.type === 'retailer' && (p as any).underDistributorId))
         .map(p => ({
-          value: p.id!, label: `${p.type === 'distributor' ? '🚚' : '🏪'} ${p.name}`,
+ value: p.id!, label:`${p.type ==='distributor' ?'' :''} ${p.name}`,
           sub: `${p.category} • ${p.place || p.address}`,
           group: p.type === 'distributor' ? 'Distributors' : 'Independent Retailers',
         }))
     : form.fromId
       ? parties
           .filter(p => p.type === 'retailer' && (p as any).underDistributorId === form.fromId)
-          .map(p => ({ value: p.id!, label: `🏪 ${p.name}`, sub: `${p.category} • ${p.place || p.address}` }))
+          .map(p => ({ value: p.id!, label:` ${p.name}`, sub:`${p.category} • ${p.place || p.address}` }))
       : []
 
   const blockedRetailersCount = parties.filter(p => p.type === 'retailer' && (p as any).underDistributorId).length

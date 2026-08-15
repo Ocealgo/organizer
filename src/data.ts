@@ -21,34 +21,14 @@ export const MAY_POSTS: ContentPost[] = [
   { id: 18, date: 'May 30', day: 'Sat', pillar: 'Conversion / CTA',    format: 'Reel',        topic: 'Peace of mind — final month CTA reel',               week: 4 },
 ]
 
-export const PILLAR_COLORS: Record<string, string> = {
-  'Brand Story':         '#7c3aed',
-  'Ingredient Education':'#0891b2',
-  'Mom Relatability':    '#db2777',
-  'Ingredient Science':  '#0891b2',
-  'Trust & Safety':      '#059669',
-  'Festival':            '#d97706',
-  'Why Ocealgo':         '#1a5c42',
-  'Comparison':          '#dc2626',
-  'Myth Busting':        '#7c3aed',
-  'FAQ':                 '#059669',
-  'Sustainability':      '#16a34a',
-  'Trust / FAQ':         '#059669',
-  'Product Deep Dive':   '#0891b2',
-  'Conversion / CTA':    '#d97706',
-}
 
-export const FORMAT_EMOJI: Record<string, string> = {
-  'Static Post': '🖼️',
-  'Carousel':    '📱',
-  'Reel':        '🎬',
-}
-
+/** `needsAttention` decides whether a status reads in the warn tone. Anything
+ *  other than "posted" is still work outstanding. */
 export const STATUS_CONFIG = {
-  pending:      { label: 'Pending',     color: '#94a3b8', bg: 'rgba(148,163,184,0.1)', emoji: '⏳' },
-  'in-progress':{ label: 'In Progress', color: '#d97706', bg: 'rgba(217,119,6,0.1)',   emoji: '🔄' },
-  posted:       { label: 'Posted',      color: '#16a34a', bg: 'rgba(22,163,74,0.1)',    emoji: '✅' },
-  missed:       { label: 'Missed',      color: '#dc2626', bg: 'rgba(220,38,38,0.1)',    emoji: '❌' },
+  pending:       { label: 'Pending',     needsAttention: true  },
+  'in-progress': { label: 'In progress', needsAttention: true  },
+  posted:        { label: 'Posted',      needsAttention: false },
+  missed:        { label: 'Missed',      needsAttention: true  },
 } as const
 
 export const INDIAN_STATES = [
