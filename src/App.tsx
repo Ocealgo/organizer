@@ -12,6 +12,7 @@ import OnlineMarketingView from "./pages/marketing/OnlineMarketingView";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import UserManagement from "./pages/admin/UserManagement";
 import NotificationBell from "./components/NotificationBell";
+import { Eyebrow, GhostButton } from "./components/ui";
 
 // Nothing is auto-seeded any more.
 //
@@ -60,60 +61,52 @@ function AppContent() {
       <div
         style={{
           minHeight: "100vh",
-          background: "linear-gradient(145deg,#0d3d2e,#060a0f)",
+          background: t.bg,
           display: "flex",
           flexDirection: "column",
-          alignItems: "center",
           justifyContent: "center",
-          padding: 32,
-          textAlign: "center",
+          padding: "40px 24px",
         }}
       >
-        <div style={{ fontSize: 56, marginBottom: 20 }}>
-          {status === "pending" ? "⏳" : status === "deactivated" ? "🚫" : "❌"}
+        <div style={{ width: "100%", maxWidth: 340, margin: "0 auto" }}>
+          <div style={{ marginBottom: 6 }}>
+            <Eyebrow>
+              {status === "pending" ? "Not approved yet" : "No access"}
+            </Eyebrow>
+          </div>
+          <h1
+            style={{
+              fontSize: 22,
+              fontWeight: 500,
+              color: t.text,
+              margin: 0,
+              lineHeight: 1.3,
+            }}
+          >
+            {status === "pending"
+              ? "Waiting for approval"
+              : status === "deactivated"
+                ? "Your account was switched off"
+                : "Your request was turned down"}
+          </h1>
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 400,
+              color: t.text3,
+              lineHeight: 1.6,
+              marginTop: 8,
+              marginBottom: 28,
+            }}
+          >
+            {status === "pending"
+              ? "An admin has to approve your account before you can use the dashboard. You will not need to sign up again — just sign in once they have."
+              : status === "deactivated"
+                ? "Someone on the admin team switched this account off. Talk to them if that was not expected."
+                : "An admin turned down the request for access. Talk to them if you think that was a mistake."}
+          </div>
+          <GhostButton onClick={() => signOut(auth)}>Sign out</GhostButton>
         </div>
-        <div
-          style={{
-            fontSize: 22,
-            fontWeight: 800,
-            marginBottom: 10,
-            color: "#fff",
-          }}
-        >
-          {status === "pending"
-            ? "Awaiting Approval"
-            : status === "deactivated"
-              ? "Account Deactivated"
-              : "Access Rejected"}
-        </div>
-        <div
-          style={{
-            color: "#a7f3d0",
-            fontSize: 14,
-            lineHeight: 1.8,
-            marginBottom: 32,
-            maxWidth: 300,
-          }}
-        >
-          {status === "pending"
-            ? "Your account is pending admin approval."
-            : status === "deactivated"
-              ? "Your account has been deactivated. Contact the admin team."
-              : "Your account was rejected. Contact the admin team."}
-        </div>
-        <button
-          onClick={() => signOut(auth)}
-          style={{
-            background: "rgba(255,255,255,0.1)",
-            border: "1px solid rgba(255,255,255,0.2)",
-            color: "#fff",
-            padding: "12px 32px",
-            borderRadius: 50,
-            fontSize: 14,
-          }}
-        >
-          Sign Out
-        </button>
       </div>
     );
 

@@ -1,10 +1,14 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { collection, onSnapshot, query, where } from 'firebase/firestore'
 import { db } from '../../firebase'
 import { DailyVisitLog, LeaveRecord } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { localDateStr, localMonthStr } from '../../utils/date'
+import DateInput from '../../components/DateInput'
+import {
+  PageHeader, StatGrid, StatCard, Section, EmptyState, ChipGroup,
+} from '../../components/ui'
 
 interface Props { onBack: () => void }
 
@@ -12,6 +16,12 @@ type FilterMode = 'day' | 'month' | 'period'
 
 const today = localDateStr()
 const thisMonth = localMonthStr()
+
+const OUTCOME_LABEL: Record<string, string> = {
+  interested: 'Interested',
+  follow_up: 'Follow up',
+  not_interested: 'Not interested',
+}
 
 export default function VisitHistoryScreen({ onBack }: Props) {
   const { appUser } = useAuth()
@@ -78,150 +88,127 @@ export default function VisitHistoryScreen({ onBack }: Props) {
   const totalVisits = logs.reduce((s, l) => s + l.totalVisited, 0)
   const totalInterested = logs.reduce((s, l) => s + (l.totalInterested ?? 0), 0)
 
-  const inputStyle: React.CSSProperties = {
-    background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.25)',
-    borderRadius: 10, padding: '10px 14px', fontSize: 16, color: '#fff',
-    outline: 'none', colorScheme: 'dark' as any,
-  }
-
-  const emptyLabel =
-    filterMode === 'day' ? 'No log for this day' :
-    filterMode === 'month' ? 'No logs for this month' :
-    'No logs for this period'
+  const emptyBody =
+    filterMode === 'day' ? 'Nothing was logged on that day. Try another date.' :
+    filterMode === 'month' ? 'Nothing was logged in that month. Try another one.' :
+    'Nothing was logged in that range. Try widening it.'
 
   return (
     <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
-      {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg,#0d3d2e,#1a5c42)', padding: '20px 20px 16px' }}>
-        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#6ee7b7', padding: '6px 14px', borderRadius: 20, fontSize: 13, marginBottom: 14 }}>← Back</button>
-        <div style={{ color: '#6ee7b7', fontSize: 12, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Visit History</div>
-        <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', marginBottom: 14 }}>My Logs</div>
+      <PageHeader
+        eyebrow="Visit history"
+        title="My logs"
+        subtitle={loading ? undefined
+          : `${logs.length} day${logs.length === 1 ? '' : 's'} · ${totalVisits} visit${totalVisits === 1 ? '' : 's'}`}
+        onBack={onBack}
+      />
 
-        {/* Mode tabs */}
-        <div style={{ display: 'flex', background: 'rgba(0,0,0,0.2)', borderRadius: 12, padding: 4, gap: 4, marginBottom: 14 }}>
-          {([['day', 'Day'], ['month', 'Month'], ['period', 'Period']] as [FilterMode, string][]).map(([mode, label]) => (
-            <button key={mode} onClick={() => setFilterMode(mode)}
-              style={{ flex: 1, background: filterMode === mode ? 'rgba(255,255,255,0.18)' : 'transparent', color: filterMode === mode ? '#fff' : 'rgba(255,255,255,0.5)', border: 'none', borderRadius: 8, padding: '8px 4px', fontSize: 13, fontWeight: 700 }}>
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {/* Date picker for each mode */}
-        {filterMode === 'day' && (
-          <input type="date" value={selectedDay} onChange={e => setSelectedDay(e.target.value)} style={inputStyle} />
-        )}
-        {filterMode === 'month' && (
-          <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} style={inputStyle} />
-        )}
-        {filterMode === 'period' && (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input type="date" value={periodFrom} onChange={e => setPeriodFrom(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
-            <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>→</span>
-            <input type="date" value={periodTo} onChange={e => setPeriodTo(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
-          </div>
-        )}
-      </div>
-
-      <div style={{ padding: '16px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: 40, color: '#475569' }}>Loading…</div>
-        ) : logs.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 48, color: '#475569' }}>
-            <div style={{ fontSize: 36, marginBottom: 12, color: t.text3 }}>—</div>
-            <div style={{ fontWeight: 700, fontSize: 15, color: t.text2 }}>{emptyLabel}</div>
-            <div style={{ fontSize: 13, marginTop: 6, color: t.text3 }}>Try a different date range</div>
-          </div>
-        ) : (
-          <>
-            {/* Summary strip — only for multi-day views */}
-            {filterMode !== 'day' && (
-              <div style={{ background: t.card, borderRadius: 14, padding: '14px 16px', border: `1px solid ${t.border}`, display: 'flex', gap: 8, marginBottom: 4 }}>
-                {[
-                  { label: 'Days', val: logs.length, color: '#fff' },
-                  { label: 'Visits', val: totalVisits, color: '#0891b2' },
-                  { label: 'Interested', val: totalInterested, color: '#16a34a' },
-                ].map(s => (
-                  <div key={s.label} style={{ flex: 1, textAlign: 'center' }}>
-                    <div style={{ fontSize: 22, fontWeight: 900, color: s.color }}>{s.val}</div>
-                    <div style={{ fontSize: 11, color: t.text3, marginTop: 2 }}>{s.label}</div>
-                  </div>
-                ))}
+      <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 28 }}>
+        <Section label="Period">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <ChipGroup
+              value={filterMode}
+              onChange={setFilterMode}
+              options={[
+                { id: 'day' as const, label: 'A day' },
+                { id: 'month' as const, label: 'A month' },
+                { id: 'period' as const, label: 'Custom range' },
+              ]}
+            />
+            {filterMode === 'day' && (
+              <div style={{ maxWidth: 220 }}>
+                <DateInput type="date" value={selectedDay} onChange={setSelectedDay} />
               </div>
             )}
-
-            {logs.map(log => (
-              <div key={log.id} style={{ background: t.card, borderRadius: 14, border: `1px solid ${t.border}`, overflow: 'hidden' }}>
-                {/* Day header — auto-expand for single-day view */}
-                <button
-                  onClick={() => setExpandedDay(expandedDay === log.id ? null : log.id!)}
-                  style={{ width: '100%', background: 'none', border: 'none', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', textAlign: 'left' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <div style={{ fontWeight: 800, fontSize: 15, color: (log as any).isNoEntry ? t.text3 : t.text }}>
-                        {log.date}
-                      </div>
-                      {(() => {
-                        const lr = leaveRecords.find(l => l.date === log.date && l.status !== 'removed')
-                        if (!lr) return null
-                        return (
-                          <span style={{ fontSize: 10, fontWeight: 800, background: lr.leaveType === 'half_day' ? 'rgba(59,130,246,0.15)' : 'rgba(245,158,11,0.15)', color: lr.leaveType === 'half_day' ? '#3b82f6' : '#f59e0b', padding: '2px 7px', borderRadius: 99 }}>
-                            {lr.leaveType === 'half_day' ? 'Half Day Leave' : 'Full Day Leave'}
-                          </span>
-                        )
-                      })()}
-                    </div>
-                    {(log as any).isNoEntry ? (
-                      <div style={{ fontSize: 13, color: t.text3, marginTop: 2, fontStyle: 'italic' }}>No entry for this day</div>
-                    ) : (
-                      <div style={{ fontSize: 13, color: t.text3, marginTop: 2 }}>
-                        {log.totalVisited} visited ·{' '}
-                        <span style={{ color: '#16a34a' }}>{log.totalInterested} interested</span> ·{' '}
-                        {log.totalNotInterested} declined
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    {(log.totalInterested ?? 0) > 0 && (
-                      <span style={{ fontSize: 11, background: 'rgba(22,163,74,0.15)', color: '#16a34a', padding: '3px 10px', borderRadius: 99, fontWeight: 700 }}>
-                        ✅ {log.totalInterested}
-                      </span>
-                    )}
-                    <span style={{ color: t.text3, fontSize: 14 }}>{expandedDay === log.id ? '▲' : '▼'}</span>
-                  </div>
-                </button>
-
-                {/* Expanded visit list */}
-                {(expandedDay === log.id || (filterMode === 'day' && logs.length === 1)) && (
-                  <div style={{ borderTop: `1px solid ${t.border}`, padding: '8px 12px 12px' }}>
-                    {log.visits.map((v, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 8px', borderRadius: 10, marginBottom: 4, background: 'rgba(255,255,255,0.02)' }}>
-                        <span style={{ fontSize: 18 }}>
-                          {v.outcome === 'interested' ? '✅' : v.outcome === 'follow_up' ? '🔄' : '❌'}
-                        </span>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 700, fontSize: 14, color: t.text }}>{v.partyName}</div>
-                          {v.outcome === 'interested' && v.productName && (
-                            <div style={{ fontSize: 13, color: '#16a34a' }}>{v.productName}</div>
-                          )}
-                          {v.outcome === 'not_interested' && v.notInterestedReason && (
-                            <div style={{ fontSize: 13, color: '#dc2626' }}>{v.notInterestedReason}</div>
-                          )}
-                          {v.outcome === 'follow_up' && (
-                            <div style={{ fontSize: 13, color: '#d97706' }}>Follow up</div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    {log.endOfDayNote?.trim() && (
-                      <div style={{ fontSize: 13, color: t.text3, marginTop: 8, padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
-                        {log.endOfDayNote}
-                      </div>
-                    )}
-                  </div>
-                )}
+            {filterMode === 'month' && (
+              <div style={{ maxWidth: 220 }}>
+                <DateInput type="month" value={selectedMonth} onChange={setSelectedMonth} />
               </div>
-            ))}
+            )}
+            {filterMode === 'period' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, maxWidth: 460 }}>
+                <DateInput type="date" value={periodFrom} onChange={setPeriodFrom} />
+                <span style={{ fontSize: 13, fontWeight: 400, color: t.text3 }}>to</span>
+                <DateInput type="date" value={periodTo} onChange={setPeriodTo} />
+              </div>
+            )}
+          </div>
+        </Section>
+
+        {loading ? (
+          <div style={{ fontSize: 14, fontWeight: 400, color: t.text3 }}>Loading</div>
+        ) : logs.length === 0 ? (
+          <EmptyState title="No logs here" body={emptyBody} />
+        ) : (
+          <>
+            {filterMode !== 'day' && (
+              <StatGrid>
+                <StatCard value={logs.length} label="Days logged" />
+                <StatCard value={totalVisits} label="Outlets visited" />
+                <StatCard value={totalInterested} label="Interested" context="Said yes or asked for a follow-up" />
+              </StatGrid>
+            )}
+
+            <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+              {logs.map(log => {
+                const lr = leaveRecords.find(l => l.date === log.date && l.status !== 'removed')
+                const isOpen = expandedDay === log.id || (filterMode === 'day' && logs.length === 1)
+                const noEntry = (log as any).isNoEntry
+                return (
+                  <div key={log.id} style={{ borderTop: `0.5px solid ${t.border}`, padding: '16px 0' }}>
+                    <button className="oc-action"
+                      onClick={() => setExpandedDay(expandedDay === log.id ? null : log.id!)}
+                      style={{ width: '100%', display: 'flex', alignItems: 'baseline', gap: 16,
+                               textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: 'block', fontSize: 15, fontWeight: 500,
+                                       color: noEntry ? t.text3 : t.text }}>
+                          {new Date(log.date + 'T00:00:00')
+                            .toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })}
+                        </span>
+                        <span style={{ display: 'block', fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 3 }}>
+                          {noEntry
+                            ? 'Nothing logged for this day'
+                            : `${log.totalVisited} visited · ${log.totalInterested} interested · ${log.totalNotInterested} declined`}
+                          {lr && ` · ${lr.leaveType === 'half_day' ? 'half day leave' : 'full day leave'}`}
+                        </span>
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: 400, color: t.text3, whiteSpace: 'nowrap' }}>
+                        {isOpen ? 'Hide' : 'Show'}
+                      </span>
+                    </button>
+
+                    {isOpen && (
+                      <div style={{ marginTop: 12 }}>
+                        {log.visits.map((v, i) => (
+                          <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 16, padding: '9px 0' }}>
+                            <span style={{ flex: 1, minWidth: 0 }}>
+                              <span style={{ display: 'block', fontSize: 14, fontWeight: 400, color: t.text }}>
+                                {v.partyName}
+                              </span>
+                              {(v.productName || v.notInterestedReason) && (
+                                <span style={{ display: 'block', fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 3 }}>
+                                  {v.outcome === 'interested' ? v.productName : v.notInterestedReason}
+                                </span>
+                              )}
+                            </span>
+                            <span style={{ fontSize: 13, fontWeight: 400, whiteSpace: 'nowrap',
+                                           color: v.outcome === 'interested' ? t.text2 : t.text3 }}>
+                              {OUTCOME_LABEL[v.outcome ?? ''] ?? v.outcome}
+                            </span>
+                          </div>
+                        ))}
+                        {log.endOfDayNote?.trim() && (
+                          <div style={{ fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 10, lineHeight: 1.5 }}>
+                            {log.endOfDayNote}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </>
         )}
       </div>

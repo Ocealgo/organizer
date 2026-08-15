@@ -2,12 +2,15 @@ import { useState } from "react";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../../firebase";
+import { useTheme } from "../../context/ThemeContext";
+import { Eyebrow, Field, Note, PrimaryButton, inputStyle } from "../../components/ui";
 
 interface Props {
   onSwitch: () => void;
 }
 
 export default function LoginPage({ onSwitch }: Props) {
+  const { t } = useTheme();
   const [form, setForm] = useState({ email: "", password: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -16,7 +19,7 @@ export default function LoginPage({ onSwitch }: Props) {
   const handleLogin = async () => {
     setError("");
     if (!form.email || !form.password)
-      return setError("Please fill in all fields");
+      return setError("Enter your email and password.");
     setLoading(true);
     try {
       const { user } = await signInWithEmailAndPassword(
@@ -29,10 +32,10 @@ export default function LoginPage({ onSwitch }: Props) {
         const data = snap.data();
         if (data.status === "pending") {
           await auth.signOut();
-          setError("Your account is pending admin approval. Please wait.");
+          setError("Your account is still waiting for an admin to approve it.");
         } else if (data.status === "rejected") {
           await auth.signOut();
-          setError("Your account request was rejected. Contact admin.");
+          setError("Your request for access was turned down. Speak to an admin.");
         }
       }
     } catch (e: any) {
@@ -40,9 +43,9 @@ export default function LoginPage({ onSwitch }: Props) {
         e.code === "auth/invalid-credential" ||
         e.code === "auth/wrong-password"
       )
-        setError("Invalid email or password");
+        setError("That email and password do not match.");
       else if (e.code === "auth/user-not-found")
-        setError("No account found with this email");
+        setError("No account uses that email address.");
       else setError("Something went wrong. Try again.");
     } finally {
       setLoading(false);
@@ -53,168 +56,89 @@ export default function LoginPage({ onSwitch }: Props) {
     <div
       style={{
         minHeight: "100vh",
-        background: "linear-gradient(145deg,#0d3d2e 0%,#060a0f 60%)",
+        background: t.bg,
         display: "flex",
         flexDirection: "column",
-        alignItems: "center",
         justifyContent: "center",
-        padding: "32px 24px",
+        padding: "40px 24px",
       }}
     >
-      <div
-        style={{
-          marginBottom: 6,
-          fontSize: 11,
-          letterSpacing: 3,
-          color: "#6ee7b7",
-          textTransform: "uppercase",
-        }}
-      >
-        Welcome back
-      </div>
-      <div
-        style={{
-          fontSize: 34,
-          fontWeight: 900,
-          marginBottom: 4,
-          color: "#6ee7b7",
-        }}
-      >
-        Ocealgo
-      </div>
-      <div style={{ color: "#6ee7b7", fontSize: 13, marginBottom: 36 }}>
-        Team Dashboard
-      </div>
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 340,
-          display: "flex",
-          flexDirection: "column",
-          gap: 14,
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontSize: 11,
-              color: "#6ee7b7",
-              letterSpacing: 1,
-              marginBottom: 6,
-              textTransform: "uppercase",
-            }}
-          >
-            Email
-          </div>
-          <input
-            type="email"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-            placeholder="your@email.com"
-            style={{
-              width: "100%",
-              background: "rgba(255,255,255,0.06)",
-              border: "1.5px solid rgba(255,255,255,0.1)",
-              borderRadius: 12,
-              padding: "13px 16px",
-              fontSize: 14,
-              color: "#fff",
-              outline: "none",
-              boxSizing: "border-box",
-            }}
-          />
+      <div style={{ width: "100%", maxWidth: 340, margin: "0 auto" }}>
+        <div style={{ marginBottom: 6 }}>
+          <Eyebrow>Welcome back</Eyebrow>
         </div>
-        <div>
-          <div
-            style={{
-              fontSize: 11,
-              color: "#6ee7b7",
-              letterSpacing: 1,
-              marginBottom: 6,
-              textTransform: "uppercase",
-            }}
-          >
-            Password
-          </div>
-          <div style={{ position: "relative" }}>
+        <h1 style={{ fontSize: 26, fontWeight: 500, color: t.text, margin: 0, letterSpacing: "-0.01em" }}>
+          Ocealgo
+        </h1>
+        <div style={{ fontSize: 14, fontWeight: 400, color: t.text3, marginTop: 5, marginBottom: 36 }}>
+          Team dashboard
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <Field label="Email">
             <input
-              type={showPass ? "text" : "password"}
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-              placeholder="Your password"
-              style={{
-                width: "100%",
-                background: "rgba(255,255,255,0.06)",
-                border: "1.5px solid rgba(255,255,255,0.1)",
-                borderRadius: 12,
-                padding: "13px 48px 13px 16px",
-                fontSize: 14,
-                color: "#fff",
-                outline: "none",
-                boxSizing: "border-box",
-              }}
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              placeholder="you@example.com"
+              style={inputStyle(t)}
             />
+          </Field>
+
+          <Field label="Password">
+            <div style={{ position: "relative" }}>
+              <input
+                type={showPass ? "text" : "password"}
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                placeholder="Your password"
+                style={{ ...inputStyle(t), paddingRight: 62 }}
+              />
+              <button
+                className="oc-action"
+                onClick={() => setShowPass(!showPass)}
+                style={{
+                  position: "absolute",
+                  right: 12,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  color: t.text3,
+                  fontSize: 13,
+                  fontWeight: 400,
+                  cursor: "pointer",
+                  padding: 0,
+                }}
+              >
+                {showPass ? "Hide" : "Show"}
+              </button>
+            </div>
+          </Field>
+
+          {error && <Note tone="warn">{error}</Note>}
+
+          <div>
+            <PrimaryButton onClick={handleLogin} disabled={loading} style={{ width: "100%", padding: "13px 16px" }}>
+              {loading ? "Signing in" : "Sign in"}
+            </PrimaryButton>
+          </div>
+
+          <div style={{ fontSize: 13, fontWeight: 400, color: t.text3 }}>
+            No account yet?{" "}
             <button
-              onClick={() => setShowPass(!showPass)}
+              className="oc-action"
+              onClick={onSwitch}
               style={{
-                position: "absolute",
-                right: 14,
-                top: "50%",
-                transform: "translateY(-50%)",
-                background: "none",
-                border: "none",
-                color: "#64748b",
-                fontSize: 18,
-                cursor: "pointer",
-                padding: 0,
+                background: "none", border: "none", padding: 0,
+                fontSize: 13, fontWeight: 400, color: t.text, cursor: "pointer",
+                textDecoration: "underline", textUnderlineOffset: 3,
               }}
             >
-              {showPass ? "🙈" : "👁️"}
+              Request access
             </button>
           </div>
-        </div>
-        {error && (
-          <div
-            style={{
-              background: "rgba(220,38,38,0.1)",
-              border: "1px solid rgba(220,38,38,0.3)",
-              borderRadius: 10,
-              padding: "10px 14px",
-              color: "#fca5a5",
-              fontSize: 13,
-            }}
-          >
-            ⚠️ {error}
-          </div>
-        )}
-        <button
-          onClick={handleLogin}
-          disabled={loading}
-          style={{
-            background: loading
-              ? "#475569"
-              : "linear-gradient(135deg,#0d3d2e,#1a5c42)",
-            color: "#fff",
-            border: "none",
-            borderRadius: 14,
-            padding: "16px",
-            fontSize: 15,
-            fontWeight: 800,
-            marginTop: 4,
-            boxShadow: "0 8px 24px rgba(13,61,46,0.4)",
-          }}
-        >
-          {loading ? "Logging in..." : "Log In 🌿"}
-        </button>
-        <div style={{ textAlign: "center", color: "#64748b", fontSize: 13 }}>
-          Don't have an account?{" "}
-          <span
-            onClick={onSwitch}
-            style={{ color: "#6ee7b7", cursor: "pointer", fontWeight: 700 }}
-          >
-            Request access
-          </span>
         </div>
       </div>
     </div>
