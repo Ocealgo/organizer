@@ -1,9 +1,15 @@
-import React, { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import * as XLSX from 'xlsx'
 import { collection, addDoc, getDocs, doc, getDoc } from 'firebase/firestore'
 import { db } from '../../firebase'
 import { PartyType, PartyCategory } from '../../types'
 import { useAuth } from '../../context/AuthContext'
+import { useTheme } from '../../context/ThemeContext'
+import CustomSelect from '../../components/CustomSelect'
+import {
+  PageHeader, Section, StatGrid, StatCard, Field, ChipGroup, Note,
+  GhostButton, PrimaryButton, inputStyle,
+} from '../../components/ui'
 
 interface Props { onBack: () => void; onDone: (count: number) => void }
 
@@ -102,27 +108,9 @@ function parseImportFile(arrayBuffer: ArrayBuffer): ParsedRow[] {
     .filter(Boolean) as ParsedRow[]
 }
 
-function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
-  return (
-    <div>
-      <div style={{ fontSize: 10, color: '#64748b', marginBottom: 4, letterSpacing: 1, textTransform: 'uppercase' }}>{label}</div>
-      {hint && <div style={{ fontSize: 10, color: '#6ee7b7', marginBottom: 4 }}>💡 {hint}</div>}
-      {children}
-    </div>
-  )
-}
-
-function inputStyle(small?: boolean): React.CSSProperties {
-  return {
-    width: '100%', background: 'rgba(255,255,255,0.06)',
-    border: '1px solid rgba(255,255,255,0.1)',
-    borderRadius: 8, padding: small ? '7px 10px' : '10px 12px',
-    fontSize: small ? 12 : 13, color: '#fff', outline: 'none', boxSizing: 'border-box',
-  }
-}
-
 export default function CSVImporter({ onBack, onDone }: Props) {
   const { appUser } = useAuth()
+  const { t } = useTheme()
   const fileRef = useRef<HTMLInputElement>(null)
   const [rows, setRows] = useState<ParsedRow[]>([])
   const [step, setStep] = useState<'upload' | 'review' | 'done'>('upload')
@@ -149,14 +137,14 @@ export default function CSVImporter({ onBack, onDone }: Props) {
     const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls')
     const isCSV = file.name.endsWith('.csv')
     if (!isExcel && !isCSV) {
-      setError('Please upload a .csv, .xlsx, or .xls file')
+      setError('That file type will not work. Upload a .csv, .xlsx or .xls file.')
       return
     }
     try {
       const arrayBuffer = await file.arrayBuffer()
       const parsed = parseImportFile(arrayBuffer)
       if (parsed.length === 0) {
-        setError('No valid data found. Make sure the file has the correct column headers (Name, Phone, Address, etc.)')
+        setError('No usable rows found. Check that the file has the expected column headers, starting with a name column.')
         return
       }
 
@@ -179,7 +167,7 @@ export default function CSVImporter({ onBack, onDone }: Props) {
       setCurrentIdx(0)
       setStep('review')
     } catch {
-      setError('Failed to parse file. Please check the format and try again.')
+      setError('The file could not be read. Check the format and try again.')
     }
   }
 
@@ -199,7 +187,7 @@ export default function CSVImporter({ onBack, onDone }: Props) {
   }
 
   const handleNext = async () => {
-    if (!currentRow.name.trim()) { setError('Name is required'); return }
+    if (!currentRow.name.trim()) { setError('Enter a name before importing this row.'); return }
     setError('')
     setImporting(true)
     try {
@@ -247,282 +235,203 @@ export default function CSVImporter({ onBack, onDone }: Props) {
     }
   }
 
-  // ── UPLOAD STEP ──────────────────────────────────────────────────────────
+  // ── UPLOAD ────────────────────────────────────────────────────────────────
   if (step === 'upload') return (
-    <div style={{ minHeight: '100vh', background: '#0d1117', paddingBottom: 40 }}>
-      <div style={{ background: 'linear-gradient(135deg,#0891b2,#0e7490)', padding: '24px 20px 20px' }}>
-        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#bae6fd', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 16 }}>← Back</button>
-        <div style={{ color: '#bae6fd', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Import 📥</div>
-        <div style={{ fontSize: 22, fontWeight: 900 }}>Import from Excel / CSV</div>
-        <div style={{ color: '#e0f2fe', fontSize: 13, marginTop: 4 }}>Import distributors & retailers from Zoho via mapper</div>
-      </div>
+    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
+      <PageHeader
+        eyebrow="Import"
+        title="Import from Excel or CSV"
+        subtitle="Bring distributors and retailers across from Zoho."
+        onBack={onBack}
+      />
 
-      <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* 3-step guide */}
-        <div style={{ background: '#161b22', borderRadius: 14, border: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-          {/* Step 1 */}
-          <div style={{ padding: '14px 16px', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-            <div style={{ width: 28, height: 28, background: 'rgba(8,145,178,0.15)', border: '1.5px solid rgba(8,145,178,0.3)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 900, color: '#0891b2', flexShrink: 0, marginTop: 1 }}>1</div>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', marginBottom: 3 }}>📤 Export from Zoho</div>
-              <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
-                Go to <span style={{ color: '#94a3b8' }}>Zoho Books → Sales → Customers</span>, click <span style={{ color: '#94a3b8' }}>Export</span> and download the CSV file.
-              </div>
-            </div>
-          </div>
-
-          <div style={{ height: 1, background: 'rgba(255,255,255,0.04)', marginLeft: 58 }} />
-
-          {/* Step 2 */}
-          <div style={{ padding: '14px 16px', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-            <div style={{ width: 28, height: 28, background: 'rgba(124,58,237,0.15)', border: '1.5px solid rgba(124,58,237,0.3)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 900, color: '#a78bfa', flexShrink: 0, marginTop: 1 }}>2</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', marginBottom: 3 }}>🔀 Remap columns in mapper</div>
-              <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6, marginBottom: mapperLink ? 10 : 0 }}>
-                Paste the CSV into the mapper, match the columns to our format, then download the result.
-              </div>
+      <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 28, maxWidth: 560 }}>
+        <Section label="How this works">
+          <ol style={{ margin: 0, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <li style={{ fontSize: 14, fontWeight: 400, color: t.text, lineHeight: 1.6 }}>
+              Export your customers from Zoho Books, under Sales then Customers.
+            </li>
+            <li style={{ fontSize: 14, fontWeight: 400, color: t.text, lineHeight: 1.6 }}>
+              Run the file through the mapper so its columns match ours, then download the result.
               {mapperLink ? (
-                <a href={mapperLink} target="_blank" rel="noopener noreferrer"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(124,58,237,0.3)', borderRadius: 8, padding: '6px 12px', fontSize: 12, color: '#a78bfa', fontWeight: 700, textDecoration: 'none' }}>
-                  Open Mapper →
-                </a>
+                <div style={{ marginTop: 8 }}>
+                  <a href={mapperLink} target="_blank" rel="noopener noreferrer"
+                    style={{ fontSize: 13, fontWeight: 400, color: t.accent, textDecoration: 'none' }}>
+                    Open the mapper
+                  </a>
+                </div>
               ) : (
-                <div style={{ fontSize: 11, color: '#475569', fontStyle: 'italic' }}>Mapper link not set — ask your admin to add it in Settings.</div>
+                <div style={{ marginTop: 6, fontSize: 13, fontWeight: 400, color: t.text3 }}>
+                  No mapper link is set. An admin can add one in Settings.
+                </div>
               )}
-            </div>
-          </div>
+            </li>
+            <li style={{ fontSize: 14, fontWeight: 400, color: t.text, lineHeight: 1.6 }}>
+              Upload it here. Every field is filled in from the file and stays editable, so you
+              review each entry before it is saved.
+            </li>
+          </ol>
+        </Section>
 
-          <div style={{ height: 1, background: 'rgba(255,255,255,0.04)', marginLeft: 58 }} />
-
-          {/* Step 3 */}
-          <div style={{ padding: '14px 16px', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-            <div style={{ width: 28, height: 28, background: 'rgba(22,163,74,0.15)', border: '1.5px solid rgba(22,163,74,0.3)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 900, color: '#16a34a', flexShrink: 0, marginTop: 1 }}>3</div>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', marginBottom: 3 }}>📁 Upload the file below</div>
-              <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
-                All fields are pre-filled from the file and editable. Review each entry before confirming.
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {error && (
-          <div style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.3)', borderRadius: 10, padding: '10px 14px', color: '#fca5a5', fontSize: 13 }}>
-            ⚠️ {error}
-          </div>
-        )}
+        {error && <Note tone="warn">{error}</Note>}
 
         <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }}
           onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
 
-        <button onClick={() => fileRef.current?.click()}
-          style={{ background: 'linear-gradient(135deg,#0891b2,#0e7490)', color: '#fff', border: 'none', borderRadius: 14, padding: '18px', fontSize: 15, fontWeight: 800, boxShadow: '0 8px 24px rgba(8,145,178,0.3)' }}>
-          📁 Select CSV or Excel File
-        </button>
+        <div>
+          <PrimaryButton onClick={() => fileRef.current?.click()}>Choose a file</PrimaryButton>
+        </div>
       </div>
     </div>
   )
 
-  // ── DONE ─────────────────────────────────────────────────────────────────
+  // ── DONE ──────────────────────────────────────────────────────────────────
   if (step === 'done') return (
-    <div style={{ minHeight: '100vh', background: '#0d1117', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, textAlign: 'center' }}>
-      <div style={{ fontSize: 64, marginBottom: 20 }}>🎉</div>
-      <div style={{ fontSize: 24, fontWeight: 900, color: '#fff', marginBottom: 8 }}>Import Complete!</div>
-      <div style={{ fontSize: 15, color: '#6ee7b7', marginBottom: 32 }}>
-        {importCount} {importCount === 1 ? 'entry' : 'entries'} added to your network
-      </div>
-      <div style={{ background: '#161b22', borderRadius: 16, padding: 20, width: '100%', maxWidth: 300, marginBottom: 32, border: '1px solid rgba(22,163,74,0.2)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-          <span style={{ fontSize: 13, color: '#64748b' }}>Imported</span>
-          <span style={{ fontSize: 13, color: '#16a34a', fontWeight: 700 }}>{importCount}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-          <span style={{ fontSize: 13, color: '#64748b' }}>Skipped (duplicates)</span>
-          <span style={{ fontSize: 13, color: '#64748b', fontWeight: 700 }}>{skippedCount}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 13, color: '#64748b' }}>Total in file</span>
-          <span style={{ fontSize: 13, color: '#fff', fontWeight: 700 }}>{rows.length}</span>
+    <div style={{ minHeight: '100vh', background: t.bg }}>
+      <PageHeader
+        eyebrow="Import"
+        title="Import finished"
+        subtitle={`${importCount} ${importCount === 1 ? 'entry' : 'entries'} added to your network.`}
+      />
+      <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 28, maxWidth: 460 }}>
+        <StatGrid>
+          <StatCard value={importCount} label="Imported" />
+          <StatCard value={skippedCount} label="Skipped" context="Already in the list" />
+          <StatCard value={rows.length} label="Rows in file" />
+        </StatGrid>
+        <div>
+          <PrimaryButton onClick={() => onDone(importCount)}>View all entries</PrimaryButton>
         </div>
       </div>
-      <button onClick={() => onDone(importCount)}
-        style={{ background: 'linear-gradient(135deg,#0891b2,#0e7490)', color: '#fff', border: 'none', borderRadius: 14, padding: '14px 32px', fontSize: 14, fontWeight: 800 }}>
-        View All Entries →
-      </button>
     </div>
   )
 
-  // ── REVIEW STEP ───────────────────────────────────────────────────────────
+  // ── REVIEW ────────────────────────────────────────────────────────────────
   if (!currentRow) return null
 
-  const progress = Math.round(((currentIdx + 1) / activeRows.length) * 100)
-
   return (
-    <div style={{ minHeight: '100vh', background: '#0d1117', paddingBottom: 40 }}>
-      <div style={{ background: 'linear-gradient(135deg,#0891b2,#0e7490)', padding: '20px 20px 16px' }}>
-        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#bae6fd', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 12 }}>← Cancel</button>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <div style={{ fontSize: 13, color: '#bae6fd', fontWeight: 700 }}>Entry {currentIdx + 1} of {activeRows.length}</div>
-          <div style={{ fontSize: 13, color: '#bae6fd', fontWeight: 700 }}>{progress}%</div>
-        </div>
-        <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 99, height: 6, overflow: 'hidden' }}>
-          <div style={{ width: `${progress}%`, height: '100%', background: '#fff', borderRadius: 99, transition: 'width 0.3s' }} />
-        </div>
-        {skippedCount > 0 && (
-          <div style={{ marginTop: 8, fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>
-            {skippedCount} duplicate {skippedCount === 1 ? 'entry' : 'entries'} auto-skipped
-          </div>
-        )}
-      </div>
+    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
+      <PageHeader
+        eyebrow={`Entry ${currentIdx + 1} of ${activeRows.length}`}
+        title={currentRow.name || 'Untitled entry'}
+        subtitle={skippedCount > 0
+          ? `${skippedCount} duplicate ${skippedCount === 1 ? 'row was' : 'rows were'} skipped automatically.`
+          : undefined}
+        onBack={onBack}
+      />
 
-      <div style={{ padding: '16px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 460 }}>
+        <Field label="Type">
+          <ChipGroup
+            value={currentRow.type}
+            onChange={ty => updateRow('type', ty)}
+            options={[
+              { id: 'distributor' as PartyType, label: 'Distributor' },
+              { id: 'retailer' as PartyType, label: 'Retailer' },
+            ]}
+          />
+        </Field>
 
-        {/* Type toggle */}
-        <div>
-          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8, letterSpacing: 1, textTransform: 'uppercase' }}>Type</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {(['distributor', 'retailer'] as PartyType[]).map(t => (
-              <button key={t} onClick={() => updateRow('type', t)}
-                style={{ flex: 1, background: currentRow.type === t ? 'rgba(8,145,178,0.15)' : 'rgba(255,255,255,0.04)', color: currentRow.type === t ? '#0891b2' : '#64748b', border: `1.5px solid ${currentRow.type === t ? '#0891b2' : 'rgba(255,255,255,0.06)'}`, borderRadius: 12, padding: '12px', fontSize: 13, fontWeight: 800 }}>
-                {t === 'distributor' ? '🚚 Distributor' : '🏪 Retailer'}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Parent distributor — retailers only */}
         {currentRow.type === 'retailer' && (
-          <div style={{
-            background: 'rgba(255,255,255,0.02)',
-            border: '1.5px solid rgba(255,255,255,0.08)',
-            borderRadius: 12, padding: 14,
-          }}>
-            <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, letterSpacing: 1, textTransform: 'uppercase' }}>
-              Parent Distributor <span style={{ color: '#334155', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
-            </div>
-            <div style={{ fontSize: 11, color: '#475569', marginBottom: 10 }}>
-              Link this retailer to a distributor to enable distribution tracking. Unlinked = independent retailer.
-            </div>
-            <select
+          <Field label="Parent distributor"
+            hint="Link a retailer to a distributor to track distribution. Leave it unset for an independent retailer.">
+            <CustomSelect
               value={currentRow.underDistributorId}
-              onChange={e => {
-                const id = e.target.value
-                const name = distributors.find(d => d.id === id)?.name || ''
+              onChange={id => {
                 updateRow('underDistributorId', id)
-                updateRow('underDistributorName', name)
+                updateRow('underDistributorName', distributors.find(d => d.id === id)?.name || '')
               }}
-              style={{
-                width: '100%', background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: 8, padding: '10px 12px',
-                fontSize: 13, color: currentRow.underDistributorId ? '#fff' : '#64748b',
-                outline: 'none', boxSizing: 'border-box',
-              }}
-            >
-              <option value="" style={{ background: '#1e2530', color: '#94a3b8' }}>Independent retailer</option>
-              {distributors.map(d => (
-                <option key={d.id} value={d.id} style={{ background: '#1e2530', color: '#fff' }}>
-                  🚚 {d.name}
-                </option>
-              ))}
-            </select>
-          </div>
+              placeholder="Independent retailer"
+              options={[{ value: '', label: 'Independent retailer' },
+                        ...distributors.map(d => ({ value: d.id, label: d.name }))]}
+            />
+          </Field>
         )}
 
-        <Field label="Name *">
+        <Field label="Name">
           <input type="text" value={currentRow.name}
             onChange={e => updateRow('name', e.target.value)}
-            placeholder="Business name" style={inputStyle()} />
+            placeholder="Business name" style={inputStyle(t)} />
         </Field>
 
         <Field label="Phone">
-          <input type="tel" value={currentRow.phone}
+          <input type="tel" inputMode="numeric" value={currentRow.phone}
             onChange={e => updateRow('phone', e.target.value.replace(/\D/g, '').slice(0, 10))}
-            placeholder="10-digit mobile number" style={inputStyle()} />
+            placeholder="10-digit mobile number" style={inputStyle(t)} />
         </Field>
 
         <Field label="Email">
           <input type="email" value={currentRow.email}
             onChange={e => updateRow('email', e.target.value)}
-            placeholder="email@example.com (optional)" style={inputStyle()} />
+            placeholder="Optional" style={inputStyle(t)} />
         </Field>
 
-        {/* Category */}
-        <div>
-          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8, letterSpacing: 1, textTransform: 'uppercase' }}>Category</div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {CATEGORIES.map(c => (
-              <button key={c} onClick={() => updateRow('category', c)}
-                style={{ background: currentRow.category === c ? 'rgba(124,58,237,0.2)' : 'rgba(255,255,255,0.04)', color: currentRow.category === c ? '#a78bfa' : '#64748b', border: `1px solid ${currentRow.category === c ? '#7c3aed' : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '6px 14px', fontSize: 12, fontWeight: 700 }}>
-                {c}
-              </button>
-            ))}
-          </div>
-        </div>
+        <Field label="Category">
+          <ChipGroup
+            value={currentRow.category}
+            onChange={c => updateRow('category', c)}
+            options={CATEGORIES.map(c => ({ id: c, label: c }))}
+          />
+        </Field>
 
         <Field label="Address">
           <input type="text" value={currentRow.address}
             onChange={e => updateRow('address', e.target.value)}
-            placeholder="e.g. 12/A MG Road, Ernakulam" style={inputStyle()} />
+            placeholder="12/A MG Road, Ernakulam" style={inputStyle(t)} />
         </Field>
 
-        <Field label="Place / Area">
+        <Field label="Place or area">
           <input type="text" value={currentRow.place}
             onChange={e => updateRow('place', e.target.value)}
-            placeholder="e.g. Ernakulam" style={inputStyle()} />
+            placeholder="Ernakulam" style={inputStyle(t)} />
         </Field>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <Field label="District">
             <input type="text" value={currentRow.district}
               onChange={e => updateRow('district', e.target.value)}
-              placeholder="District" style={inputStyle(true)} />
+              placeholder="District" style={inputStyle(t)} />
           </Field>
           <Field label="State">
             <input type="text" value={currentRow.state}
               onChange={e => updateRow('state', e.target.value)}
-              placeholder="State" style={inputStyle(true)} />
+              placeholder="State" style={inputStyle(t)} />
           </Field>
         </div>
 
         <Field label="Pincode">
-          <input type="text" value={currentRow.pincode}
+          <input type="text" inputMode="numeric" value={currentRow.pincode}
             onChange={e => updateRow('pincode', e.target.value.replace(/\D/g, '').slice(0, 6))}
-            placeholder="6-digit pincode" style={inputStyle()} />
+            placeholder="6-digit pincode" style={inputStyle(t)} />
         </Field>
 
         {currentRow.receivables > 0 && (
-          <div style={{ background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#fde68a' }}>
-            📊 Outstanding receivable from Zoho: ₹{currentRow.receivables.toLocaleString()}
-          </div>
+          <Note>
+            Zoho shows ₹{currentRow.receivables.toLocaleString('en-IN')} outstanding against this
+            customer. It is not imported — record it in the credit book if it still applies.
+          </Note>
         )}
 
-        {error && (
-          <div style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.3)', borderRadius: 10, padding: '10px 14px', color: '#fca5a5', fontSize: 13 }}>
-            ⚠️ {error}
-          </div>
-        )}
+        {error && <Note tone="warn">{error}</Note>}
 
-        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-          <button onClick={handleSkipCurrent}
-            style={{ flex: 1, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#64748b', borderRadius: 12, padding: '14px', fontSize: 14, fontWeight: 700 }}>
-            Skip →
-          </button>
-          <button onClick={handleNext} disabled={importing}
-            style={{ flex: 2, background: importing ? '#334155' : 'linear-gradient(135deg,#0891b2,#0e7490)', color: '#fff', border: 'none', borderRadius: 12, padding: '14px', fontSize: 14, fontWeight: 800, opacity: importing ? 0.7 : 1 }}>
-            {importing ? 'Saving...' : currentIdx === activeRows.length - 1 ? 'Import & Finish ✅' : 'Import & Next →'}
-          </button>
+        <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+          <PrimaryButton onClick={handleNext} disabled={importing}>
+            {importing ? 'Saving' : currentIdx === activeRows.length - 1 ? 'Import and finish' : 'Import and continue'}
+          </PrimaryButton>
+          <GhostButton onClick={handleSkipCurrent}>Skip this one</GhostButton>
         </div>
 
         {activeRows.length > currentIdx + 1 && (
-          <div style={{ background: '#161b22', borderRadius: 12, padding: 12, border: '1px solid rgba(255,255,255,0.04)' }}>
-            <div style={{ fontSize: 11, color: '#475569', marginBottom: 8 }}>NEXT UP</div>
-            {activeRows.slice(currentIdx + 1, currentIdx + 4).map((r, i) => (
-              <div key={i} style={{ fontSize: 12, color: '#64748b', padding: '3px 0' }}>
-                <span style={{ color: '#334155' }}>{currentIdx + 2 + i}.</span> {r.name}
-              </div>
-            ))}
-          </div>
+          <Section label="Next up">
+            <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+              {activeRows.slice(currentIdx + 1, currentIdx + 4).map((r, i) => (
+                <div key={i} style={{ borderTop: `0.5px solid ${t.border}`, padding: '11px 0',
+                                      fontSize: 14, fontWeight: 400, color: t.text2 }}>
+                  {r.name}
+                </div>
+              ))}
+            </div>
+          </Section>
         )}
       </div>
     </div>
