@@ -11,8 +11,14 @@ import {
 } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { can } from '../../auth/permissions'
+import { useTheme } from '../../context/ThemeContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr } from '../../utils/date'
+import DateInput from '../../components/DateInput'
+import {
+  PageHeader, TabBar, StatGrid, StatCard, Section, EmptyState,
+  Field, ChipGroup, Note, GhostButton, PrimaryButton, inputStyle,
+} from '../../components/ui'
 
 interface Props { onBack: () => void; onViewVisitLog?: (userName: string, date: string) => void; onLogVisit?: (date: string) => void; defaultToDay?: boolean }
 
@@ -128,19 +134,19 @@ function totalOf(ents: ExpenseEntry[]): number {
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const ALLOW_INFO: Record<AllowanceType, { label: string; sub: string; emoji: string }> = {
-  HQ: { label: 'HQ', sub: 'Within 25km', emoji: '🏢' },
-  EX: { label: 'EX', sub: '25km+',       emoji: '🗺️' },
-  OS: { label: 'OS', sub: 'Outstation',  emoji: '🛏️' },
+const ALLOW_INFO: Record<AllowanceType, { label: string; sub: string }> = {
+  HQ: { label: 'HQ', sub: 'Within 25 km' },
+  EX: { label: 'EX', sub: 'Beyond 25 km' },
+  OS: { label: 'OS', sub: 'Outstation, staying over' },
 }
 
-const VAR_CATS: { value: ExpenseCategory; label: string; emoji: string }[] = [
-  { value: 'bus_fare', label: 'Bus Fare', emoji: '🚌' },
-  { value: 'fuel',     label: 'Fuel',     emoji: '⛽' },
-  { value: 'food',     label: 'Food',     emoji: '🍱' },
-  { value: 'lodging',  label: 'Lodging',  emoji: '🏨' },
-  { value: 'printing', label: 'Printing', emoji: '🖨️' },
-  { value: 'other',    label: 'Other',    emoji: '📦' },
+const VAR_CATS: { value: ExpenseCategory; label: string }[] = [
+  { value: 'bus_fare', label: 'Bus fare' },
+  { value: 'fuel',     label: 'Fuel' },
+  { value: 'food',     label: 'Food' },
+  { value: 'lodging',  label: 'Lodging' },
+  { value: 'printing', label: 'Printing' },
+  { value: 'other',    label: 'Other' },
 ]
 
 const DEFAULT_CONFIG: ExpenseConfig = { hq: 200, ex: 300, os: 450 }
@@ -160,6 +166,7 @@ export default function ExpenseLogger({ onBack, onViewVisitLog, onLogVisit, defa
 // SALES VIEW
 // ─────────────────────────────────────────────────────────────────────────────
 function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () => void; appUser: AppUser; onLogVisit?: (date: string) => void; defaultToDay?: boolean }) {
+  const { t } = useTheme()
   const { modal, showAlert, showConfirm } = useConfirm()
   const [config, setConfig] = useState<ExpenseConfig>(DEFAULT_CONFIG)
   const [reports, setReports] = useState<ExpenseReport[]>([])
@@ -276,7 +283,7 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
   const handleRemoveAllowance = async (date: string) => {
     const existing = weekEntries.find(e => e.date === date && e.type === 'allowance')
     if (!existing) return
-    if (!await showConfirm('Remove DA', `Remove the ${existing.allowanceType} allowance for ${fmtDate(date)}?`)) return
+    if (!await showConfirm('Remove the allowance?', `The ${existing.allowanceType} allowance for ${fmtDate(date)} is removed from this week.`, 'Remove')) return
     await deleteDoc(doc(db, 'expense_entries', existing.id!))
     await syncReportTotal(existing.reportId, -existing.amount)
   }
@@ -284,7 +291,7 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
   const handleAddVariable = async () => {
     if (!addVarDay) return
     const amount = parseFloat(varForm.amount)
-    if (isNaN(amount) || amount <= 0) { await showAlert('Invalid Amount', 'Enter a valid amount.'); return }
+    if (isNaN(amount) || amount <= 0) { await showAlert('Amount needed', 'Enter an amount above zero.'); return }
     const rpt = await getOrCreateReport()
     await addDoc(collection(db, 'expense_entries'), {
       reportId: rpt.id!, userId: appUser.uid,
@@ -301,14 +308,14 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
   }
 
   const handleRemoveEntry = async (entry: ExpenseEntry) => {
-    if (!await showConfirm('Remove entry', 'Remove this expense entry?')) return
+    if (!await showConfirm('Remove this entry?', 'It comes off the weekly total straight away.', 'Remove')) return
     await deleteDoc(doc(db, 'expense_entries', entry.id!))
     await syncReportTotal(entry.reportId, -entry.amount)
   }
 
   const handleSubmitWeek = async () => {
-    if (!report || weekEntries.length === 0) { await showAlert('Nothing to submit', 'Log at least one expense before submitting.'); return }
-    if (!await showConfirm('Submit week', `Submit expenses for ${weekLabel(activeWeekStart)} for admin review?`)) return
+    if (!report || weekEntries.length === 0) { await showAlert('Nothing to submit yet', 'Log at least one expense for the week first.'); return }
+    if (!await showConfirm('Submit this week?', `Expenses for ${weekLabel(activeWeekStart)} go to an admin for review. You can still edit them afterwards.`, 'Submit')) return
     setSubmitting(true)
     try {
       const total = totalOf(weekEntries)
@@ -317,7 +324,7 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
       })
       await addDoc(collection(db, 'alerts'), {
         type: 'expense_submitted',
-        message: `💸 ${appUser.name} submitted expenses for ${weekLabel(activeWeekStart)} — ₹${total.toLocaleString()}`,
+        message: `${appUser.name} submitted expenses for ${weekLabel(activeWeekStart)} — ₹${total.toLocaleString('en-IN')}`,
         relatedId: report.id!, read: false, toRole: 'admin_group', createdAt: Date.now(),
       })
     } finally { setSubmitting(false) }
@@ -329,7 +336,7 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
       !allLeaveDates.has(r.date) &&
       !isWeekend(r.date)
     )
-    if (!rows.length) { await showAlert('Invalid CSV', 'No valid rows found. Check the format.'); return }
+    if (!rows.length) { await showAlert('No usable rows', 'Nothing in that file could be read. Check the four columns, and note that weekends, holidays and leave days are skipped.'); return }
     setImporting(true)
     try {
       const weekMap = new Map<string, typeof rows>()
@@ -393,7 +400,7 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
         if (importedDelta > 0) await syncReportTotal(rptId, importedDelta)
       }
       setCsvMode(false); setCsvText(''); setFileLoaded(false)
-      await showAlert('Imported', `Entries imported successfully.`)
+      await showAlert('Imported', 'The entries were added to the matching weeks.')
     } finally { setImporting(false) }
   }
 
@@ -402,401 +409,401 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
   const displayTotal = viewMode === 'day' ? dayTotal : weekTotal
   const isLocked = report?.status === 'cleared'
 
-  const C = { bg: '#0d1117', card: '#161b22', purple: '#7c3aed', purpleLight: '#a78bfa', purpleDim: 'rgba(124,58,237,0.15)' }
+  const money = (n: number) => `₹${n.toLocaleString('en-IN')}`
+
+  const STATUS_TEXT: Record<string, string> = {
+    draft: 'Draft',
+    submitted: 'Submitted, awaiting review',
+    rejected: 'Sent back — edit and resubmit',
+    cleared: 'Cleared',
+  }
+
+  const action = (label: string, onClick: () => void, disabled?: boolean) => (
+    <button className="oc-action" onClick={onClick} disabled={disabled}
+      style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, fontWeight: 400,
+               color: t.text2, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1 }}>
+      {label}
+    </button>
+  )
 
   return (
-    <div style={{ minHeight: '100vh', background: C.bg, paddingBottom: 40 }}>
-      {/* HEADER */}
-      <div style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', padding: '24px 20px 0' }}>
-        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#ddd6fe', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 16 }}>← Back</button>
-        <div style={{ color: '#ddd6fe', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>My Expenses 💸</div>
-        <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 2 }}>{isCurrentWeek ? 'This Week' : weekLabel(activeWeekStart)}</div>
-        <div style={{ fontSize: 26, fontWeight: 900, color: '#c4b5fd', marginBottom: 8 }}>₹{displayTotal.toLocaleString()}</div>
+    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
+      <PageHeader
+        eyebrow="My expenses"
+        title={isCurrentWeek && viewMode === 'week' ? 'This week' : weekLabel(activeWeekStart)}
+        subtitle={
+          report
+            ? `${money(displayTotal)} ${viewMode === 'day' ? 'that day' : 'this week'} · ${STATUS_TEXT[report.status] ?? report.status}`
+            : `${money(displayTotal)} ${viewMode === 'day' ? 'that day' : 'this week'}`
+        }
+        onBack={onBack}
+        divider={false}
+      />
+      <TabBar
+        value={mainTab}
+        onChange={setMainTab}
+        tabs={[{ id: 'log', label: 'Log' }, { id: 'reports', label: 'Reports' }]}
+      />
 
-        {/* Main tab toggle */}
-        <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
-          {([['log', '📝 Log'], ['reports', '📋 Reports']] as const).map(([t, l]) => (
-            <button key={t} onClick={() => setMainTab(t)}
-              style={{ flex: 1, background: mainTab === t ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.06)', border: 'none', color: mainTab === t ? '#fff' : 'rgba(255,255,255,0.5)', borderRadius: '10px 10px 0 0', padding: '8px', fontSize: 12, fontWeight: 700 }}>
-              {l}
-            </button>
-          ))}
-        </div>
+      <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 28 }}>
 
-        {mainTab === 'log' && (
-          <>
-            {/* View mode toggle */}
-            <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-              {(['week', 'day'] as const).map(m => (
-                <button key={m} onClick={() => setViewMode(m)}
-                  style={{ flex: 1, background: viewMode === m ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.06)', border: 'none', color: viewMode === m ? '#fff' : 'rgba(255,255,255,0.5)', borderRadius: 20, padding: '7px', fontSize: 12, fontWeight: 700 }}>
-                  {m === 'week' ? '📅 Week' : '📆 Day'}
-                </button>
-              ))}
-            </div>
-
-            {/* Week navigation (week mode) */}
-            {viewMode === 'week' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                <button onClick={() => setWeekStart(w => addDays(w, -7))}
-                  style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#ddd6fe', borderRadius: 20, padding: '6px 14px', fontSize: 16, fontWeight: 700 }}>‹</button>
-                <div style={{ flex: 1, textAlign: 'center', fontSize: 12, color: '#ddd6fe', fontWeight: 600 }}>
-                  {weekLabel(weekStart)}
-                  {isCurrentWeek && <span style={{ marginLeft: 8, fontSize: 10, background: 'rgba(255,255,255,0.15)', padding: '2px 6px', borderRadius: 99 }}>This week</span>}
-                </div>
-                <button onClick={() => setWeekStart(w => addDays(w, 7))} disabled={isCurrentWeek}
-                  style={{ background: isCurrentWeek ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.1)', border: 'none', color: isCurrentWeek ? 'rgba(255,255,255,0.25)' : '#ddd6fe', borderRadius: 20, padding: '6px 14px', fontSize: 16, fontWeight: 700 }}>›</button>
-              </div>
-            )}
-
-            {/* Day picker (day mode) */}
-            {viewMode === 'day' && (
-              <div style={{ marginBottom: 10 }}>
-                <input type="date" value={selectedDay} max={today}
-                  onChange={e => setSelectedDay(e.target.value)}
-                  style={{ width: '100%', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 10, padding: '9px 14px', fontSize: 14, color: '#fff', outline: 'none', boxSizing: 'border-box' }} />
-              </div>
-            )}
-
-            {report && (
-              <div style={{ marginBottom: 12 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99,
-                  background: report.status === 'draft' ? 'rgba(255,255,255,0.1)'
-                    : report.status === 'submitted' ? 'rgba(217,119,6,0.3)'
-                    : report.status === 'rejected' ? 'rgba(220,38,38,0.3)'
-                    : 'rgba(22,163,74,0.3)',
-                  color: report.status === 'draft' ? '#ddd6fe'
-                    : report.status === 'submitted' ? '#fde68a'
-                    : report.status === 'rejected' ? '#fca5a5'
-                    : '#86efac' }}>
-                  {report.status === 'draft' ? '📝 Draft'
-                    : report.status === 'submitted' ? '⏳ Submitted – Pending Review'
-                    : report.status === 'rejected' ? '❌ Rejected – Edit & Resubmit'
-                    : '✅ Cleared'}
-                </span>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      <div style={{ padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-        {/* ── REPORTS TAB ── */}
+        {/* ── REPORTS ── */}
         {mainTab === 'reports' && (() => {
           const sorted = [...reports].sort((a, b) => b.createdAt - a.createdAt)
           if (!sorted.length) return (
-            <div style={{ textAlign: 'center', padding: 40, color: '#475569' }}>
-              <div style={{ fontSize: 36, marginBottom: 12 }}>💸</div>
-              <div style={{ fontWeight: 700 }}>No expense reports yet</div>
+            <EmptyState
+              title="No expense reports yet"
+              body="Log a day under the Log tab and a weekly report is created for you."
+              actionLabel="Start logging"
+              onAction={() => setMainTab('log')}
+            />
+          )
+          return (
+            <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+              {sorted.map(r => {
+                const rTotal = totalOf(entries.filter(e => e.reportId === r.id))
+                const needsAction = r.status === 'draft' || r.status === 'rejected'
+                return (
+                  <button key={r.id} className="oc-row"
+                    onClick={() => { setWeekStart(r.weekStart); setViewMode('week'); setMainTab('log') }}
+                    style={{
+                      display: 'flex', alignItems: 'baseline', gap: 16, width: '100%', textAlign: 'left',
+                      background: 'none', border: 'none', borderTop: `0.5px solid ${t.border}`,
+                      padding: '16px 14px', cursor: 'pointer',
+                    }}>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: 15, fontWeight: 500, color: t.text }}>
+                        {weekLabel(r.weekStart)}
+                      </span>
+                      <span style={{ display: 'block', fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 3 }}>
+                        {STATUS_TEXT[r.status] ?? r.status}
+                      </span>
+                      {r.status === 'rejected' && (r as any).rejectNote && (
+                        <span style={{ display: 'block', fontSize: 13, fontWeight: 400, color: t.warn, marginTop: 3 }}>
+                          {(r as any).rejectNote}
+                        </span>
+                      )}
+                    </span>
+                    <span style={{ fontSize: 14, fontWeight: 400, whiteSpace: 'nowrap',
+                                   color: needsAction ? t.warn : t.text2 }}>
+                      {money(rTotal)}
+                    </span>
+                  </button>
+                )
+              })}
             </div>
           )
-          return sorted.map(r => {
-            const rTotal = totalOf(entries.filter(e => e.reportId === r.id))
-            const statusColor = r.status === 'submitted' ? { bg: 'rgba(217,119,6,0.15)', text: '#d97706', border: 'rgba(217,119,6,0.25)' }
-              : r.status === 'rejected'  ? { bg: 'rgba(220,38,38,0.12)', text: '#f87171', border: 'rgba(220,38,38,0.25)' }
-              : r.status === 'cleared'   ? { bg: 'rgba(22,163,74,0.1)',  text: '#86efac', border: 'rgba(22,163,74,0.2)' }
-              : { bg: 'rgba(255,255,255,0.04)', text: '#94a3b8', border: 'rgba(255,255,255,0.06)' }
-            const label = r.status === 'submitted' ? '⏳ Pending' : r.status === 'rejected' ? '❌ Rejected' : r.status === 'cleared' ? '✅ Cleared' : '📝 Draft'
-            return (
-              <button key={r.id} onClick={() => { setWeekStart(r.weekStart); setViewMode('week'); setMainTab('log') }}
-                style={{ background: '#161b22', border: `1px solid ${statusColor.border}`, borderRadius: 14, padding: '14px 16px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', marginBottom: 3 }}>{weekLabel(r.weekStart)}</div>
-                  <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: statusColor.bg, color: statusColor.text }}>{label}</span>
-                  {r.status === 'rejected' && (r as any).rejectNote && (
-                    <div style={{ fontSize: 11, color: '#f87171', marginTop: 4 }}>"{(r as any).rejectNote}"</div>
-                  )}
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 18, fontWeight: 900, color: '#a78bfa' }}>₹{rTotal.toLocaleString()}</div>
-                  <div style={{ fontSize: 10, color: '#475569', marginTop: 2 }}>→ View week</div>
-                </div>
-              </button>
-            )
-          })
         })()}
 
-        {/* CSV import */}
+        {/* ── LOG ── */}
         {mainTab === 'log' && (<>
-        {!isLocked && (
-          <button onClick={() => setCsvMode(m => !m)}
-            style={{ background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)', color: '#a78bfa', borderRadius: 10, padding: '10px 16px', fontSize: 13, fontWeight: 700 }}>
-            📥 Import from CSV
-          </button>
-        )}
-
-        {csvMode && (
-          <div style={{ background: C.card, borderRadius: 14, padding: 16, border: '1px solid rgba(124,58,237,0.2)' }}>
-            <div style={{ fontSize: 12, color: '#a78bfa', fontWeight: 700, marginBottom: 6 }}>Import CSV</div>
-            <div style={{ fontSize: 11, color: '#64748b', marginBottom: 10, lineHeight: 1.6 }}>
-              Format: <code style={{ background: 'rgba(255,255,255,0.06)', padding: '1px 5px', borderRadius: 4 }}>date,type,amount,notes</code><br />
-              Types: HQ · EX · OS · bus_fare · fuel · food · lodging · printing · other
-            </div>
-
-            {/* File upload */}
-            <label style={{ display: 'block', background: 'rgba(124,58,237,0.08)', border: '1.5px dashed rgba(124,58,237,0.3)', borderRadius: 10, padding: '14px', textAlign: 'center', cursor: 'pointer', marginBottom: 10 }}>
-              <input type="file" accept=".csv,.xlsx,.xls,text/csv" style={{ display: 'none' }}
-                onChange={e => {
-                  const file = e.target.files?.[0]
-                  if (!file) return
-                  const isExcel = file.name.match(/\.xlsx?$/i)
-                  const reader = new FileReader()
-                  reader.onload = ev => {
-                    const result = ev.target?.result
-                    if (!result) return
-                    if (isExcel) {
-                      const wb = XLSX.read(result, { type: 'array' })
-                      const ws = wb.Sheets[wb.SheetNames[0]]
-                      const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1 })
-                      if (isOcealgoFormat(rows)) {
-                        setCsvText(rowsToCsvText(parseOcealgoSheet(rows)))
-                      } else {
-                        setCsvText(XLSX.utils.sheet_to_csv(ws))
-                      }
-                    } else {
-                      setCsvText(result as string)
-                    }
-                    setFileLoaded(true)
-                  }
-                  isExcel ? reader.readAsArrayBuffer(file) : reader.readAsText(file)
-                  e.target.value = ''
-                }} />
-              <div style={{ fontSize: 22, marginBottom: 4 }}>📂</div>
-              <div style={{ fontSize: 12, color: '#a78bfa', fontWeight: 700 }}>{csvText ? 'File loaded — tap to replace' : 'Tap to choose .csv or .xlsx file'}</div>
-              <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>.csv · .xlsx · .xls</div>
-            </label>
-
-            {/* Preview / paste fallback */}
-            <textarea value={csvText} onChange={e => { setCsvText(e.target.value); setFileLoaded(false) }} rows={4}
-              placeholder={'Or paste CSV here...\ndate,type,amount,notes\n2026-05-01,HQ,,\n2026-05-01,bus_fare,45,Morning auto'}
-              style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '10px 12px', fontSize: 11, color: '#94a3b8', outline: 'none', resize: 'vertical', fontFamily: 'monospace', boxSizing: 'border-box' }} />
-
-            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-              <button onClick={handleImportCsv} disabled={importing || !fileLoaded}
-                style={{ flex: 1, background: importing || !fileLoaded ? '#475569' : 'rgba(124,58,237,0.15)', border: '1px solid rgba(124,58,237,0.3)', color: importing || !fileLoaded ? '#64748b' : '#a78bfa', borderRadius: 10, padding: '10px', fontSize: 13, fontWeight: 700 }}>
-                {importing ? 'Importing...' : 'Import'}
-              </button>
-              <button onClick={() => { setCsvMode(false); setCsvText(''); setFileLoaded(false) }}
-                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: '#64748b', borderRadius: 10, padding: '10px 14px', fontSize: 13 }}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Daily rows */}
-        {visibleDates.map(date => {
-          const isHoliday = holidayDates.has(date)
-          const isLeave = !isHoliday && leaveDates.has(date)
-          const isWknd = isWeekend(date)
-          const isToday = date === today
-          const isWorking = !isLeave && !isHoliday && !isWknd
-          const dayEntries = weekEntries.filter(e => e.date === date)
-          const allowanceEntry = dayEntries.find(e => e.type === 'allowance')
-          const variableEntries = dayEntries.filter(e => e.type === 'variable')
-          const dayTotal = isLeave || isWknd ? 0 : totalOf(dayEntries)
-          const isAddingVar = addVarDay === date
-          const isFuture = date > today
-
-          return (
-            <div key={date} style={{ background: C.card, borderRadius: 14, border: isToday ? '1.5px solid rgba(124,58,237,0.4)' : '1px solid rgba(255,255,255,0.05)', overflow: 'hidden', opacity: isWknd ? 0.45 : 1 }}>
-              {/* Day header */}
-              <div style={{ padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 8, background: isToday ? 'rgba(124,58,237,0.06)' : 'transparent', borderBottom: isWorking ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
-                <div style={{ flex: 1, fontWeight: 700, fontSize: 13, color: isToday ? '#a78bfa' : '#e2e8f0' }}>
-                  {fmtDate(date)}
-                  {isToday && <span style={{ marginLeft: 6, fontSize: 10, background: 'rgba(124,58,237,0.2)', color: '#a78bfa', padding: '1px 6px', borderRadius: 99 }}>Today</span>}
+          <Section label="View">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <ChipGroup
+                value={viewMode}
+                onChange={setViewMode}
+                options={[
+                  { id: 'week' as const, label: 'A whole week' },
+                  { id: 'day' as const, label: 'One day' },
+                ]}
+              />
+              {viewMode === 'week' ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <GhostButton onClick={() => setWeekStart(w => addDays(w, -7))}>Earlier</GhostButton>
+                  <span style={{ fontSize: 13, fontWeight: 400, color: t.text3 }}>
+                    {weekLabel(weekStart)}{isCurrentWeek ? ' · this week' : ''}
+                  </span>
+                  <GhostButton onClick={() => setWeekStart(w => addDays(w, 7))} disabled={isCurrentWeek}>
+                    Later
+                  </GhostButton>
                 </div>
-                {isHoliday && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: 'rgba(34,197,94,0.12)', color: '#86efac' }}>🎉 Holiday</span>}
-                {isLeave && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: 'rgba(220,38,38,0.15)', color: '#fca5a5' }}>🏖️ Leave</span>}
-                {isWknd && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: 'rgba(255,255,255,0.06)', color: '#64748b' }}>Weekend</span>}
-                {isFuture && isWorking && dayEntries.length === 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: 'rgba(255,255,255,0.04)', color: '#475569' }}>Yet to be added</span>}
-                {dayTotal > 0 && <span style={{ fontSize: 13, fontWeight: 800, color: '#a78bfa' }}>₹{dayTotal.toLocaleString()}</span>}
-              </div>
-
-              {isWorking && (
-                <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {/* Allowance row */}
-                  {allowanceEntry ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <div style={{ flex: 1, background: 'rgba(124,58,237,0.08)', borderRadius: 8, padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: 15 }}>{ALLOW_INFO[allowanceEntry.allowanceType!].emoji}</span>
-                        <div>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: '#a78bfa' }}>{ALLOW_INFO[allowanceEntry.allowanceType!].label}</span>
-                          <span style={{ fontSize: 11, color: '#64748b', marginLeft: 6 }}>{ALLOW_INFO[allowanceEntry.allowanceType!].sub}</span>
-                        </div>
-                        <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 800, color: '#a78bfa' }}>₹{allowanceEntry.amount.toLocaleString()}</span>
-                      </div>
-                      {!isLocked && (['HQ', 'EX', 'OS'] as AllowanceType[]).map(t => (
-                        <button key={t} onClick={() => handleSetAllowance(date, t)}
-                          disabled={allowanceEntry.allowanceType === t}
-                          style={{ background: allowanceEntry.allowanceType === t ? 'rgba(124,58,237,0.2)' : 'rgba(255,255,255,0.04)', border: `1px solid ${allowanceEntry.allowanceType === t ? 'rgba(124,58,237,0.35)' : 'rgba(255,255,255,0.06)'}`, color: allowanceEntry.allowanceType === t ? '#a78bfa' : '#64748b', borderRadius: 8, padding: '5px 8px', fontSize: 10, fontWeight: 700 }}>
-                          {t}
-                        </button>
-                      ))}
-                      {!isLocked && (
-                        <button onClick={() => handleRemoveAllowance(date)}
-                          style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.2)', color: '#fca5a5', borderRadius: 8, padding: '6px 9px', fontSize: 13 }}>✕</button>
-                      )}
-                    </div>
-                  ) : !isLocked && addDaDay === date ? (
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      {(['HQ', 'EX', 'OS'] as AllowanceType[]).map(t => (
-                        <button key={t} onClick={async () => { await handleSetAllowance(date, t); setAddDaDay(null) }}
-                          style={{ flex: 1, background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.25)', color: '#a78bfa', borderRadius: 8, padding: '8px 4px', fontSize: 11, fontWeight: 700 }}>
-                          <div>{ALLOW_INFO[t].emoji} {t}</div>
-                          <div style={{ fontSize: 9, color: '#64748b', marginTop: 2 }}>₹{config[t.toLowerCase() as 'hq' | 'ex' | 'os']}</div>
-                        </button>
-                      ))}
-                      <button onClick={() => setAddDaDay(null)}
-                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: '#475569', borderRadius: 8, padding: '6px 10px', fontSize: 12 }}>✕</button>
-                    </div>
-                  ) : null}
-
-                  {/* Variable entries */}
-                  {variableEntries.map(e => {
-                    const cat = VAR_CATS.find(c => c.value === e.category)
-                    return (
-                      <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '8px 10px' }}>
-                        <span style={{ fontSize: 15 }}>{cat?.emoji ?? '📦'}</span>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 12, fontWeight: 600 }}>{e.customLabel || cat?.label}</div>
-                          {e.notes && <div style={{ fontSize: 10, color: '#64748b' }}>{e.notes}</div>}
-                        </div>
-                        <span style={{ fontSize: 13, fontWeight: 800 }}>₹{e.amount.toLocaleString()}</span>
-                        {!isLocked && (
-                          <button onClick={() => handleRemoveEntry(e)}
-                            style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.2)', color: '#fca5a5', borderRadius: 6, padding: '4px 8px', fontSize: 11 }}>✕</button>
-                        )}
-                      </div>
-                    )
-                  })}
-
-                  {/* Today nudges */}
-                  {isToday && dayEntries.length === 0 && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, background: 'rgba(124,58,237,0.06)', border: '1px solid rgba(124,58,237,0.15)' }}>
-                      <span style={{ fontSize: 13 }}>💸</span>
-                      <span style={{ fontSize: 11, color: '#a78bfa', fontWeight: 600 }}>Add today's expenses</span>
-                    </div>
-                  )}
-                  {isToday && !visitedDates.has(date) && isAfter6pmIST && !isHoliday && (
-                    <button onClick={() => onLogVisit?.(date)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.18)', cursor: onLogVisit ? 'pointer' : 'default', width: '100%' }}>
-                      <span style={{ fontSize: 13 }}>📋</span>
-                      <span style={{ fontSize: 11, color: '#d97706', fontWeight: 600, flex: 1, textAlign: 'left' }}>Add today's visit log</span>
-                      {onLogVisit && <span style={{ fontSize: 11, color: '#d97706' }}>Log now →</span>}
-                    </button>
-                  )}
-
-                  {/* Past days — no visit log nudge */}
-                  {!isToday && dayEntries.length > 0 && !visitedDates.has(date) && date < today && (
-                    <button onClick={() => onLogVisit?.(date)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.18)', cursor: onLogVisit ? 'pointer' : 'default', width: '100%' }}>
-                      <span style={{ fontSize: 13 }}>📋</span>
-                      <span style={{ fontSize: 11, color: '#d97706', fontWeight: 600, flex: 1, textAlign: 'left' }}>No visit log for this day</span>
-                      {onLogVisit && <span style={{ fontSize: 11, color: '#d97706' }}>Log now →</span>}
-                    </button>
-                  )}
-
-                  {/* Add variable form */}
-                  {!isLocked && (
-                    isAddingVar ? (
-                      <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: 12, border: '1px solid rgba(255,255,255,0.06)' }}>
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-                          {VAR_CATS.map(c => (
-                            <button key={c.value} onClick={() => setVarForm(f => ({ ...f, category: c.value }))}
-                              style={{ background: varForm.category === c.value ? 'rgba(124,58,237,0.15)' : 'rgba(255,255,255,0.04)', color: varForm.category === c.value ? '#a78bfa' : '#64748b', border: `1px solid ${varForm.category === c.value ? 'rgba(124,58,237,0.3)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '4px 10px', fontSize: 11, fontWeight: 700 }}>
-                              {c.emoji} {c.label}
-                            </button>
-                          ))}
-                        </div>
-                        {varForm.category === 'other' && (
-                          <input value={varForm.customLabel} onChange={e => setVarForm(f => ({ ...f, customLabel: e.target.value }))}
-                            placeholder="What is this expense?"
-                            style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '8px 10px', fontSize: 13, color: '#fff', outline: 'none', boxSizing: 'border-box', marginBottom: 8 }} />
-                        )}
-                        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                          <input type="number" value={varForm.amount} onChange={e => setVarForm(f => ({ ...f, amount: e.target.value }))}
-                            placeholder="₹ Amount"
-                            style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '8px 10px', fontSize: 15, fontWeight: 700, color: '#fff', outline: 'none', minWidth: 0 }} />
-                          <input value={varForm.notes} onChange={e => setVarForm(f => ({ ...f, notes: e.target.value }))}
-                            placeholder="Notes (optional)"
-                            style={{ flex: 2, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '8px 10px', fontSize: 13, color: '#fff', outline: 'none', minWidth: 0 }} />
-                        </div>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button onClick={handleAddVariable}
-                            style={{ flex: 1, background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(124,58,237,0.3)', color: '#a78bfa', borderRadius: 8, padding: '9px', fontSize: 13, fontWeight: 700 }}>
-                            Add
-                          </button>
-                          <button onClick={() => { setAddVarDay(null); setVarForm({ category: 'bus_fare', amount: '', customLabel: '', notes: '' }) }}
-                            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: '#64748b', borderRadius: 8, padding: '9px 14px', fontSize: 13 }}>
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button onClick={() => { setAddVarDay(date); setAddDaDay(null) }}
-                          style={{ flex: 1, background: 'transparent', border: '1px dashed rgba(255,255,255,0.1)', color: '#475569', borderRadius: 8, padding: '7px', fontSize: 12, fontWeight: 600 }}>
-                          + Add Expense
-                        </button>
-                        {!allowanceEntry && (
-                          <button onClick={() => { setAddDaDay(date); setAddVarDay(null) }}
-                            style={{ background: 'transparent', border: '1px dashed rgba(124,58,237,0.2)', color: '#7c3aed', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 600 }}>
-                            + DA
-                          </button>
-                        )}
-                      </div>
-                    )
-                  )}
+              ) : (
+                <div style={{ maxWidth: 220 }}>
+                  <DateInput type="date" value={selectedDay} max={today} onChange={setSelectedDay} />
                 </div>
               )}
             </div>
-          )
-        })}
+          </Section>
 
-        {/* Submit / status footer */}
-        {(report?.status === 'draft' || report?.status === 'rejected') && weekEntries.length > 0 && viewMode === 'week' && (
-          <div style={{ background: C.card, borderRadius: 14, padding: 16, border: '1px solid rgba(124,58,237,0.2)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <span style={{ fontSize: 14, fontWeight: 700 }}>Week Total</span>
-              <span style={{ fontSize: 20, fontWeight: 900, color: '#a78bfa' }}>₹{weekTotal.toLocaleString()}</span>
-            </div>
-            <button onClick={handleSubmitWeek} disabled={submitting}
-              style={{ width: '100%', background: submitting ? '#475569' : 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: '#fff', border: 'none', borderRadius: 12, padding: 14, fontSize: 15, fontWeight: 800 }}>
-              {submitting ? 'Submitting...' : '📤 Submit Week for Review'}
-            </button>
-          </div>
-        )}
+          {!isLocked && (
+            csvMode ? (
+              <Section label="Import from a file" right={action('Cancel', () => { setCsvMode(false); setCsvText(''); setFileLoaded(false) })}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 560 }}>
+                  <div style={{ fontSize: 13, fontWeight: 400, color: t.text3, lineHeight: 1.6 }}>
+                    Four columns: date, type, amount, notes. Type is one of HQ, EX, OS, bus_fare,
+                    fuel, food, lodging, printing or other. Weekends, holidays and days you were on
+                    leave are skipped.
+                  </div>
 
-        {report?.status === 'submitted' && (
-          <div style={{ background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.2)', borderRadius: 12, padding: 14, textAlign: 'center' }}>
-            <div style={{ fontSize: 14, color: '#fde68a', fontWeight: 700 }}>⏳ Pending Admin Review</div>
-            <div style={{ fontSize: 12, color: '#d97706', marginTop: 4 }}>
-              Submitted {report.submittedAt ? new Date(report.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : ''}
-              {' · '}You can still edit entries.
-            </div>
-          </div>
-        )}
+                  <label style={{ display: 'block', border: `0.5px dashed ${t.border2}`, borderRadius: 6,
+                                  padding: 18, cursor: 'pointer' }}>
+                    <input type="file" accept=".csv,.xlsx,.xls,text/csv" style={{ display: 'none' }}
+                      onChange={e => {
+                        const file = e.target.files?.[0]
+                        if (!file) return
+                        const isExcel = file.name.match(/\.xlsx?$/i)
+                        const reader = new FileReader()
+                        reader.onload = ev => {
+                          const result = ev.target?.result
+                          if (!result) return
+                          if (isExcel) {
+                            const wb = XLSX.read(result, { type: 'array' })
+                            const ws = wb.Sheets[wb.SheetNames[0]]
+                            const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1 })
+                            if (isOcealgoFormat(rows)) {
+                              setCsvText(rowsToCsvText(parseOcealgoSheet(rows)))
+                            } else {
+                              setCsvText(XLSX.utils.sheet_to_csv(ws))
+                            }
+                          } else {
+                            setCsvText(result as string)
+                          }
+                          setFileLoaded(true)
+                        }
+                        isExcel ? reader.readAsArrayBuffer(file) : reader.readAsText(file)
+                        e.target.value = ''
+                      }} />
+                    <div style={{ fontSize: 14, fontWeight: 400, color: t.text }}>
+                      {csvText ? 'File loaded. Tap to replace it.' : 'Choose a .csv or .xlsx file'}
+                    </div>
+                  </label>
 
-        {report?.status === 'rejected' && (
-          <div style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.2)', borderRadius: 12, padding: 14 }}>
-            <div style={{ fontSize: 14, color: '#fca5a5', fontWeight: 700, marginBottom: 4 }}>❌ Report Rejected</div>
-            {(report as any).rejectNote && <div style={{ fontSize: 12, color: '#f87171', marginBottom: 4 }}>📝 {(report as any).rejectNote}</div>}
-            <div style={{ fontSize: 12, color: '#64748b' }}>Edit your entries and resubmit.</div>
-          </div>
-        )}
+                  <Field label="Or paste the rows here">
+                    <textarea value={csvText} onChange={e => { setCsvText(e.target.value); setFileLoaded(false) }} rows={5}
+                      placeholder={'date,type,amount,notes\n2026-05-01,HQ,,\n2026-05-01,bus_fare,45,Morning auto'}
+                      style={{ ...inputStyle(t), resize: 'vertical', fontFamily: 'monospace', fontSize: 12, lineHeight: 1.6 }} />
+                  </Field>
 
-        {report?.status === 'cleared' && (
-          <div style={{ background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.2)', borderRadius: 12, padding: 14, textAlign: 'center' }}>
-            <div style={{ fontSize: 14, color: '#86efac', fontWeight: 700 }}>✅ Expenses Cleared</div>
-            <div style={{ fontSize: 12, color: '#16a34a', marginTop: 4 }}>
-              {report.clearedAt ? new Date(report.clearedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : ''}
-              {report.clearedByName && ` · by ${report.clearedByName}`}
-            </div>
-            {report.clearNote && <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>📝 {report.clearNote}</div>}
+                  <div>
+                    <PrimaryButton onClick={handleImportCsv} disabled={importing || !fileLoaded}>
+                      {importing ? 'Importing' : 'Import'}
+                    </PrimaryButton>
+                  </div>
+                </div>
+              </Section>
+            ) : (
+              <div>
+                <GhostButton onClick={() => setCsvMode(true)}>Import from a file</GhostButton>
+              </div>
+            )
+          )}
+
+          {/* Daily rows */}
+          <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+            {visibleDates.map(date => {
+              const isHoliday = holidayDates.has(date)
+              const isLeave = !isHoliday && leaveDates.has(date)
+              const isWknd = isWeekend(date)
+              const isToday = date === today
+              const isWorking = !isLeave && !isHoliday && !isWknd
+              const dayEntries = weekEntries.filter(e => e.date === date)
+              const allowanceEntry = dayEntries.find(e => e.type === 'allowance')
+              const variableEntries = dayEntries.filter(e => e.type === 'variable')
+              const dayTot = isLeave || isWknd ? 0 : totalOf(dayEntries)
+              const isAddingVar = addVarDay === date
+              const isFuture = date > today
+
+              const note = isHoliday ? 'Holiday'
+                : isLeave ? 'On leave'
+                : isWknd ? 'Weekend'
+                : isFuture && dayEntries.length === 0 ? 'Not yet'
+                : null
+
+              return (
+                <div key={date} style={{ borderTop: `0.5px solid ${t.border}`, padding: '16px 0',
+                                         opacity: isWknd ? 0.5 : 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 500, color: t.text }}>
+                        {fmtDate(date)}
+                        {isToday && (
+                          <span style={{ fontSize: 13, fontWeight: 400, color: t.text3, marginLeft: 8 }}>Today</span>
+                        )}
+                      </div>
+                      {note && (
+                        <div style={{ fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 3 }}>{note}</div>
+                      )}
+                    </div>
+                    {dayTot > 0 && (
+                      <div style={{ fontSize: 15, fontWeight: 500, color: t.text, whiteSpace: 'nowrap' }}>
+                        {money(dayTot)}
+                      </div>
+                    )}
+                  </div>
+
+                  {isWorking && (
+                    <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {/* Daily allowance */}
+                      {allowanceEntry ? (
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
+                            <span style={{ flex: 1, fontSize: 14, fontWeight: 400, color: t.text }}>
+                              {ALLOW_INFO[allowanceEntry.allowanceType!].label} allowance
+                              <span style={{ color: t.text3 }}>
+                                {' · '}{ALLOW_INFO[allowanceEntry.allowanceType!].sub}
+                              </span>
+                            </span>
+                            <span style={{ fontSize: 14, fontWeight: 400, color: t.text2, whiteSpace: 'nowrap' }}>
+                              {money(allowanceEntry.amount)}
+                            </span>
+                          </div>
+                          {!isLocked && (
+                            <div style={{ display: 'flex', gap: 14, marginTop: 8, flexWrap: 'wrap' }}>
+                              {(['HQ', 'EX', 'OS'] as AllowanceType[])
+                                .filter(a => a !== allowanceEntry.allowanceType)
+                                .map(a => action(`Change to ${a}`, () => handleSetAllowance(date, a)))}
+                              {action('Remove', () => handleRemoveAllowance(date))}
+                            </div>
+                          )}
+                        </div>
+                      ) : !isLocked && addDaDay === date ? (
+                        <Field label="Which allowance applies">
+                          <ChipGroup
+                            value={'' as AllowanceType}
+                            onChange={async (a: AllowanceType) => { await handleSetAllowance(date, a); setAddDaDay(null) }}
+                            options={(['HQ', 'EX', 'OS'] as AllowanceType[]).map(a => ({
+                              id: a,
+                              label: `${a} · ${ALLOW_INFO[a].sub} · ${money(config[a.toLowerCase() as 'hq' | 'ex' | 'os'])}`,
+                            }))}
+                          />
+                          <div style={{ marginTop: 10 }}>{action('Cancel', () => setAddDaDay(null))}</div>
+                        </Field>
+                      ) : null}
+
+                      {/* Variable entries */}
+                      {variableEntries.map(e => {
+                        const cat = VAR_CATS.find(c => c.value === e.category)
+                        return (
+                          <div key={e.id} style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
+                            <span style={{ flex: 1, minWidth: 0 }}>
+                              <span style={{ display: 'block', fontSize: 14, fontWeight: 400, color: t.text }}>
+                                {e.customLabel || cat?.label}
+                              </span>
+                              {e.notes && (
+                                <span style={{ display: 'block', fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 3 }}>
+                                  {e.notes}
+                                </span>
+                              )}
+                            </span>
+                            <span style={{ fontSize: 14, fontWeight: 400, color: t.text2, whiteSpace: 'nowrap' }}>
+                              {money(e.amount)}
+                            </span>
+                            {!isLocked && action('Remove', () => handleRemoveEntry(e))}
+                          </div>
+                        )
+                      })}
+
+                      {/* Nudges */}
+                      {isToday && dayEntries.length === 0 && (
+                        <Note>Nothing logged for today yet.</Note>
+                      )}
+                      {isToday && !visitedDates.has(date) && isAfter6pmIST && !isHoliday && (
+                        <div>
+                          <Note tone="warn">Today has no visit log.</Note>
+                          {onLogVisit && (
+                            <div style={{ marginTop: 10 }}>{action('Log the visit now', () => onLogVisit(date))}</div>
+                          )}
+                        </div>
+                      )}
+                      {!isToday && dayEntries.length > 0 && !visitedDates.has(date) && date < today && (
+                        <div>
+                          <Note tone="warn">This day has expenses but no visit log.</Note>
+                          {onLogVisit && (
+                            <div style={{ marginTop: 10 }}>{action('Log the visit now', () => onLogVisit(date))}</div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Add an expense */}
+                      {!isLocked && (
+                        isAddingVar ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 460,
+                                        borderTop: `0.5px solid ${t.border}`, paddingTop: 16 }}>
+                            <Field label="What was it for">
+                              <ChipGroup
+                                value={varForm.category}
+                                onChange={c => setVarForm(f => ({ ...f, category: c }))}
+                                options={VAR_CATS.map(c => ({ id: c.value, label: c.label }))}
+                              />
+                            </Field>
+                            {varForm.category === 'other' && (
+                              <Field label="Describe it">
+                                <input value={varForm.customLabel}
+                                  onChange={e => setVarForm(f => ({ ...f, customLabel: e.target.value }))}
+                                  placeholder="What was this expense" style={inputStyle(t)} />
+                              </Field>
+                            )}
+                            <Field label="Amount">
+                              <input type="number" inputMode="decimal" value={varForm.amount}
+                                onChange={e => setVarForm(f => ({ ...f, amount: e.target.value }))}
+                                placeholder="45" style={inputStyle(t)} />
+                            </Field>
+                            <Field label="Notes">
+                              <input value={varForm.notes}
+                                onChange={e => setVarForm(f => ({ ...f, notes: e.target.value }))}
+                                placeholder="Optional" style={inputStyle(t)} />
+                            </Field>
+                            <div style={{ display: 'flex', gap: 10 }}>
+                              <PrimaryButton onClick={handleAddVariable}>Add</PrimaryButton>
+                              <GhostButton onClick={() => {
+                                setAddVarDay(null)
+                                setVarForm({ category: 'bus_fare', amount: '', customLabel: '', notes: '' })
+                              }}>
+                                Cancel
+                              </GhostButton>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: 14 }}>
+                            {action('Add an expense', () => { setAddVarDay(date); setAddDaDay(null) })}
+                            {!allowanceEntry && action('Add the daily allowance', () => { setAddDaDay(date); setAddVarDay(null) })}
+                          </div>
+                        )
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
-        )}
+
+          {/* Submit / status */}
+          {(report?.status === 'draft' || report?.status === 'rejected') && weekEntries.length > 0 && viewMode === 'week' && (
+            <Section label="Submit">
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+                            gap: 16, marginBottom: 14, maxWidth: 460 }}>
+                <span style={{ fontSize: 14, fontWeight: 400, color: t.text2 }}>Total for the week</span>
+                <span style={{ fontSize: 15, fontWeight: 500, color: t.text }}>{money(weekTotal)}</span>
+              </div>
+              <PrimaryButton onClick={handleSubmitWeek} disabled={submitting}>
+                {submitting ? 'Submitting' : 'Submit this week for review'}
+              </PrimaryButton>
+            </Section>
+          )}
+
+          {report?.status === 'submitted' && (
+            <Note>
+              Submitted{report.submittedAt
+                ? ` on ${new Date(report.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`
+                : ''} and waiting on an admin. You can still edit entries.
+            </Note>
+          )}
+
+          {report?.status === 'rejected' && (
+            <Note tone="warn">
+              This week was sent back{(report as any).rejectNote ? `: ${(report as any).rejectNote}` : '.'}
+              {' '}Edit the entries and submit again.
+            </Note>
+          )}
+
+          {report?.status === 'cleared' && (
+            <Note>
+              Cleared{report.clearedAt
+                ? ` on ${new Date(report.clearedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`
+                : ''}{report.clearedByName ? ` by ${report.clearedByName}` : ''}.
+              {report.clearNote ? ` ${report.clearNote}` : ''}
+            </Note>
+          )}
         </>)}
       </div>
       {modal}
@@ -808,6 +815,7 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
 // ADMIN VIEW
 // ─────────────────────────────────────────────────────────────────────────────
 function AdminView({ onBack, appUser, onViewVisitLog }: { onBack: () => void; appUser: AppUser; onViewVisitLog?: (userName: string, date: string) => void }) {
+  const { t } = useTheme()
   const { modal, showAlert, showConfirm } = useConfirm()
   const [tab, setTab] = useState<'reports' | 'config'>('reports')
   const [config, setConfig] = useState<ExpenseConfig>(DEFAULT_CONFIG)
@@ -850,7 +858,7 @@ function AdminView({ onBack, appUser, onViewVisitLog }: { onBack: () => void; ap
 
   const handleSaveConfig = async () => {
     const hq = parseFloat(configForm.hq), ex = parseFloat(configForm.ex), os = parseFloat(configForm.os)
-    if ([hq, ex, os].some(isNaN)) { await showAlert('Invalid', 'Enter valid amounts for all tiers.'); return }
+    if ([hq, ex, os].some(isNaN)) { await showAlert('Amounts needed', 'Enter a number for each of the three rates.'); return }
     setSavingConfig(true)
     try {
       await setDoc(doc(db, 'expense_config', 'main'), { hq, ex, os, updatedAt: Date.now(), updatedBy: appUser.uid })
@@ -859,11 +867,13 @@ function AdminView({ onBack, appUser, onViewVisitLog }: { onBack: () => void; ap
 
   const handleClear = async (r: ExpenseReport) => {
     if (!can(appUser, 'clear_expenses')) {
-      await showAlert('Not allowed', 'You do not have permission to clear expense reports.')
+      await showAlert('Not allowed', 'Clearing an expense report needs the clear_expenses permission.')
       return
     }
     const liveTotal = reportTotal(r.id!)
-    if (!await showConfirm('Clear expenses', `Mark ₹${liveTotal.toLocaleString()} expense report for ${r.userName} as cleared and paid?`)) return
+    if (!await showConfirm('Clear this report?', `${r.userName} is marked as paid ₹${liveTotal.toLocaleString('en-IN')} for ${weekLabel(r.weekStart)}.
+
+This cannot be undone.`, 'Clear it')) return
     setClearingId(r.id!)
     try {
       await updateDoc(doc(db, 'expense_reports', r.id!), {
@@ -874,7 +884,7 @@ function AdminView({ onBack, appUser, onViewVisitLog }: { onBack: () => void; ap
       })
       await addDoc(collection(db, 'alerts'), {
         type: 'expense_submitted',
-        message: `✅ Your expenses for ${weekLabel(r.weekStart)} (₹${liveTotal.toLocaleString()}) have been cleared${clearNote ? ` — ${clearNote}` : ''}.`,
+        message: `Your expenses for ${weekLabel(r.weekStart)} were cleared — ₹${liveTotal.toLocaleString('en-IN')}${clearNote ? `. ${clearNote}` : '.'}`,
         relatedId: r.id!, read: false, toUid: r.userId, createdAt: Date.now(),
       })
       setClearNote('')
@@ -883,11 +893,11 @@ function AdminView({ onBack, appUser, onViewVisitLog }: { onBack: () => void; ap
 
   const handleReject = async (r: ExpenseReport) => {
     if (!can(appUser, 'clear_expenses')) {
-      await showAlert('Not allowed', 'You do not have permission to reject expense reports.')
+      await showAlert('Not allowed', 'Sending a report back needs the clear_expenses permission.')
       return
     }
-    if (!rejectNote.trim()) { await showAlert('Note required', 'Add a reason before rejecting.'); return }
-    if (!await showConfirm('Reject report', `Reject ${r.userName}'s expense report? They will be notified.`)) return
+    if (!rejectNote.trim()) { await showAlert('Reason needed', 'Say why it is going back, so they know what to fix.'); return }
+    if (!await showConfirm('Send this back?', `${r.userName} is notified and can edit and resubmit the week.`, 'Send back')) return
     setRejectingId(r.id!)
     try {
       await updateDoc(doc(db, 'expense_reports', r.id!), {
@@ -897,7 +907,7 @@ function AdminView({ onBack, appUser, onViewVisitLog }: { onBack: () => void; ap
       })
       await addDoc(collection(db, 'alerts'), {
         type: 'expense_submitted',
-        message: `❌ Your expenses for ${weekLabel(r.weekStart)} were rejected — "${rejectNote.trim()}". Please edit and resubmit.`,
+        message: `Your expenses for ${weekLabel(r.weekStart)} were sent back: ${rejectNote.trim()} Please edit and submit again.`,
         relatedId: r.id!, read: false, toUid: r.userId, createdAt: Date.now(),
       })
       setRejectNote('')
@@ -934,262 +944,297 @@ function AdminView({ onBack, appUser, onViewVisitLog }: { onBack: () => void; ap
   const pendingTotal = reports.filter(r => r.status === 'submitted').reduce((s, r) => s + reportTotal(r.id!), 0)
   const clearedTotal = reports.filter(r => r.status === 'cleared').reduce((s, r) => s + reportTotal(r.id!), 0)
 
+  const money = (n: number) => `₹${n.toLocaleString('en-IN')}`
+
+  const STATUS_TEXT: Record<string, string> = {
+    submitted: 'Awaiting review',
+    rejected: 'Sent back',
+    cleared: 'Cleared',
+    draft: 'Draft',
+  }
+
+  const action = (label: string, onClick: () => void, disabled?: boolean) => (
+    <button className="oc-action" onClick={onClick} disabled={disabled}
+      style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, fontWeight: 400,
+               color: t.text2, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1 }}>
+      {label}
+    </button>
+  )
+
+  const pendingCount = reports.filter(r => r.status === 'submitted').length
+
   return (
-    <div style={{ minHeight: '100vh', background: '#0d1117', paddingBottom: 40 }}>
-      {/* HEADER */}
-      <div style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', padding: '24px 20px 0' }}>
-        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#ddd6fe', padding: '6px 14px', borderRadius: 20, fontSize: 12, marginBottom: 16 }}>← Back</button>
-        <div style={{ color: '#ddd6fe', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Admin 💸</div>
-        <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 10 }}>Expense Management</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
-          <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 12, padding: 12, textAlign: 'center' }}>
-            <div style={{ fontSize: 18, fontWeight: 900, color: '#fde68a' }}>₹{pendingTotal.toLocaleString()}</div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>Pending</div>
-          </div>
-          <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 12, padding: 12, textAlign: 'center' }}>
-            <div style={{ fontSize: 18, fontWeight: 900, color: '#86efac' }}>₹{clearedTotal.toLocaleString()}</div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>Cleared</div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 4 }}>
-          {([['reports', '📋 Reports'], ['config', '⚙️ Config']] as const).map(([t, l]) => (
-            <button key={t} onClick={() => setTab(t)}
-              style={{ flex: 1, background: tab === t ? 'rgba(255,255,255,0.2)' : 'transparent', color: tab === t ? '#fff' : 'rgba(255,255,255,0.5)', border: 'none', borderRadius: '10px 10px 0 0', padding: '9px 4px', fontSize: 11, fontWeight: 800 }}>
-              {l}
-            </button>
-          ))}
-        </div>
-      </div>
+    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
+      <PageHeader
+        eyebrow="Admin"
+        title="Expenses"
+        subtitle={pendingCount > 0
+          ? `${money(pendingTotal)} across ${pendingCount} report${pendingCount > 1 ? 's' : ''} waiting on you`
+          : 'Nothing is waiting for review'}
+        onBack={onBack}
+        divider={false}
+      />
+      <TabBar
+        value={tab}
+        onChange={setTab}
+        tabs={[{ id: 'reports', label: 'Reports' }, { id: 'config', label: 'Allowances' }]}
+      />
 
-      <div style={{ padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 28 }}>
 
-        {/* CONFIG TAB */}
+        {/* ── ALLOWANCE CONFIG ── */}
         {tab === 'config' && (
-          <div style={{ background: '#161b22', borderRadius: 14, padding: 16, border: '1px solid rgba(255,255,255,0.06)' }}>
-            <div style={{ fontSize: 12, color: '#64748b', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 16 }}>Daily Allowance Amounts</div>
-            {([
-              { key: 'hq' as const, label: '🏢 HQ', sub: 'Within 25km' },
-              { key: 'ex' as const, label: '🗺️ EX', sub: '25km+' },
-              { key: 'os' as const, label: '🛏️ OS', sub: 'Outstation stay' },
-            ]).map(({ key, label, sub }) => (
-              <div key={key} style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#a78bfa', marginBottom: 6 }}>
-                  {label} <span style={{ color: '#64748b', fontWeight: 400 }}>— {sub}</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ color: '#64748b', fontSize: 18, fontWeight: 700 }}>₹</span>
-                  <input type="number" value={configForm[key]} onChange={e => setConfigForm(f => ({ ...f, [key]: e.target.value }))}
-                    style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '10px 14px', fontSize: 20, fontWeight: 800, color: '#fff', outline: 'none' }} />
-                </div>
-                <div style={{ fontSize: 10, color: '#475569', marginTop: 4 }}>Current: ₹{config[key]}</div>
+          <Section label="Daily allowance rates">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 460 }}>
+              <div style={{ fontSize: 14, fontWeight: 400, color: t.text3, lineHeight: 1.6 }}>
+                What a salesperson is paid per working day, depending on how far they travelled.
+                Changing a rate affects new entries only.
               </div>
-            ))}
-            <button onClick={handleSaveConfig} disabled={savingConfig}
-              style={{ width: '100%', background: savingConfig ? '#475569' : 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: '#fff', border: 'none', borderRadius: 12, padding: 14, fontSize: 14, fontWeight: 800 }}>
-              {savingConfig ? 'Saving...' : 'Save Config ⚙️'}
-            </button>
-          </div>
+              {(['hq', 'ex', 'os'] as const).map(key => {
+                const info = ALLOW_INFO[key.toUpperCase() as AllowanceType]
+                return (
+                  <Field key={key} label={`${info.label} — ${info.sub}`}
+                    hint={`Currently ${money(config[key])}.`}>
+                    <input type="number" inputMode="decimal" value={configForm[key]}
+                      onChange={e => setConfigForm(f => ({ ...f, [key]: e.target.value }))}
+                      style={inputStyle(t)} />
+                  </Field>
+                )
+              })}
+              <div>
+                <PrimaryButton onClick={handleSaveConfig} disabled={savingConfig}>
+                  {savingConfig ? 'Saving' : 'Save rates'}
+                </PrimaryButton>
+              </div>
+            </div>
+          </Section>
         )}
 
-        {/* REPORTS TAB */}
+        {/* ── REPORTS ── */}
         {tab === 'reports' && (
           <>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {([
-                { val: 'submitted' as const, label: '⏳ Pending' },
-                { val: 'cleared'   as const, label: '✅ Cleared' },
-                { val: 'rejected'  as const, label: '❌ Rejected' },
-                { val: 'all'       as const, label: 'All' },
-              ]).map(s => (
-                <button key={s.val} onClick={() => setStatusFilter(s.val)}
-                  style={{ flex: 1, background: statusFilter === s.val ? 'rgba(124,58,237,0.15)' : 'rgba(255,255,255,0.04)', color: statusFilter === s.val ? '#a78bfa' : '#64748b', border: `1px solid ${statusFilter === s.val ? 'rgba(124,58,237,0.3)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 20, padding: '7px', fontSize: 12, fontWeight: 700 }}>
-                  {s.label}
-                </button>
-              ))}
-            </div>
+            <StatGrid>
+              <StatCard value={money(pendingTotal)} label="Awaiting review"
+                context={pendingCount > 0 ? `${pendingCount} report${pendingCount > 1 ? 's' : ''}` : undefined} />
+              <StatCard value={money(clearedTotal)} label="Cleared" context="Paid out so far" />
+              <StatCard value={reports.filter(r => r.status === 'rejected').length} label="Sent back"
+                context="Waiting on a rep to fix" />
+            </StatGrid>
+
+            <Section label="Filter">
+              <ChipGroup
+                value={statusFilter}
+                onChange={setStatusFilter}
+                options={[
+                  { id: 'submitted' as const, label: 'Awaiting review' },
+                  { id: 'cleared' as const, label: 'Cleared' },
+                  { id: 'rejected' as const, label: 'Sent back' },
+                  { id: 'all' as const, label: 'Everything' },
+                ]}
+              />
+            </Section>
 
             {filtered.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 40, color: '#475569' }}>
-                <div style={{ fontSize: 36, marginBottom: 12 }}>💸</div>
-                <div style={{ fontWeight: 700 }}>No {statusFilter === 'submitted' ? 'pending' : statusFilter === 'cleared' ? 'cleared' : ''} reports</div>
-              </div>
-            ) : filtered.map(r => {
-              const rEntries = entries.filter(e => e.reportId === r.id)
-              const isExpanded = expandedId === r.id
+              <EmptyState
+                title="Nothing here"
+                body={statusFilter === 'submitted'
+                  ? 'No expense report is waiting for review.'
+                  : 'No report matches that filter.'}
+              />
+            ) : (
+              <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+                {filtered.map(r => {
+                  const rEntries = entries.filter(e => e.reportId === r.id)
+                  const isExpanded = expandedId === r.id
+                  const key = `${r.userId}_${r.weekStart}`
+                  const logged = visitLogMap.get(key)
 
-              return (
-                <div key={r.id} style={{ background: '#161b22', borderRadius: 14, border: `1px solid ${r.status === 'submitted' ? 'rgba(217,119,6,0.2)' : 'rgba(22,163,74,0.15)'}`, overflow: 'hidden' }}>
-                  {/* Header row */}
-                  <div style={{ padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 10 }}
-                    onClick={() => setExpandedId(isExpanded ? null : r.id!)}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 800, fontSize: 14 }}>{r.userName}</div>
-                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{weekLabel(r.weekStart)}</div>
-                      {/* Visit log summary pill */}
-                      {(() => {
-                        const key = `${r.userId}_${r.weekStart}`
-                        const logged = visitLogMap.get(key)
-                        if (!logged) return null
-                        const today = localDateStr()
-                        const userLeaveDates = new Set(allLeaves.filter(l => l.uid === r.userId).map(l => l.date))
-                        const allHolidayDates = new Set(allHolidays.map(h => h.date))
-                        const dueDays = getWeekDates(r.weekStart).filter(d => !isWeekend(d) && d <= today && !userLeaveDates.has(d) && !allHolidayDates.has(d))
-                        const count = dueDays.filter(d => logged.has(d)).length
-                        const total = dueDays.length
-                        if (!total) return null
-                        const all = count === total, none = count === 0
-                        return (
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 5, padding: '2px 8px', borderRadius: 99, background: all ? 'rgba(22,163,74,0.12)' : none ? 'rgba(220,38,38,0.1)' : 'rgba(217,119,6,0.12)' }}>
-                            <span style={{ fontSize: 10 }}>📋</span>
-                            <span style={{ fontSize: 10, fontWeight: 700, color: all ? '#86efac' : none ? '#fca5a5' : '#fde68a' }}>{count}/{total} days logged</span>
-                          </div>
-                        )
-                      })()}
-                      {r.status === 'submitted' && r.submittedAt && (
-                        <div style={{ fontSize: 10, color: '#d97706', marginTop: 2 }}>
-                          Submitted {new Date(r.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                        </div>
-                      )}
-                      {r.status === 'cleared' && r.clearedAt && (
-                        <div style={{ fontSize: 10, color: '#16a34a', marginTop: 2 }}>
-                          Cleared {new Date(r.clearedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                          {r.clearedByName && ` · ${r.clearedByName}`}
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: 20, fontWeight: 900, color: '#a78bfa' }}>₹{reportTotal(r.id!).toLocaleString()}</div>
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99,
-                        background: r.status === 'submitted' ? 'rgba(217,119,6,0.15)' : r.status === 'rejected' ? 'rgba(220,38,38,0.15)' : 'rgba(22,163,74,0.15)',
-                        color: r.status === 'submitted' ? '#d97706' : r.status === 'rejected' ? '#fca5a5' : '#16a34a' }}>
-                        {r.status === 'submitted' ? '⏳ Pending' : r.status === 'rejected' ? '❌ Rejected' : '✅ Cleared'}
-                      </span>
-                      <div style={{ fontSize: 10, color: '#475569', marginTop: 4 }}>{isExpanded ? '▲' : '▼'}</div>
-                    </div>
-                  </div>
+                  // How many of the days they were due to log a visit actually have one.
+                  let logSummary: string | null = null
+                  let logShort = false
+                  if (logged) {
+                    const todayStr = localDateStr()
+                    const userLeaveDates = new Set(allLeaves.filter(l => l.uid === r.userId).map(l => l.date))
+                    const allHolidayDates = new Set(allHolidays.map(h => h.date))
+                    const dueDays = getWeekDates(r.weekStart).filter(d =>
+                      !isWeekend(d) && d <= todayStr && !userLeaveDates.has(d) && !allHolidayDates.has(d))
+                    if (dueDays.length) {
+                      const count = dueDays.filter(d => logged.has(d)).length
+                      logSummary = `${count} of ${dueDays.length} days have a visit log`
+                      logShort = count < dueDays.length
+                    }
+                  }
 
-                  {/* Expanded entries */}
-                  {isExpanded && (
-                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {(() => {
-                        const byDate = new Map<string, ExpenseEntry[]>()
-                        const seenAllowance = new Set<string>()
-                        rEntries.sort((a, b) => a.date.localeCompare(b.date)).forEach(e => {
-                          if (e.type === 'allowance') {
-                            if (seenAllowance.has(e.date)) return
-                            seenAllowance.add(e.date)
-                          }
-                          if (!byDate.has(e.date)) byDate.set(e.date, [])
-                          byDate.get(e.date)!.push(e)
-                        })
-                        const logKey = `${r.userId}_${r.weekStart}`
-                        const loggedDates = visitLogMap.get(logKey)
-                        const today = localDateStr()
-                        const userLeaveDates = new Set(allLeaves.filter(l => l.uid === r.userId).map(l => l.date))
-                        const adminHolidayDates = new Set(allHolidays.map(h => h.date))
-                        const weekdays = getWeekDates(r.weekStart).filter(d => !isWeekend(d))
-                        const visibleDates = weekdays.filter(d => userLeaveDates.has(d) || adminHolidayDates.has(d) || byDate.has(d))
-                        if (visibleDates.length === 0) return (
-                          <div style={{ fontSize: 12, color: '#475569', textAlign: 'center', padding: 12 }}>No entries</div>
-                        )
-                        return visibleDates.map(date => {
-                          const isHolidayDate = adminHolidayDates.has(date)
-                          const isLeave = !isHolidayDate && userLeaveDates.has(date)
-                          const dayE = byDate.get(date) ?? []
-                          const didLog = loggedDates?.has(date)
-                          const isPast = date <= today
-                          return (
-                            <div key={date} style={{ marginBottom: 10 }}>
-                              <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>{fmtDate(date)}</div>
-                              {isHolidayDate ? (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.18)', borderRadius: 6 }}>
-                                  <span style={{ fontSize: 13 }}>🎉</span>
-                                  <span style={{ fontSize: 12, color: '#86efac', fontWeight: 600 }}>{allHolidays.find(h => h.date === date)?.name ?? 'Holiday'}</span>
-                                </div>
-                              ) : isLeave ? (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', background: 'rgba(251,191,36,0.07)', border: '1px solid rgba(251,191,36,0.18)', borderRadius: 6 }}>
-                                  <span style={{ fontSize: 13 }}>🏖️</span>
-                                  <span style={{ fontSize: 12, color: '#fbbf24', fontWeight: 600 }}>On Leave</span>
-                                </div>
-                              ) : (
-                                <>
-                                  {dayE.map(e => {
-                                    const cat = VAR_CATS.find(c => c.value === e.category)
-                                    return (
-                                      <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                                        <span style={{ fontSize: 14 }}>{e.type === 'allowance' ? ALLOW_INFO[e.allowanceType!].emoji : cat?.emoji ?? '📦'}</span>
-                                        <div style={{ flex: 1, fontSize: 12 }}>
-                                          {e.type === 'allowance'
-                                            ? `${ALLOW_INFO[e.allowanceType!].label} — ${ALLOW_INFO[e.allowanceType!].sub}`
-                                            : (e.customLabel || cat?.label)}
-                                          {e.notes && <span style={{ color: '#64748b', marginLeft: 6 }}>· {e.notes}</span>}
-                                        </div>
-                                        <span style={{ fontSize: 12, fontWeight: 700, color: e.type === 'allowance' ? '#a78bfa' : '#e2e8f0' }}>₹{e.amount.toLocaleString()}</span>
-                                      </div>
-                                    )
-                                  })}
-                                  {/* Visit log status for this day */}
-                                  {loggedDates && isPast && (
-                                    didLog ? (
-                                      <button onClick={() => onViewVisitLog?.(r.userName, date)}
-                                        style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.18)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', width: '100%' }}>
-                                        <span style={{ fontSize: 11 }}>📋</span>
-                                        <span style={{ fontSize: 11, color: '#86efac', fontWeight: 600, flex: 1 }}>Visit log added</span>
-                                        <span style={{ fontSize: 10, color: '#16a34a' }}>View →</span>
-                                      </button>
-                                    ) : (
-                                      <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.12)', borderRadius: 6, padding: '4px 8px' }}>
-                                        <span style={{ fontSize: 11 }}>📋</span>
-                                        <span style={{ fontSize: 11, color: '#f87171', fontWeight: 600 }}>No visit log</span>
-                                      </div>
-                                    )
+                  return (
+                    <div key={r.id} style={{ borderTop: `0.5px solid ${t.border}`, padding: '18px 0' }}>
+                      <button className="oc-action" onClick={() => setExpandedId(isExpanded ? null : r.id!)}
+                        style={{ display: 'flex', alignItems: 'baseline', gap: 16, width: '100%',
+                                 textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: 'block', fontSize: 15, fontWeight: 500, color: t.text }}>
+                            {r.userName}
+                          </span>
+                          <span style={{ display: 'block', fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 3 }}>
+                            {weekLabel(r.weekStart)}
+                            {r.status === 'submitted' && r.submittedAt &&
+                              ` · submitted ${new Date(r.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`}
+                            {r.status === 'cleared' && r.clearedAt &&
+                              ` · cleared ${new Date(r.clearedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}${r.clearedByName ? ` by ${r.clearedByName}` : ''}`}
+                          </span>
+                          {logSummary && (
+                            <span style={{ display: 'block', fontSize: 13, fontWeight: 400, marginTop: 3,
+                                           color: logShort ? t.warn : t.text3 }}>
+                              {logSummary}
+                            </span>
+                          )}
+                        </span>
+                        <span style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <span style={{ display: 'block', fontSize: 15, fontWeight: 500, color: t.text }}>
+                            {money(reportTotal(r.id!))}
+                          </span>
+                          <span style={{ display: 'block', fontSize: 13, fontWeight: 400, marginTop: 3,
+                                         color: r.status === 'submitted' ? t.warn : t.text3 }}>
+                            {STATUS_TEXT[r.status] ?? r.status}
+                          </span>
+                        </span>
+                      </button>
+
+                      {isExpanded && (
+                        <div style={{ marginTop: 16 }}>
+                          {(() => {
+                            const byDate = new Map<string, ExpenseEntry[]>()
+                            const seenAllowance = new Set<string>()
+                            rEntries.sort((a, b) => a.date.localeCompare(b.date)).forEach(e => {
+                              if (e.type === 'allowance') {
+                                if (seenAllowance.has(e.date)) return
+                                seenAllowance.add(e.date)
+                              }
+                              if (!byDate.has(e.date)) byDate.set(e.date, [])
+                              byDate.get(e.date)!.push(e)
+                            })
+                            const loggedDates = logged
+                            const todayStr = localDateStr()
+                            const userLeaveDates = new Set(allLeaves.filter(l => l.uid === r.userId).map(l => l.date))
+                            const adminHolidayDates = new Set(allHolidays.map(h => h.date))
+                            const weekdays = getWeekDates(r.weekStart).filter(d => !isWeekend(d))
+                            const visibleDates = weekdays.filter(d =>
+                              userLeaveDates.has(d) || adminHolidayDates.has(d) || byDate.has(d))
+                            if (visibleDates.length === 0) return (
+                              <div style={{ fontSize: 13, fontWeight: 400, color: t.text3 }}>
+                                Nothing was logged in this week.
+                              </div>
+                            )
+                            return visibleDates.map(date => {
+                              const isHolidayDate = adminHolidayDates.has(date)
+                              const isLeave = !isHolidayDate && userLeaveDates.has(date)
+                              const dayE = byDate.get(date) ?? []
+                              const didLog = loggedDates?.has(date)
+                              const isPast = date <= todayStr
+                              return (
+                                <div key={date} style={{ marginBottom: 18 }}>
+                                  <div style={{ fontSize: 11, letterSpacing: '0.09em', textTransform: 'uppercase',
+                                                color: t.text3, marginBottom: 8 }}>
+                                    {fmtDate(date)}
+                                  </div>
+                                  {isHolidayDate ? (
+                                    <div style={{ fontSize: 14, fontWeight: 400, color: t.text3 }}>
+                                      {allHolidays.find(h => h.date === date)?.name ?? 'Holiday'}
+                                    </div>
+                                  ) : isLeave ? (
+                                    <div style={{ fontSize: 14, fontWeight: 400, color: t.text3 }}>On leave</div>
+                                  ) : (
+                                    <>
+                                      {dayE.map(e => {
+                                        const cat = VAR_CATS.find(c => c.value === e.category)
+                                        return (
+                                          <div key={e.id} style={{ display: 'flex', alignItems: 'baseline',
+                                                                   gap: 16, marginTop: 5 }}>
+                                            <span style={{ flex: 1, fontSize: 14, fontWeight: 400, color: t.text }}>
+                                              {e.type === 'allowance'
+                                                ? `${ALLOW_INFO[e.allowanceType!].label} allowance · ${ALLOW_INFO[e.allowanceType!].sub}`
+                                                : (e.customLabel || cat?.label)}
+                                              {e.notes && (
+                                                <span style={{ color: t.text3 }}>{' · '}{e.notes}</span>
+                                              )}
+                                            </span>
+                                            <span style={{ fontSize: 14, fontWeight: 400, color: t.text2, whiteSpace: 'nowrap' }}>
+                                              {money(e.amount)}
+                                            </span>
+                                          </div>
+                                        )
+                                      })}
+                                      {loggedDates && isPast && (
+                                        didLog ? (
+                                          <div style={{ marginTop: 8 }}>
+                                            {action('View the visit log', () => onViewVisitLog?.(r.userName, date))}
+                                          </div>
+                                        ) : (
+                                          <div style={{ fontSize: 13, fontWeight: 400, color: t.warn, marginTop: 8 }}>
+                                            No visit log for this day.
+                                          </div>
+                                        )
+                                      )}
+                                    </>
                                   )}
-                                </>
-                              )}
-                            </div>
-                          )
-                        })
-                      })()}
+                                </div>
+                              )
+                            })
+                          })()}
 
-                      {/* Day totals summary */}
-                      <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10, display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 800 }}>
-                        <span style={{ color: '#64748b' }}>Total</span>
-                        <span style={{ color: '#a78bfa' }}>₹{reportTotal(r.id!).toLocaleString()}</span>
-                      </div>
-
-                      {/* Clear / Reject actions */}
-                      {r.status === 'submitted' && (
-                        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          <div style={{ background: 'rgba(217,119,6,0.1)', border: '1px solid rgba(217,119,6,0.25)', borderRadius: 10, padding: '10px 12px', fontSize: 12, color: '#fbbf24', lineHeight: 1.5 }}>
-                            ⚠️ Only clear after the expense amount has been <strong>physically paid</strong> to the salesperson and the payment is <strong>recorded in Zoho Inventory</strong>. This cannot be undone.
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+                                        gap: 16, borderTop: `0.5px solid ${t.border}`, paddingTop: 14 }}>
+                            <span style={{ fontSize: 14, fontWeight: 400, color: t.text2 }}>Total</span>
+                            <span style={{ fontSize: 15, fontWeight: 500, color: t.text }}>
+                              {money(reportTotal(r.id!))}
+                            </span>
                           </div>
-                          <input value={clearNote} onChange={e => setClearNote(e.target.value)}
-                            placeholder="Clear note (optional) — e.g. Paid via UPI"
-                            style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '8px 10px', fontSize: 13, color: '#fff', outline: 'none', boxSizing: 'border-box' }} />
-                          <button onClick={() => handleClear(r)} disabled={!!clearingId || !!rejectingId}
-                            style={{ width: '100%', background: (clearingId || rejectingId) ? '#475569' : 'rgba(22,163,74,0.12)', border: '1px solid rgba(22,163,74,0.3)', color: '#86efac', borderRadius: 10, padding: '11px', fontSize: 14, fontWeight: 800 }}>
-                            {clearingId === r.id ? 'Processing...' : `✅ Clear ₹${reportTotal(r.id!).toLocaleString()}`}
-                          </button>
-                          <input value={rejectNote} onChange={e => setRejectNote(e.target.value)}
-                            placeholder="Rejection reason (required)"
-                            style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(220,38,38,0.2)', borderRadius: 8, padding: '8px 10px', fontSize: 13, color: '#fff', outline: 'none', boxSizing: 'border-box' }} />
-                          <button onClick={() => handleReject(r)} disabled={!!clearingId || !!rejectingId}
-                            style={{ width: '100%', background: (clearingId || rejectingId) ? '#475569' : 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.25)', color: '#fca5a5', borderRadius: 10, padding: '11px', fontSize: 13, fontWeight: 700 }}>
-                            {rejectingId === r.id ? 'Processing...' : '❌ Reject'}
-                          </button>
+
+                          {r.status === 'submitted' && (
+                            <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 460 }}>
+                              <Note tone="warn">
+                                Clear this only once the money has physically reached the salesperson
+                                and the payment is recorded in Zoho Inventory. It cannot be undone.
+                              </Note>
+
+                              <Field label="Note on clearing" hint="Optional. How it was paid, for example.">
+                                <input value={clearNote} onChange={e => setClearNote(e.target.value)}
+                                  placeholder="Paid via UPI" style={inputStyle(t)} />
+                              </Field>
+                              <div>
+                                <PrimaryButton onClick={() => handleClear(r)} disabled={!!clearingId || !!rejectingId}>
+                                  {clearingId === r.id ? 'Clearing' : `Clear ${money(reportTotal(r.id!))}`}
+                                </PrimaryButton>
+                              </div>
+
+                              <Field label="Reason for sending it back" hint="Required if you send it back.">
+                                <input value={rejectNote} onChange={e => setRejectNote(e.target.value)}
+                                  placeholder="Fuel bill missing for Tuesday" style={inputStyle(t)} />
+                              </Field>
+                              <div>
+                                <GhostButton onClick={() => handleReject(r)} disabled={!!clearingId || !!rejectingId}>
+                                  {rejectingId === r.id ? 'Sending back' : 'Send back for edits'}
+                                </GhostButton>
+                              </div>
+                            </div>
+                          )}
+
+                          {r.status === 'cleared' && r.clearNote && (
+                            <div style={{ fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 12 }}>
+                              {r.clearNote}
+                            </div>
+                          )}
+                          {r.status === 'rejected' && (r as any).rejectNote && (
+                            <div style={{ fontSize: 13, fontWeight: 400, color: t.warn, marginTop: 12 }}>
+                              {(r as any).rejectNote}
+                            </div>
+                          )}
                         </div>
                       )}
-                      {r.status === 'cleared' && r.clearNote && (
-                        <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>📝 {r.clearNote}</div>
-                      )}
-                      {r.status === 'rejected' && (r as any).rejectNote && (
-                        <div style={{ fontSize: 12, color: '#f87171', marginTop: 4 }}>❌ {(r as any).rejectNote}</div>
-                      )}
                     </div>
-                  )}
-                </div>
-              )
-            })}
+                  )
+                })}
+              </div>
+            )}
           </>
         )}
       </div>
