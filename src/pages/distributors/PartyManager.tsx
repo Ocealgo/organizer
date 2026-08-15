@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, deleteField } from 'firebase/firestore'
+import { collection, addDoc, deleteDoc, doc, updateDoc, deleteField } from 'firebase/firestore'
+import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import { Party, PartyType, PartyCategory, Dispatch, UnifiedAllocation, Product } from '../../types'
 import { useAuth } from '../../context/AuthContext'

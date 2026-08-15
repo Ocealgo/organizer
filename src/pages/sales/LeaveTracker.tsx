@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { collection, onSnapshot, updateDoc, doc, addDoc, deleteDoc, query, orderBy } from 'firebase/firestore'
+import { collection, updateDoc, doc, addDoc, deleteDoc, query, orderBy } from 'firebase/firestore'
+import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import { LeaveRecord, AppUser, Holiday } from '../../types'
 import { useTheme } from '../../context/ThemeContext'

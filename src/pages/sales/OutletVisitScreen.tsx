@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { collection, addDoc, onSnapshot, query, where, updateDoc, doc } from 'firebase/firestore'
+import { collection, addDoc, query, where, updateDoc, doc } from 'firebase/firestore'
+import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
   AppUser, DutySession, OutletVisit, Party, Product, GeoPoint,

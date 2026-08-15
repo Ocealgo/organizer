@@ -2,7 +2,6 @@
 import {
   collection,
   addDoc,
-  onSnapshot,
   updateDoc,
   deleteDoc,
   doc,
@@ -13,6 +12,7 @@ import {
   increment,
   getDocs,
 } from "firebase/firestore";
+import { onSnapshot } from "../../data/live";
 import { db } from "../../firebase";
 import {
   AppUser,

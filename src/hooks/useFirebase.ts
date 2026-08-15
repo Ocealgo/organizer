@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { collection, doc, setDoc, getDocs, query, where, onSnapshot, getDoc, updateDoc } from 'firebase/firestore'
+import { collection, doc, setDoc, getDocs, query, where, getDoc, updateDoc } from 'firebase/firestore'
+import { onSnapshot } from '../data/live'
 import { db } from '../firebase'
 import { CheckIn, PostStatus, StockConfig } from '../types'
 

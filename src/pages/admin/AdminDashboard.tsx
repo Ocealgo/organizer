@@ -2,7 +2,6 @@ import { useState, useEffect, ReactNode } from "react";
 import DateInput from "../../components/DateInput";
 import {
   collection,
-  onSnapshot,
   addDoc,
   doc,
   updateDoc,
@@ -13,6 +12,7 @@ import {
   query,
   where,
 } from "firebase/firestore";
+import { onSnapshot } from "../../data/live";
 import { db } from "../../firebase";
 import { usePostStatuses, useStockConfig } from "../../hooks/useFirebase";
 import {
@@ -195,8 +195,8 @@ export default function AdminDashboard() {
     const today = localDateStr();
     return onSnapshot(
       query(collection(db, "duty_sessions"), where("date", "==", today)),
+      // No error callback needed — data/live.ts logs the path and surfaces it.
       (snap: any) => setTodayDuty(snap.docs.map((d: any) => ({ id: d.id, ...d.data() }))),
-      (err: any) => console.error("[AdminDashboard] duty_sessions listener failed", err),
     );
   }, []);
 

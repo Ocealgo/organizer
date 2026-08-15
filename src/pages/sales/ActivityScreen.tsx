@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { collection, onSnapshot, query, where } from 'firebase/firestore'
+import { collection, query, where } from 'firebase/firestore'
+import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { collection, addDoc, onSnapshot, updateDoc, doc, runTransaction, increment } from 'firebase/firestore'
+import { collection, addDoc, updateDoc, doc, runTransaction, increment } from 'firebase/firestore'
+import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import { UnifiedAllocation, Party, PaymentType, AllocationStatus, Product, RetailerIndent, IndentStatus, StockConfig } from '../../types'
 import { useAuth } from '../../context/AuthContext'

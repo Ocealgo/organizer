@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { collection, addDoc, onSnapshot, updateDoc, doc } from 'firebase/firestore'
+import { collection, addDoc, updateDoc, doc } from 'firebase/firestore'
+import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import { Reminder, WorkspaceCategory, ReminderType } from '../../types'
 import { useAuth } from '../../context/AuthContext'

@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
 import {
   collection,
-  onSnapshot,
   addDoc,
   updateDoc,
   doc,
 } from "firebase/firestore";
+import { onSnapshot } from "../../data/live";
 import { db } from "../../firebase";
 import {
   Party,

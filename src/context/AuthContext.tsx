@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import { onAuthStateChanged, User } from 'firebase/auth'
-import { doc, getDoc, onSnapshot } from 'firebase/firestore'
+import { doc, getDoc } from 'firebase/firestore'
+import { onSnapshot } from '../data/live'
 import { auth, db } from '../firebase'
 import { AppUser } from '../types'
 

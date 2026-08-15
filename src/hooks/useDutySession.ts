@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { collection, onSnapshot, query, where, getDocs, orderBy, limit } from 'firebase/firestore'
+import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore'
+import { onSnapshot } from '../data/live'
 import { db } from '../firebase'
 import { DutySession } from '../types'
 import { localDateStr } from '../utils/date'

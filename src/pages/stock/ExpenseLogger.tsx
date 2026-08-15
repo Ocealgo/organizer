@@ -1,9 +1,18 @@
 import React, { useState, useEffect } from 'react'
 import * as XLSX from 'xlsx'
 import {
-  collection, addDoc, onSnapshot, query, where,
-  updateDoc, doc, setDoc, getDoc, deleteDoc, getDocs,
+  collection,
+  addDoc,
+  query,
+  where,
+  updateDoc,
+  doc,
+  setDoc,
+  getDoc,
+  deleteDoc,
+  getDocs,
 } from 'firebase/firestore'
+import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
   AllowanceType, ExpenseCategory, ExpenseConfig,

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { collection, onSnapshot } from 'firebase/firestore'
+import { collection } from 'firebase/firestore'
+import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import { Party, Dispatch, MonthlyRequest, Product } from '../../types'
 import DateInput from '../../components/DateInput'

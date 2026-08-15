@@ -2,7 +2,6 @@
 import {
   collection,
   addDoc,
-  onSnapshot,
   updateDoc,
   doc,
   query,
@@ -12,6 +11,7 @@ import {
   deleteDoc,
   getDocs,
 } from "firebase/firestore";
+import { onSnapshot } from "../../data/live";
 import { db } from "../../firebase";
 import {
   Party,

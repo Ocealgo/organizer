@@ -12,6 +12,7 @@ import OnlineMarketingView from "./pages/marketing/OnlineMarketingView";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import UserManagement from "./pages/admin/UserManagement";
 import NotificationBell from "./components/NotificationBell";
+import ListenerErrors from "./components/ListenerErrors";
 import { Eyebrow, GhostButton } from "./components/ui";
 
 // Nothing is auto-seeded any more.
@@ -390,6 +391,10 @@ function AppWithTheme() {
   return (
     <ThemeProvider userId={appUser?.uid || firebaseUser?.uid}>
       <AppContent />
+      {/* Mounted once, outside the route switch, so a listener that fails on
+          any screen is reported. Renders nothing unless a super admin is
+          signed in and something has actually failed. */}
+      <ListenerErrors />
     </ThemeProvider>
   );
 }

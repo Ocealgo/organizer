@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, CSSProperties } from 'react'
 import * as XLSX from 'xlsx'
-import { collection, onSnapshot, query, where } from 'firebase/firestore'
+import { collection, query, where } from 'firebase/firestore'
+import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
   AppUser, Holiday, LeaveRecord,

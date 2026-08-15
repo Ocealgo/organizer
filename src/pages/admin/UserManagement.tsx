@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore'
+import { collection, doc, updateDoc } from 'firebase/firestore'
+import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import { AppUser, UserRole, Permission, PermissionMap } from '../../types'
 import { useAuth } from '../../context/AuthContext'
