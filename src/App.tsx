@@ -7,6 +7,8 @@ import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import LoginPage from "./pages/auth/LoginPage";
 import SignupPage from "./pages/auth/SignupPage";
 import ForgotPasswordPage from "./pages/auth/ForgotPasswordPage";
+import AddPhoneGate from "./pages/auth/AddPhoneGate";
+import ProfilePage from "./pages/profile/ProfilePage";
 import SalesView from "./pages/sales/SalesView";
 import MarketingView from "./pages/marketing/MarketingView";
 import OnlineMarketingView from "./pages/marketing/OnlineMarketingView";
@@ -32,6 +34,7 @@ function AppContent() {
   const [authNotice, setAuthNotice] = useState<string>("");
 
   const [showUserMgmt, setShowUserMgmt] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
 
   if (loading)
     return (
@@ -134,6 +137,17 @@ function AppContent() {
       </div>
     );
 
+  // A mobile number is mandatory, and this is where that is actually true —
+  // the signup form can only speak for accounts made after it started asking.
+  // Everyone else meets it here on their next sign-in.
+  //
+  // super_admin is exempt on purpose. If the phone provider is misconfigured,
+  // the SMS region policy is wrong, or the billing lapses, this screen has no
+  // way past it — and locking the one account that can fix any of those out of
+  // the app would turn a small outage into an unrecoverable one.
+  if (!firebaseUser.phoneNumber && appUser.role !== "super_admin")
+    return <AddPhoneGate name={appUser.name} />;
+
   // sales_manager lands on the AdminDashboard too — what they actually see
   // inside it is decided per-permission, not per-role.
   const management = isManagement(appUser);
@@ -148,14 +162,17 @@ function AppContent() {
         showUsers={canViewUsers}
         theme={theme}
         onThemeToggle={toggle}
-        onUsers={() => setShowUserMgmt(true)}
+        onUsers={() => { setShowProfile(false); setShowUserMgmt(true); }}
+        onProfile={() => { setShowUserMgmt(false); setShowProfile(true); }}
         onSignOut={() => signOut(auth)}
       />
       {/* Every screen below is written phone-first. This is the only place the
           wide-screen case is handled: one centred column instead of a phone
           layout stretched across a monitor. */}
       <div className="oc-page">
-        {showUserMgmt ? (
+        {showProfile ? (
+          <ProfilePage onBack={() => setShowProfile(false)} />
+        ) : showUserMgmt ? (
           <UserManagement onBack={() => setShowUserMgmt(false)} />
         ) : (
           <>
@@ -204,6 +221,7 @@ function TopBar({
   theme,
   onThemeToggle,
   onUsers,
+  onProfile,
   onSignOut,
 }: {
   roleLabel: string;
@@ -211,6 +229,7 @@ function TopBar({
   theme: string;
   onThemeToggle: () => void;
   onUsers: () => void;
+  onProfile: () => void;
   onSignOut: () => void;
 }) {
   const { t } = useTheme();
@@ -284,6 +303,7 @@ function TopBar({
             style={{ display: "flex", gap: 16, alignItems: "center" }}
           >
             {showUsers && <TextAction onClick={onUsers}>Team</TextAction>}
+            <TextAction onClick={onProfile}>Account</TextAction>
             <TextAction onClick={onThemeToggle}>
               {theme === "dark" ? "Light" : "Dark"}
             </TextAction>
@@ -297,6 +317,7 @@ function TopBar({
               showUsers={showUsers}
               theme={theme}
               onUsers={onUsers}
+              onProfile={onProfile}
               onThemeToggle={onThemeToggle}
               onSignOut={onSignOut}
             />
@@ -312,6 +333,7 @@ function HeaderMenu({
   showUsers,
   theme,
   onUsers,
+  onProfile,
   onThemeToggle,
   onSignOut,
 }: {
@@ -319,6 +341,7 @@ function HeaderMenu({
   showUsers: boolean;
   theme: string;
   onUsers: () => void;
+  onProfile: () => void;
   onThemeToggle: () => void;
   onSignOut: () => void;
 }) {
@@ -405,6 +428,7 @@ function HeaderMenu({
             {roleLabel}
           </div>
           {showUsers && item("Team", onUsers)}
+          {item("Account", onProfile)}
           {item(theme === "dark" ? "Light theme" : "Dark theme", onThemeToggle)}
           {item("Sign out", onSignOut)}
         </div>

@@ -113,8 +113,19 @@ service cloud.firestore {
              'offline_marketing', 'online_marketing'
            ];
 
-      // Self-service: display name only. Never role, status or permissions.
-      allow update: if isSelf(uid) && onlyChanged(['name']);
+      // Self-service: display name and mobile number. Never role, status or
+      // permissions.
+      //
+      // The number is pinned to the one on the auth token, which Firebase only
+      // puts there after an SMS code has actually been confirmed. So this
+      // cannot be used to claim a colleague's number, or to write a number
+      // nobody has proved they hold — the document is forced to agree with
+      // what was verified rather than merely being checked by the form that
+      // submitted it.
+      allow update: if isSelf(uid)
+        && onlyChanged(['name', 'phone'])
+        && (isUnchanged('phone')
+            || request.resource.data.phone == request.auth.token.phone_number);
 
       // Admin: approve / reject / deactivate / change role / tune permissions.
       //   · a super_admin's doc is untouchable by anyone

@@ -13,6 +13,7 @@
  */
 import {
   RecaptchaVerifier, signInWithPhoneNumber, linkWithPhoneNumber, deleteUser,
+  PhoneAuthProvider, linkWithCredential, updatePhoneNumber,
   type ConfirmationResult, type User,
 } from 'firebase/auth'
 import { doc, getDoc } from 'firebase/firestore'
@@ -49,6 +50,36 @@ export const sendSignInCode = (tenDigits: string): Promise<ConfirmationResult> =
 /** Send a code to attach a number to the account that is already signed in. */
 export const sendLinkCode = (user: User, tenDigits: string): Promise<ConfirmationResult> =>
   withVerifier(v => linkWithPhoneNumber(user, toE164(tenDigits), v))
+
+/**
+ * Send a code to a number somebody wants to put ON their account.
+ *
+ * The code goes to the NEW number, never the one already registered. Texting
+ * the old one would only prove they own the number they are trying to replace,
+ * which they demonstrated by being signed in — it says nothing about whether
+ * the new one is theirs. Get a digit wrong under that scheme and the account's
+ * only recovery route now points at a stranger's handset.
+ */
+export const sendPhoneChangeCode = (tenDigits: string): Promise<string> =>
+  withVerifier(v => new PhoneAuthProvider(auth).verifyPhoneNumber(toE164(tenDigits), v))
+
+/**
+ * Put the freshly-verified number on the account.
+ *
+ * Linking and updating are different calls for what a user experiences as one
+ * action, so the difference is decided here rather than at every call site.
+ */
+export async function attachPhone(user: User, verificationId: string, code: string) {
+  const credential = PhoneAuthProvider.credential(verificationId, code)
+  if (user.phoneNumber) await updatePhoneNumber(user, credential)
+  else await linkWithCredential(user, credential)
+
+  // The rules check the users document against the phone number on the auth
+  // token, and the token still carries the old one — or none — until it is
+  // refreshed. Without this the write that follows is denied, which looks like
+  // a permissions bug and is really a staleness one.
+  await user.getIdToken(true)
+}
 
 /**
  * Confirm a code, and refuse to be signed in as a stranger.
