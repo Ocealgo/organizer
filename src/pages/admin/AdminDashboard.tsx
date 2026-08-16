@@ -838,7 +838,7 @@ export default function AdminDashboard() {
           borderBottom: `0.5px solid ${t.border}`,
         }}
       >
-        <div style={{ display: "flex", gap: 24, overflowX: "auto" }}>
+        <div className="oc-scroll-x" style={{ display: "flex", gap: 24 }}>
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -1186,7 +1186,9 @@ export default function AdminDashboard() {
                     {dateMode === "day" && (
                       <>
                         {/* Last seven days */}
-                        <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+                        {/* Seven fixed cells. They share the width when there is
+                            width to share and scroll when there is not. */}
+                        <div className="oc-scroll-x" style={{ display: "flex", gap: 4, marginBottom: 10 }}>
                           {Array.from({ length: 7 }, (_, i) => {
                             const offset = 6 - i;
                             const d = new Date();
@@ -1199,7 +1201,7 @@ export default function AdminDashboard() {
                               <button key={dateStr} className="oc-row"
                                 onClick={() => setDateDay(dateStr)}
                                 style={{
-                                  flex: 1, display: "flex", flexDirection: "column",
+                                  flex: "1 0 42px", display: "flex", flexDirection: "column",
                                   alignItems: "center", gap: 2, padding: "8px 2px",
                                   background: isSelected ? t.tint : "none",
                                   border: `0.5px solid ${isSelected ? t.text2 : t.border}`,

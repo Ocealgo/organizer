@@ -185,12 +185,26 @@ All new parties start as `prospect`.
 - Email
 - Parent Distributor (for retailers — enables indent/distribution flow)
 - Low stock threshold
+- Channel (`outletType`) — decides which extra fields the Outlet Visit form makes mandatory
 
 **Duplicate guard:** same name + place + district + pincode = blocked with error message.
 
 **On save:**
 - Party created with `status: 'prospect'`
 - If added by a sales rep → alert created for admin: `new_party` type
+
+#### Adding a Party From the Field
+
+The desk form above is too long for a rep standing in a shop, so the Outlet Visit screen
+("Log a visit" → "Which outlet?") carries its own **Add an outlet** action, backed by
+`components/QuickAddParty.tsx`.
+
+- Required: name, phone (same 10-digit validation and duplicate check), place
+- Optional: address, parent distributor; type, channel and category are one tap each
+- District, state, pincode and the opening allocation are left blank and completed later from Network
+- The current GPS fix is stored as the outlet's `coordinates`, so the next visit geofences cleanly
+- Saved as `status: 'prospect'` with a `new_party` alert, exactly like a desk-added party, then the
+  rep drops straight into the punch-in confirmation for the shop they just added
 
 #### Editing a Party
 

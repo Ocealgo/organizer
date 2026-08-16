@@ -118,21 +118,6 @@ function AppContent() {
   const isSales =
     appUser.role === "offline_sales" || appUser.role === "online_sales";
 
-  if (showUserMgmt)
-    return (
-      <div style={{ background: t.bg, minHeight: "100vh" }}>
-        <TopBar
-          roleLabel={ROLE_LABELS_PLAIN[appUser.role]}
-          showUsers={canViewUsers}
-          theme={theme}
-          onThemeToggle={toggle}
-          onUsers={() => setShowUserMgmt(true)}
-          onSignOut={() => signOut(auth)}
-        />
-        <UserManagement onBack={() => setShowUserMgmt(false)} />
-      </div>
-    );
-
   return (
     <div style={{ background: t.bg, minHeight: "100vh" }}>
       <TopBar
@@ -143,10 +128,21 @@ function AppContent() {
         onUsers={() => setShowUserMgmt(true)}
         onSignOut={() => signOut(auth)}
       />
-      {isSales && <SalesView name={appUser.name} />}
-      {appUser.role === "offline_marketing" && <MarketingView />}
-      {appUser.role === "online_marketing" && <OnlineMarketingView />}
-      {management && <AdminDashboard />}
+      {/* Every screen below is written phone-first. This is the only place the
+          wide-screen case is handled: one centred column instead of a phone
+          layout stretched across a monitor. */}
+      <div className="oc-page">
+        {showUserMgmt ? (
+          <UserManagement onBack={() => setShowUserMgmt(false)} />
+        ) : (
+          <>
+            {isSales && <SalesView name={appUser.name} />}
+            {appUser.role === "offline_marketing" && <MarketingView />}
+            {appUser.role === "online_marketing" && <OnlineMarketingView />}
+            {management && <AdminDashboard />}
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -197,85 +193,93 @@ function TopBar({
   const { t } = useTheme();
   return (
     <header
+      className="oc-safe-top"
       style={{
         background: t.bg,
         borderBottom: `0.5px solid ${t.border}`,
-        padding: "14px 20px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 16,
         position: "sticky",
         top: 0,
         zIndex: 50,
       }}
     >
+      {/* The rule spans the window; its contents line up with the page column. */}
       <div
-        style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}
-      >
-        <span
-          style={{
-            fontSize: 15,
-            fontWeight: 500,
-            color: t.text,
-            whiteSpace: "nowrap",
-            letterSpacing: "-0.01em",
-          }}
-        >
-          Ocealgo
-        </span>
-        <span
-          className="oc-md-up"
-          style={{
-            fontSize: 11,
-            fontWeight: 400,
-            color: t.text2,
-            border: `0.5px solid ${t.border}`,
-            borderRadius: 4,
-            padding: "2px 7px",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {roleLabel}
-        </span>
-      </div>
-
-      <nav
+        className="oc-page"
         style={{
+          padding: "14px 20px",
           display: "flex",
-          gap: 16,
           alignItems: "center",
-          flexShrink: 0,
+          justifyContent: "space-between",
+          gap: 16,
         }}
       >
-        <NotificationBell />
-
-        {/* Wide screens: actions inline */}
         <div
-          className="oc-md-up"
-          style={{ display: "flex", gap: 16, alignItems: "center" }}
+          style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}
         >
-          {showUsers && <TextAction onClick={onUsers}>Team</TextAction>}
-          <TextAction onClick={onThemeToggle}>
-            {theme === "dark" ? "Light" : "Dark"}
-          </TextAction>
-          <TextAction onClick={onSignOut}>Sign out</TextAction>
+          <span
+            style={{
+              fontSize: 15,
+              fontWeight: 500,
+              color: t.text,
+              whiteSpace: "nowrap",
+              letterSpacing: "-0.01em",
+            }}
+          >
+            Ocealgo
+          </span>
+          <span
+            className="oc-md-up"
+            style={{
+              fontSize: 11,
+              fontWeight: 400,
+              color: t.text2,
+              border: `0.5px solid ${t.border}`,
+              borderRadius: 4,
+              padding: "2px 7px",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {roleLabel}
+          </span>
         </div>
 
-        {/* Narrow screens: same actions behind one menu, so nothing wraps */}
-        <div className="oc-sm-only">
-          <HeaderMenu
-            roleLabel={roleLabel}
-            showUsers={showUsers}
-            theme={theme}
-            onUsers={onUsers}
-            onThemeToggle={onThemeToggle}
-            onSignOut={onSignOut}
-          />
-        </div>
-      </nav>
+        <nav
+          style={{
+            display: "flex",
+            gap: 16,
+            alignItems: "center",
+            flexShrink: 0,
+          }}
+        >
+          <NotificationBell />
+
+          {/* Wide screens: actions inline */}
+          <div
+            className="oc-md-up"
+            style={{ display: "flex", gap: 16, alignItems: "center" }}
+          >
+            {showUsers && <TextAction onClick={onUsers}>Team</TextAction>}
+            <TextAction onClick={onThemeToggle}>
+              {theme === "dark" ? "Light" : "Dark"}
+            </TextAction>
+            <TextAction onClick={onSignOut}>Sign out</TextAction>
+          </div>
+
+          {/* Narrow screens: same actions behind one menu, so nothing wraps */}
+          <div className="oc-sm-only">
+            <HeaderMenu
+              roleLabel={roleLabel}
+              showUsers={showUsers}
+              theme={theme}
+              onUsers={onUsers}
+              onThemeToggle={onThemeToggle}
+              onSignOut={onSignOut}
+            />
+          </div>
+        </nav>
+      </div>
     </header>
   );
 }

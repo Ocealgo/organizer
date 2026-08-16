@@ -3,16 +3,46 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <!-- No maximum-scale: pinch-zoom is an accessibility affordance, not a bug.
+         viewport-fit=cover lets the safe-area insets below do their job on
+         notched phones. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0d3d2e" />
     <meta name="description" content="Ocealgo Team Dashboard" />
     <title>Ocealgo — Team App</title>
     <style>
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-      body { background: #060a0f; font-family: 'Trebuchet MS', sans-serif; color: #fff; -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
+      body {
+        background: #060a0f; font-family: 'Trebuchet MS', sans-serif; color: #fff;
+        -webkit-tap-highlight-color: transparent; overflow-x: hidden;
+        /* A shop name, an email or a pasted note must never push the layout
+           wider than the screen. */
+        overflow-wrap: break-word;
+      }
       ::-webkit-scrollbar { display: none; }
       button { font-family: inherit; cursor: pointer; }
       textarea, input { font-family: inherit; }
+      img, svg, video { max-width: 100%; height: auto; }
+
+      /* ── The one content column ────────────────────────────────────────────
+         Every screen is written phone-first with its own 20px inner padding.
+         This centres that column and stops it stretching across a desktop
+         monitor, which is the whole of the wide-screen story: one place to
+         change, no per-screen media queries. */
+      :root { --oc-page-max: 1120px; }
+      .oc-page { width: 100%; max-width: var(--oc-page-max); margin-left: auto; margin-right: auto; }
+
+      /* Anything that genuinely cannot shrink — a cross-tab, a wide chip strip —
+         scrolls inside itself rather than widening the page. */
+      .oc-scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+
+      /* A row of controls that should stack rather than squeeze on a phone. */
+      .oc-wrap { display: flex; flex-wrap: wrap; }
+
+      /* Safe areas — the Android/iOS shell draws under the status bar with
+         viewport-fit=cover. */
+      .oc-safe-top { padding-top: env(safe-area-inset-top, 0px); }
+      body { padding-bottom: env(safe-area-inset-bottom, 0px); }
       @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
       .fade-in { animation: fadeIn 0.25s ease forwards; }
 
@@ -27,6 +57,16 @@
       .oc-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
       @media (max-width: 560px) {
         .oc-modules, .oc-stats { grid-template-columns: 1fr; }
+      }
+
+      /* iOS Safari zooms the page whenever a focused control is under 16px, and
+         the design uses 14px throughout. `-webkit-touch-callout` is the usual
+         iOS-only probe, so Android and desktop keep the intended size and only
+         the browser with the bug pays for it. */
+      @supports (-webkit-touch-callout: none) {
+        @media (max-width: 599px) {
+          input, textarea, select { font-size: 16px !important; }
+        }
       }
 
       /* A list sitting directly under a tab strip: the strip already draws the

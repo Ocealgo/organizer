@@ -142,7 +142,9 @@ export default function LeaveHistory({ leaveRecords, onBack }: Props) {
         onBack={onBack}
       />
 
-      <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 28 }}>
+      {/* A column of records, not a table — capped so the lines stay a
+          readable length on a wide screen. */}
+      <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 28, maxWidth: 820 }}>
 
         <Section
           label={monthLabel}

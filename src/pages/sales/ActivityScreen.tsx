@@ -246,7 +246,9 @@ export default function ActivityScreen({ onBack, onViewAllocation, onViewPayment
         ]}
       />
 
-      <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 28 }}>
+      {/* A column of records, not a table — capped so the lines stay a
+          readable length on a wide screen. */}
+      <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 28, maxWidth: 820 }}>
 
         <Section label="Period">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -261,7 +263,7 @@ export default function ActivityScreen({ onBack, onViewAllocation, onViewPayment
               ]}
             />
             {timeFilter === 'custom' ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, maxWidth: 460 }}>
+              <div className="oc-wrap" style={{ alignItems: 'center', gap: 10, maxWidth: 460 }}>
                 <DateInput type="date" value={customStart} onChange={setCustomStart} />
                 <span style={{ fontSize: 13, fontWeight: 400, color: t.text3 }}>to</span>
                 <DateInput type="date" value={customEnd} onChange={setCustomEnd} />

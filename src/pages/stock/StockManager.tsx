@@ -131,10 +131,10 @@ export default function StockManager({ onBack }: Props) {
             {isAdmin && (
               <Section label="Carton size">
                 {editCarton ? (
-                  <div style={{ display: 'flex', gap: 8, maxWidth: 420 }}>
+                  <div className="oc-wrap" style={{ gap: 8, maxWidth: 420, alignItems: 'center' }}>
                     <input type="number" inputMode="numeric" value={newCarton} autoFocus
                       onChange={e => setNewCarton(e.target.value)} placeholder="Packets per carton"
-                      style={inputStyle(t)} />
+                      style={{ ...inputStyle(t), flex: '1 1 160px', width: 'auto' }} />
                     <PrimaryButton onClick={updateCarton}>Save</PrimaryButton>
                     <GhostButton onClick={() => setEditCarton(false)}>Cancel</GhostButton>
                   </div>
@@ -189,11 +189,12 @@ export default function StockManager({ onBack }: Props) {
                             )}
                           </div>
                           {isEditing && (
-                            <div style={{ display: 'flex', gap: 8, marginTop: 12, maxWidth: 420 }}>
+                            <div className="oc-wrap" style={{ gap: 8, marginTop: 12, maxWidth: 420, alignItems: 'center' }}>
                               <input type="number" inputMode="numeric" autoFocus
                                 value={editingProductStock[p.id!] ?? ''}
                                 onChange={e => setEditingProductStock(prev => ({ ...prev, [p.id!]: e.target.value }))}
-                                placeholder="Total packets in stock" style={inputStyle(t)} />
+                                placeholder="Total packets in stock"
+                                style={{ ...inputStyle(t), flex: '1 1 160px', width: 'auto' }} />
                               <PrimaryButton onClick={() => handleSaveProductStock(p.id!)}>Save</PrimaryButton>
                               <GhostButton onClick={() => setEditingProductActive(null)}>Cancel</GhostButton>
                             </div>

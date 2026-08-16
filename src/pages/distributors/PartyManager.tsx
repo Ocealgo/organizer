@@ -2,7 +2,10 @@ import { useState, useEffect } from 'react'
 import { collection, addDoc, deleteDoc, doc, updateDoc, deleteField } from 'firebase/firestore'
 import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
-import { Party, PartyType, PartyCategory, Dispatch, UnifiedAllocation, Product } from '../../types'
+import {
+  Party, PartyType, PartyCategory, Dispatch, UnifiedAllocation, Product,
+  OutletType, OUTLET_TYPE_LABEL,
+} from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { can } from '../../auth/permissions'
 import { useTheme } from '../../context/ThemeContext'
@@ -26,6 +29,7 @@ function validatePhone(p: string) { return /^[6-9]\d{9}$/.test(p.trim()) }
 
 const emptyForm = {
   name: '', type: 'distributor' as PartyType, category: 'FMCG' as PartyCategory,
+  outletType: 'distributor' as OutletType,
   phone: '', address: '', place: '', district: '', state: '', pincode: '', quantity: '',
   lowStockThreshold: '', underDistributorId: '', email: '',
   productId: '', productName: '',
@@ -142,6 +146,7 @@ export default function PartyManager({ onBack }: Props) {
     const packets = p.packetsAllocated || 0
     setForm({
       name: p.name, type: p.type, category: p.category || 'FMCG',
+      outletType: p.outletType ?? (p.type === 'distributor' ? 'distributor' : 'general'),
       phone: p.phone, address: p.address, place: p.place || '',
       district: p.district || '',
       state: p.state || '',
@@ -180,6 +185,7 @@ export default function PartyManager({ onBack }: Props) {
       const underDist = distributors.find(d => d.id === form.underDistributorId)
       const data: any = {
         name: form.name.trim(), type: form.type, category: form.category,
+        outletType: form.outletType,
         phone: form.phone.trim(), address: form.address.trim(), place: form.place.trim(),
         district: form.district.trim(),
         state: form.state.trim(),
@@ -288,7 +294,9 @@ export default function PartyManager({ onBack }: Props) {
         ]}
       />
 
-      <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 28 }}>
+      {/* A column of records, not a table — capped so the lines stay a
+          readable length on a wide screen. */}
+      <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 28, maxWidth: 820 }}>
 
         {/* LIST */}
         {tab === 'list' && (
@@ -512,7 +520,11 @@ export default function PartyManager({ onBack }: Props) {
               <Field label="Type">
                 <ChipGroup
                   value={form.type}
-                  onChange={ty => setForm({ ...form, type: ty })}
+                  onChange={ty => setForm({
+                    ...form, type: ty,
+                    outletType: ty === 'distributor' ? 'distributor' : 'general',
+                    ...(ty === 'distributor' ? { underDistributorId: '' } : {}),
+                  })}
                   options={[
                     { id: 'distributor' as PartyType, label: 'Distributor' },
                     { id: 'retailer' as PartyType, label: 'Retailer' },
@@ -520,6 +532,17 @@ export default function PartyManager({ onBack }: Props) {
                 />
               </Field>
             )}
+
+            <Field label="Channel"
+              hint="Decides which extra fields a rep must fill in when visiting them.">
+              <CustomSelect
+                value={form.outletType}
+                onChange={v => setForm({ ...form, outletType: v as OutletType })}
+                searchable={false}
+                options={(Object.keys(OUTLET_TYPE_LABEL) as OutletType[])
+                  .map(k => ({ value: k, label: OUTLET_TYPE_LABEL[k] }))}
+              />
+            </Field>
 
             {!editingId && (
               <Note>

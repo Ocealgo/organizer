@@ -470,17 +470,17 @@ export default function SalesReport({ onBack }: Props) {
             <div style={{ fontSize: 11, color: t.text3, fontWeight: 400, letterSpacing: '0.09em', textTransform: 'uppercase' }}>
               {scope === 'all' ? 'Team totals' : `${rows[0]?.name ?? ''} totals`}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 8 }}>
               <Stat label="Visits" value={team.visits} color="#0891b2" />
               <Stat label="Unique shops" value={team.uniqueParties} color="#6366f1" />
               <Stat label="Interested" value={team.interested} color="#16a34a" sub={`${conversion}%`} />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 8 }}>
               <Stat label="Orders" value={team.orders} color="#d97706" sub={`₹${team.orderValue.toLocaleString('en-IN')}`} />
               <Stat label="Collected" value={`₹${(team.paymentValue / 1000).toFixed(0)}k`} color="#7c3aed" sub={`${team.payments} payments`} />
               <Stat label="Expenses" value={`₹${team.expenses.toLocaleString('en-IN')}`} color="#dc2626" />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 8 }}>
               <Stat label="Working days" value={workingDays} />
               <Stat label="Days logged" value={team.daysLogged} color="#16a34a" />
               <Stat label="Leave" value={team.fullDayLeave} sub={team.halfDayLeave > 0 ? `+${team.halfDayLeave} half` : undefined} color="#f59e0b" />

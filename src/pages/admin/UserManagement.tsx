@@ -265,7 +265,7 @@ function PendingCard({ user, updating, roles, onApprove, onReject }: {
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+      <div className="oc-wrap" style={{ gap: 8, marginTop: 16 }}>
         <GhostButton onClick={() => onApprove(user.uid, role)} disabled={isUpdating}>
           Approve
         </GhostButton>

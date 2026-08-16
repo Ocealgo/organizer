@@ -11,6 +11,7 @@ import {
 } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
+import QuickAddParty from '../../components/QuickAddParty'
 import { PageHeader, Eyebrow, GhostButton, PrimaryButton, EmptyState, inputStyle } from '../../components/ui'
 import { getFixOrNull, checkGeofence, distanceM, DEFAULT_GEOFENCE_RADIUS_M } from '../../device/location'
 import { localDateStr } from '../../utils/date'
@@ -46,6 +47,9 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
   const [fixError, setFixError] = useState<string | null>(null)
   const [locating, setLocating] = useState(false)
   const [pending, setPending] = useState<Party | null>(null)
+  // A shop that is not on the list yet is added from here rather than sending
+  // the rep back out to Network mid-round.
+  const [adding, setAdding] = useState(false)
   const [overrideReason, setOverrideReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -239,6 +243,24 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
     )
   }
 
+  // ── ADD AN OUTLET ─────────────────────────────────────────────────────────
+  if (!visit && adding) {
+    return (
+      <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 56 }}>
+        <PageHeader eyebrow="Visit" title="Add an outlet" onBack={() => setAdding(false)}
+          subtitle="A new distributor or retailer, ready to visit straight away." />
+        <div style={{ padding: '24px 20px' }}>
+          <QuickAddParty
+            parties={parties}
+            coordinates={fix}
+            onCancel={() => setAdding(false)}
+            onCreated={party => { setAdding(false); setSearch(''); setPending(party) }}
+          />
+        </div>
+      </div>
+    )
+  }
+
   // ── PICK AN OUTLET ────────────────────────────────────────────────────────
   if (!visit) {
     const list = parties
@@ -255,6 +277,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
     return (
       <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 56 }}>
         <PageHeader eyebrow="Visit" title="Which outlet?" onBack={onBack}
+          right={<GhostButton onClick={() => setAdding(true)}>Add an outlet</GhostButton>}
           subtitle={locating ? 'Finding your location…'
             : fix ? `Sorted by distance from you, accurate to about ${Math.round(fix.accuracy)} m.`
             : fixError ?? undefined} />
@@ -271,7 +294,14 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
 
         <div style={{ padding: '20px 20px 0' }}>
           {list.length === 0 ? (
-            <EmptyState title="No outlets found" body="Try a different search, or add the outlet from your network first." />
+            <EmptyState
+              title="No outlets found"
+              body={search.trim()
+                ? `Nothing matches “${search.trim()}”. Change the search, or add this shop as a new distributor or retailer.`
+                : 'Your network is empty. Add the first distributor or retailer to start visiting.'}
+              actionLabel="Add an outlet"
+              onAction={() => setAdding(true)}
+            />
           ) : (
             <div className="oc-list-flush" style={{ borderBottom: `0.5px solid ${t.border}` }}>
               {list.map(({ party, d }) => {
@@ -295,6 +325,16 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
               })}
             </div>
           )}
+
+          {list.length > 0 && (
+            <div style={{ marginTop: 18, display: 'flex', alignItems: 'baseline',
+                          flexWrap: 'wrap', gap: 12 }}>
+              <span style={{ fontSize: 13, fontWeight: 400, color: t.text3 }}>
+                Standing in a shop that is not on this list?
+              </span>
+              <GhostButton onClick={() => setAdding(true)}>Add an outlet</GhostButton>
+            </div>
+          )}
         </div>
 
         {/* Confirmation — states the distance for the record, blocks nothing */}
@@ -306,11 +346,15 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
               ? 'This outlet has no position on file yet. Punching in will set it from where you are standing.'
               : `You are about ${geo!.distanceM} m from where this outlet is registered.`
           return (
-            <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex', alignItems: 'flex-end' }}>
+            <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex',
+                          alignItems: 'flex-end', justifyContent: 'center' }}>
               <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)' }}
                 onClick={() => setPending(null)} />
-              <div style={{ position: 'relative', zIndex: 1, width: '100%', background: t.bg2,
-                            borderTop: `0.5px solid ${t.border}`, padding: '24px 20px 32px' }}>
+              {/* A sheet on a phone, a centred panel above the fold on a desktop. */}
+              <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: 520,
+                            background: t.bg2, border: `0.5px solid ${t.border}`,
+                            borderRadius: '10px 10px 0 0',
+                            padding: '24px 20px calc(32px + env(safe-area-inset-bottom, 0px))' }}>
                 <div style={{ fontSize: 17, fontWeight: 500, color: t.text, marginBottom: 6 }}>{pending.name}</div>
                 <div style={{ fontSize: 14, color: t.text3, lineHeight: 1.6, marginBottom: 18 }}>{note}</div>
                 <div style={{ display: 'flex', gap: 10 }}>
@@ -341,7 +385,10 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
           visit.distanceFromOutletM !== undefined ? ` · ${visit.distanceFromOutletM} m away` : ''}`}
       />
 
-      <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 28 }}>
+      {/* A single-column form. Capped so it stays a readable column on a
+          desktop rather than a row of 1000px-wide inputs. */}
+      <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column',
+                    gap: 28, maxWidth: 620 }}>
 
         {/* Stock audit */}
         <div>
@@ -367,14 +414,14 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
         <div>
           <div style={{ marginBottom: 10 }}><Eyebrow>Competitor brands seen</Eyebrow></div>
           {competitors.map((c, i) => (
-            <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+            <div key={i} className="oc-wrap" style={{ gap: 8, marginBottom: 8, alignItems: 'center' }}>
               <input value={c.brand} placeholder="Brand"
                 onChange={e => setCompetitors(competitors.map((x, j) => j === i ? { ...x, brand: e.target.value } : x))}
-                style={{ ...inputStyle(t), flex: 2 }} />
+                style={{ ...inputStyle(t), flex: '2 1 140px', width: 'auto' }} />
               <input type="number" inputMode="decimal" value={c.pricePerPack ?? ''} placeholder="₹/pack"
                 onChange={e => setCompetitors(competitors.map((x, j) => j === i
                   ? { ...x, pricePerPack: e.target.value === '' ? undefined : parseFloat(e.target.value) } : x))}
-                style={{ ...inputStyle(t), flex: 1 }} />
+                style={{ ...inputStyle(t), flex: '1 1 90px', width: 'auto' }} />
               <GhostButton onClick={() => setCompetitors(competitors.filter((_, j) => j !== i))}>Remove</GhostButton>
             </div>
           ))}

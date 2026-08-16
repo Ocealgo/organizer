@@ -238,8 +238,10 @@ export default function LeaveTracker({ onBack }: Props) {
                   placeholder="Onam, Eid, Christmas"
                   style={inputStyle(t)}
                 />
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <DateInput type="date" value={newHolidayDate} onChange={setNewHolidayDate} />
+                <div className="oc-wrap" style={{ gap: 10, alignItems: 'center' }}>
+                  <div style={{ flex: '1 1 150px' }}>
+                    <DateInput type="date" value={newHolidayDate} onChange={setNewHolidayDate} />
+                  </div>
                   <PrimaryButton onClick={handleAddHoliday} disabled={addingHoliday}>
                     {addingHoliday ? 'Adding' : 'Add'}
                   </PrimaryButton>

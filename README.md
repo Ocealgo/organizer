@@ -24,6 +24,10 @@ Internal operations dashboard for **Ocealgo** — a B2B baby wipes brand. Manage
 - Auth is Firebase Email/Password. New accounts go through an admin approval flow (`AccountStatus`: `pending` → `approved`).
 - Role-based routing: the top-level `App.tsx` renders one of four root views (`AdminDashboard`, `SalesView`, `MarketingView`, `OnlineMarketingView`) based on the authenticated user's role.
 - Mobile-first layout using inline flex/grid styles and the shared theme token system.
+- Responsiveness is handled in one place, not per screen: `index.html` defines a small set of layout
+  utilities (`.oc-page`, `.oc-scroll-x`, `.oc-wrap`, `.oc-stats`, `.oc-modules`) and `App.tsx` wraps
+  every routed view in `.oc-page`, which centres the phone-width column and caps it on a desktop.
+  Screens keep their own 20px inner padding; single-column forms cap themselves at a readable width.
 
 ---
 

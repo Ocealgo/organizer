@@ -310,7 +310,7 @@ export default function FieldReport({ onBack }: Props) {
                                 </div>
                               )}
                               {v.photos?.length > 0 && (
-                                <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+                                <div className="oc-wrap" style={{ gap: 10, marginTop: 10 }}>
                                   {v.photos.map((p, i) => <StoragePhoto key={i} path={p.path} label={p.kind} />)}
                                 </div>
                               )}

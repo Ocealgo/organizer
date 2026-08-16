@@ -945,8 +945,8 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
 
         {/* Simple entry edit modal */}
         {editSimpleEntry && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-            <div style={{ background: t.card, borderRadius: '20px 20px 0 0', padding: '20px 16px 32px', maxHeight: '85vh', overflowY: 'auto' }}>
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center' }}>
+            <div style={{ background: t.card, borderRadius: '20px 20px 0 0', padding: '20px 16px 32px', maxHeight: '85vh', overflowY: 'auto', width: '100%', maxWidth: 520 }}>
               <div style={{ fontWeight: 500, fontSize: 16, color: t.text, marginBottom: 4 }}>Edit Visit — {editSimpleEntry.partyName}</div>
               {selectedDate !== localDateStr() && (
                 <div style={{ fontSize: 12, color: t.warn, marginBottom: 12 }}> Editing past log — {selectedDate}</div>
@@ -1014,6 +1014,8 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                 padding: "28px 20px",
                 width: "100%",
                 maxWidth: 420,
+                maxHeight: "85vh",
+                overflowY: "auto",
                 boxShadow: "0 24px 64px rgba(0,0,0,0.4)",
                 border: `1px solid ${t.border2}`,
               }}
@@ -1167,6 +1169,8 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
         <div
           style={{
             padding: "16px 16px",
+            // Capped so the column stays readable on a wide screen.
+            maxWidth: 640,
             display: "flex",
             flexDirection: "column",
             gap: 12,
@@ -1295,6 +1299,8 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                   padding: "28px 20px",
                   width: "100%",
                   maxWidth: 520,
+                  maxHeight: "85vh",
+                  overflowY: "auto",
                   boxShadow: "0 24px 64px rgba(0,0,0,0.35)",
                   border: `1px solid ${t.border2}`,
                 }}
@@ -1739,6 +1745,8 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
         <div
           style={{
             padding: "16px 16px",
+            // Capped so the column stays readable on a wide screen.
+            maxWidth: 640,
             display: "flex",
             flexDirection: "column",
             gap: 14,
@@ -1854,6 +1862,8 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
         <div
           style={{
             padding: "16px 16px",
+            // Capped so the column stays readable on a wide screen.
+            maxWidth: 640,
             display: "flex",
             flexDirection: "column",
             gap: 14,

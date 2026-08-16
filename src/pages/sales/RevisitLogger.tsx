@@ -663,6 +663,8 @@ export default function RevisitLogger({
           display: "flex",
           flexDirection: "column",
           gap: 12,
+          // One column of actions — capped so it stays readable on a desktop.
+          maxWidth: 620,
         }}
       >
         {confirmedActions.length > 0 && (

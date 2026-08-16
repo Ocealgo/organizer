@@ -46,8 +46,11 @@ export function PageHeader({ eyebrow, title, subtitle, onBack, right, divider = 
           ← Back
         </button>
       )}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
-        <div style={{ minWidth: 0 }}>
+      {/* Wraps rather than squeezing: a long title next to an action button has
+          to stack on a phone. */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start',
+                    justifyContent: 'space-between', gap: 16 }}>
+        <div style={{ minWidth: 0, flex: '1 1 240px' }}>
           {eyebrow && <div style={{ marginBottom: 6 }}><Eyebrow>{eyebrow}</Eyebrow></div>}
           <h1 style={{ fontSize: 21, fontWeight: 500, color: t.text, margin: 0, lineHeight: 1.3 }}>
             {title}
@@ -73,7 +76,7 @@ export function TabBar<T extends string>({ tabs, value, onChange }: {
   const { t } = useTheme()
   return (
     <div style={{ padding: '0 20px', borderBottom: `0.5px solid ${t.border}` }}>
-      <div style={{ display: 'flex', gap: 24, overflowX: 'auto' }}>
+      <div className="oc-scroll-x" style={{ display: 'flex', gap: 24 }}>
         {tabs.map(tab => (
           <button key={tab.id} className="oc-action" onClick={() => onChange(tab.id)}
             style={{
@@ -194,6 +197,16 @@ export function EmptyState({ title, body, actionLabel, onAction }: {
 }
 
 // ── Buttons ──────────────────────────────────────────────────────────────────
+/** `width: '100%'` on a button means "fill the phone". Left alone it also fills
+ *  a desktop column, giving a 1000px-wide Save. The cap keeps the intent —
+ *  full width where the screen is narrow, a thumb-sized button where it is
+ *  not — without every call site having to say so. */
+const FULL_WIDTH_CAP = 420
+function capFullWidth(style?: CSSProperties): CSSProperties | undefined {
+  if (!style || style.width !== '100%' || style.maxWidth !== undefined) return style
+  return { ...style, maxWidth: FULL_WIDTH_CAP }
+}
+
 export function GhostButton({ onClick, children, disabled, style }: {
   onClick?: () => void; children: ReactNode; disabled?: boolean; style?: CSSProperties
 }) {
@@ -203,7 +216,8 @@ export function GhostButton({ onClick, children, disabled, style }: {
       style={{
         background: 'none', border: `0.5px solid ${t.border2}`, borderRadius: 6,
         padding: '9px 14px', fontSize: 13, fontWeight: 400, color: t.text,
-        cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1, ...style,
+        cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1,
+        ...capFullWidth(style),
       }}>
       {children}
     </button>
@@ -219,7 +233,8 @@ export function PrimaryButton({ onClick, children, disabled, style }: {
       style={{
         background: t.text, border: 'none', borderRadius: 6,
         padding: '11px 16px', fontSize: 13, fontWeight: 500, color: t.bg,
-        cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.45 : 1, ...style,
+        cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.45 : 1,
+        ...capFullWidth(style),
       }}>
       {children}
     </button>
