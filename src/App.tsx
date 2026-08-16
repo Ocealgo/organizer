@@ -6,6 +6,7 @@ import { can, isManagement, ROLE_LABELS_PLAIN } from "./auth/permissions";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import LoginPage from "./pages/auth/LoginPage";
 import SignupPage from "./pages/auth/SignupPage";
+import ForgotPasswordPage from "./pages/auth/ForgotPasswordPage";
 import SalesView from "./pages/sales/SalesView";
 import MarketingView from "./pages/marketing/MarketingView";
 import OnlineMarketingView from "./pages/marketing/OnlineMarketingView";
@@ -27,7 +28,8 @@ import { Eyebrow, GhostButton } from "./components/ui";
 function AppContent() {
   const { firebaseUser, appUser, loading } = useAuth();
   const { theme, toggle, t } = useTheme();
-  const [authScreen, setAuthScreen] = useState<"login" | "signup">("login");
+  const [authScreen, setAuthScreen] = useState<"login" | "signup" | "forgot">("login");
+  const [authNotice, setAuthNotice] = useState<string>("");
 
   const [showUserMgmt, setShowUserMgmt] = useState(false);
 
@@ -50,11 +52,32 @@ function AppContent() {
       </div>
     );
 
-  if (!firebaseUser || !appUser) {
-    if (authScreen === "signup")
-      return <SignupPage onSwitch={() => setAuthScreen("login")} />;
-    return <LoginPage onSwitch={() => setAuthScreen("signup")} />;
-  }
+  // Signup and password reset both sign the account in partway through — the
+  // one to attach a phone number, the other to change the password. Gating
+  // those screens on "nobody is signed in" would therefore pull them out from
+  // under the person using them at the exact moment they were working. They
+  // are gated on the flow being open instead, and each closes its own flow.
+  if (authScreen === "signup")
+    return <SignupPage onSwitch={() => setAuthScreen("login")} />;
+
+  if (authScreen === "forgot")
+    return (
+      <ForgotPasswordPage
+        onDone={(message) => {
+          setAuthNotice(message ?? "");
+          setAuthScreen("login");
+        }}
+      />
+    );
+
+  if (!firebaseUser || !appUser)
+    return (
+      <LoginPage
+        onSwitch={() => setAuthScreen("signup")}
+        onForgot={() => { setAuthNotice(""); setAuthScreen("forgot"); }}
+        notice={authNotice}
+      />
+    );
 
   const status = appUser.status;
   if (status === "pending" || status === "rejected" || status === "deactivated")

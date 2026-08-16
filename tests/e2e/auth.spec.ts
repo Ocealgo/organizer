@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures/app'
-import { USERS, PASSWORD } from './fixtures/seed'
+import { USERS, PASSWORD, UNKNOWN_PHONE, latestSmsCode } from './fixtures/seed'
 
 /**
  * Who gets in, and what they land on.
@@ -49,6 +49,102 @@ test.describe('signing in', () => {
     if (isMobile) await page.getByRole('button', { name: 'Menu' }).click()
     await page.getByRole('button', { name: /^sign out$/i }).click()
     await expect(page.getByPlaceholder('you@example.com')).toBeVisible()
+  })
+})
+
+/**
+ * The code does not exist the instant the button is clicked — the send is still
+ * in flight. Waiting for the code box to appear is the app telling us the SMS
+ * has gone; reading the emulator any earlier just races it.
+ */
+async function codeSentTo(page: import('@playwright/test').Page, phone: string) {
+  await expect(page.getByPlaceholder('123456')).toBeVisible()
+  return latestSmsCode(phone)
+}
+
+test.describe('signing in with a mobile number', () => {
+  test('a rep gets in with a code instead of a password', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Mobile number' }).click()
+    await page.getByPlaceholder('10-digit mobile number').fill(USERS.rep.phone)
+    await page.getByRole('button', { name: /send code/i }).click()
+
+    await page.getByPlaceholder('123456').fill(await codeSentTo(page, USERS.rep.phone))
+    await page.getByRole('button', { name: /^sign in$/i }).click()
+
+    // The same account as the email door opens, with the same role. A phone
+    // sign-in that landed on a fresh uid would look almost identical here
+    // right up until none of the rep's data was there.
+    await expect(page.getByText(`${USERS.rep.name} · Offline sales`)).toBeVisible()
+  })
+
+  test('a number nobody registered is refused, and leaves no account behind', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Mobile number' }).click()
+    await page.getByPlaceholder('10-digit mobile number').fill(UNKNOWN_PHONE)
+    await page.getByRole('button', { name: /send code/i }).click()
+
+    // The code still sends — Firebase will text any valid number. The refusal
+    // happens after, which is the only place it can happen.
+    await page.getByPlaceholder('123456').fill(await codeSentTo(page, UNKNOWN_PHONE))
+    await page.getByRole('button', { name: /^sign in$/i }).click()
+
+    await expect(page.getByText(/No account uses that number/i)).toBeVisible()
+    await expect(page.getByText('Trade')).toHaveCount(0)
+
+    // And the account Firebase created on the way through is gone again.
+    const res = await fetch(
+      'http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/projects/demo-ocealgo/accounts:query',
+      {
+        method: 'POST',
+        headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' },
+        body: '{}',
+      },
+    )
+    const { userInfo = [] } = await res.json() as { userInfo?: { phoneNumber?: string }[] }
+    expect(userInfo.some(u => u.phoneNumber === `+91${UNKNOWN_PHONE}`)).toBe(false)
+  })
+})
+
+test.describe('forgetting a password', () => {
+  const NEW_PASSWORD = 'Rebuilt99!'
+
+  /** Walk the reset to the end, leaving the account on NEW_PASSWORD. */
+  async function resetByCode(page: import('@playwright/test').Page) {
+    await page.goto('/')
+    await page.getByRole('button', { name: /forgotten your password/i }).click()
+    await page.getByPlaceholder('10-digit mobile number').fill(USERS.rep.phone)
+    await page.getByRole('button', { name: /send code/i }).click()
+
+    await page.getByPlaceholder('123456').fill(await codeSentTo(page, USERS.rep.phone))
+    await page.getByRole('button', { name: /continue/i }).click()
+
+    await page.getByPlaceholder('At least six characters').fill(NEW_PASSWORD)
+    await page.getByPlaceholder('Type it again').fill(NEW_PASSWORD)
+    await page.getByRole('button', { name: /save password/i }).click()
+
+    // Signed out again on purpose, so the new password gets used at least once
+    // rather than being forgotten before it is ever typed.
+    await expect(page.getByText(/Password changed/i)).toBeVisible()
+  }
+
+  test('a code to the registered number sets a new password', async ({ page }) => {
+    await resetByCode(page)
+
+    await page.getByPlaceholder('you@example.com').fill(USERS.rep.email)
+    await page.getByPlaceholder(/password/i).first().fill(NEW_PASSWORD)
+    await page.getByRole('button', { name: /^sign in$/i }).click()
+    await expect(page.getByText(`${USERS.rep.name} · Offline sales`)).toBeVisible()
+  })
+
+  test('the old password stops working once it has been changed', async ({ page }) => {
+    await resetByCode(page)
+
+    await page.getByPlaceholder('you@example.com').fill(USERS.rep.email)
+    await page.getByPlaceholder(/password/i).first().fill(PASSWORD)
+    await page.getByRole('button', { name: /^sign in$/i }).click()
+
+    await expect(page.getByText(`${USERS.rep.name} · Offline sales`)).toHaveCount(0)
   })
 })
 

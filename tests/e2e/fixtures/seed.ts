@@ -29,16 +29,24 @@ const MGR_FULL: PermissionMap = Object.fromEntries(
   Object.keys(MGR_DEFAULT).map(k => [k, true]),
 ) as PermissionMap
 
-/** The cast every spec draws from. Emails double as the login. */
+/**
+ * The cast every spec draws from. Either the email or the mobile number signs
+ * them in — the number is a real linked auth provider here, not just a field,
+ * because that is the whole difference between phone sign-in landing on your
+ * own account and it minting a stranger with no role.
+ */
 export const USERS = {
-  rep:     { uid: 'e2e_rep',      email: 'rep@ocealgo.test',      name: 'Ravi Rep',      role: 'offline_sales' },
-  rep2:    { uid: 'e2e_rep2',     email: 'rep2@ocealgo.test',     name: 'Priya Rep',     role: 'offline_sales' },
-  admin:   { uid: 'e2e_admin',    email: 'admin@ocealgo.test',    name: 'Asha Admin',    role: 'admin' },
-  manager: { uid: 'e2e_manager',  email: 'manager@ocealgo.test',  name: 'Manoj Manager', role: 'sales_manager' },
+  rep:     { uid: 'e2e_rep',      email: 'rep@ocealgo.test',      phone: '9800000001', name: 'Ravi Rep',      role: 'offline_sales' },
+  rep2:    { uid: 'e2e_rep2',     email: 'rep2@ocealgo.test',     phone: '9800000002', name: 'Priya Rep',     role: 'offline_sales' },
+  admin:   { uid: 'e2e_admin',    email: 'admin@ocealgo.test',    phone: '9800000003', name: 'Asha Admin',    role: 'admin' },
+  manager: { uid: 'e2e_manager',  email: 'manager@ocealgo.test',  phone: '9800000004', name: 'Manoj Manager', role: 'sales_manager' },
   /** A manager with every permission, including the money actions. */
-  managerPlus: { uid: 'e2e_manager2', email: 'manager2@ocealgo.test', name: 'Meena Manager', role: 'sales_manager' },
-  pending: { uid: 'e2e_pending',  email: 'pending@ocealgo.test',  name: 'Pending Person', role: 'offline_sales' },
+  managerPlus: { uid: 'e2e_manager2', email: 'manager2@ocealgo.test', phone: '9800000005', name: 'Meena Manager', role: 'sales_manager' },
+  pending: { uid: 'e2e_pending',  email: 'pending@ocealgo.test',  phone: '9800000006', name: 'Pending Person', role: 'offline_sales' },
 } as const
+
+/** No account uses this one. For proving the unknown-number path. */
+export const UNKNOWN_PHONE = '9899999999'
 
 export type UserKey = keyof typeof USERS
 
@@ -72,6 +80,26 @@ export async function resetWorld(): Promise<void> {
   if (bad) throw new Error(`Could not clear the emulator: ${bad.status} ${bad.statusText}`)
 }
 
+/**
+ * The code the emulator "texted", for a number.
+ *
+ * No SMS leaves the machine in a test run — the Auth emulator keeps every code
+ * it would have sent on an endpoint and hands them back newest last. Reading it
+ * here is what lets the OTP flows be tested end to end instead of mocked, which
+ * matters because the bugs in this area live in the wiring, not the arithmetic.
+ */
+export async function latestSmsCode(tenDigits: string): Promise<string> {
+  const url = `http://127.0.0.1:9099/emulator/v1/projects/${PROJECT_ID}/verificationCodes`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Could not read verification codes: ${res.status}`)
+  const { verificationCodes = [] } = await res.json() as {
+    verificationCodes?: { phoneNumber: string; code: string }[]
+  }
+  const mine = verificationCodes.filter(c => c.phoneNumber === `+91${tenDigits}`)
+  if (!mine.length) throw new Error(`No code was sent to +91${tenDigits}`)
+  return mine[mine.length - 1].code
+}
+
 /** Build the standard world: six accounts, two products, three outlets. */
 export async function seedWorld(): Promise<void> {
   const app = admin()
@@ -79,13 +107,17 @@ export async function seedWorld(): Promise<void> {
   const auth = getAuth(app)
 
   for (const [key, u] of Object.entries(USERS)) {
-    await auth.createUser({ uid: u.uid, email: u.email, password: PASSWORD, displayName: u.name })
+    await auth.createUser({
+      uid: u.uid, email: u.email, password: PASSWORD, displayName: u.name,
+      phoneNumber: `+91${u.phone}`,
+    })
     const permissions =
       key === 'manager' ? MGR_DEFAULT :
       key === 'managerPlus' ? MGR_FULL : undefined
     await db.doc(`users/${u.uid}`).set({
       email: u.email,
       name: u.name,
+      phone: `+91${u.phone}`,
       role: u.role,
       status: key === 'pending' ? 'pending' : 'approved',
       createdAt: Date.now(),

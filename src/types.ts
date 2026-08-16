@@ -25,6 +25,8 @@ export type PermissionMap = Partial<Record<Permission, boolean>>
 
 export interface AppUser {
   uid: string; email: string; name: string
+  /** E.164, e.g. `+919876543210`. Absent on accounts created before signup asked. */
+  phone?: string
   role: UserRole; status: AccountStatus
   createdAt: number; approvedAt?: number; approvedBy?: string
   permissions?: PermissionMap   // only meaningful for role === 'sales_manager'
