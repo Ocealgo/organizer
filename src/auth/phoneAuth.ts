@@ -116,7 +116,27 @@ export async function confirmAsExistingUser(
  * shop wondering why the code has not arrived.
  */
 export function phoneAuthMessage(e: any): string {
+  // Always leave the raw code somewhere findable. The friendly strings below
+  // are for the rep holding the phone; this line is for whoever they ring.
+  // eslint-disable-next-line no-console
+  console.error('[phoneAuth]', e?.code ?? 'no-code', e)
+
   switch (e?.code) {
+    // ── Project not set up yet ──────────────────────────────────────────────
+    // These are not the user's fault and cannot be retried into working, so
+    // they say what is actually wrong instead of "try again".
+    case 'auth/operation-not-allowed':
+      return 'Text messages are not switched on for this app yet. An admin needs to enable Phone sign-in in Firebase.'
+    case 'auth/billing-not-enabled':
+      return 'Text messages need billing enabled on the Firebase project. Ask an admin.'
+    case 'auth/unauthorized-domain':
+      return 'This address is not on the app\'s allowed list in Firebase. Ask an admin.'
+    case 'auth/captcha-check-failed':
+    case 'auth/invalid-app-credential':
+      return 'The app could not prove it is genuine to Firebase. Usually Phone sign-in is switched off, or the API key is restricted. Ask an admin.'
+    case 'auth/app-not-authorized':
+      return 'This build is not authorised for Firebase sign-in. Ask an admin.'
+
     case 'auth/invalid-phone-number':
       return 'That does not look like a valid mobile number.'
     case 'auth/invalid-verification-code':
@@ -135,6 +155,12 @@ export function phoneAuthMessage(e: any): string {
     case 'auth/network-request-failed':
       return 'No connection. Check your signal and try again.'
     default:
-      return 'Something went wrong sending the code. Try again.'
+      // The code goes in the message on purpose. An unrecognised failure that
+      // says only "something went wrong" cannot be diagnosed by the person who
+      // hit it or by the person they report it to, and this is exactly the
+      // path where nobody yet knows what is wrong.
+      return e?.code
+        ? `Could not send the code (${e.code}). Try again, or tell an admin that code.`
+        : 'Could not send the code. Try again.'
   }
 }
