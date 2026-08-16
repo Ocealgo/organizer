@@ -46,9 +46,13 @@ export default defineConfig({
       testDir: './tests/walkthroughs',
       outputDir: './tests/walkthroughs/clips',
       use: {
-        ...devices['Pixel 7'],
-        isMobile: true,
-        hasTouch: true,
+        // A phone-sized viewport, but NOT Playwright's mobile emulation: with
+        // isMobile on, the recorder writes a frame taller than the page it
+        // paints, leaving a grey strip across the bottom of every clip. The
+        // app's phone layout keys off viewport width, so 412px gets the same
+        // rendering without the artefact.
+        viewport: { width: 412, height: 915 },
+        deviceScaleFactor: 1,
         // A rep watching this should see the app working, not apologising for a
         // permission the recorder never granted.
         permissions: ['geolocation'],

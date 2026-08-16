@@ -23,3 +23,5 @@ ui-debug.log
 /blob-report/
 /tests/e2e/.artifacts/
 /tests/walkthroughs/clips/
+/tests/walkthroughs/cards/
+/tests/walkthroughs/film/

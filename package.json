@@ -22,7 +22,9 @@
     "e2e:report": "playwright show-report",
     "e2e:desktop": "playwright test --project=desktop",
     "e2e:mobile": "playwright test --project=mobile",
-    "walkthroughs": "playwright test --project=walkthrough"
+    "walkthroughs": "playwright test --project=walkthrough",
+    "walkthroughs:cards": "playwright test --project=walkthrough cards.spec.ts",
+    "walkthroughs:film": "node scripts/stitch-walkthroughs.mjs"
   },
   "dependencies": {
     "@capacitor/camera": "^8.2.2",

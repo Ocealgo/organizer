@@ -4,8 +4,15 @@ Six clips, in the order a rep lives the day. Recorded at phone size, because
 that is what a rep holds.
 
 ```bash
-npm run walkthroughs        # re-records all six into tests/walkthroughs/clips/
+npm run walkthroughs        # re-record the six clips and the title cards
+npm run walkthroughs:film   # stitch them into one mp4 with chapters
 ```
+
+The stitched film is `tests/walkthroughs/film/ocealgo-rep-training.mp4` — about
+three and a quarter minutes, 412x916, with a chapter marker per journey so a
+trainer can jump straight to the part somebody is stuck on. Both steps are
+regenerated from source; nothing is hand-edited, so a screen change costs a
+re-run rather than a re-shoot. Stitching needs ffmpeg on the machine.
 
 Each clip already carries its on-screen captions, so it is watchable as-is. This
 script is what a human would say over the top — longer and warmer than a caption
@@ -17,7 +24,7 @@ hand.
 
 ---
 
-## 01 — Signing in *(~30s)*
+## 01 — Signing in _(~30s)_
 
 > This is the Ocealgo app on your phone. Your admin creates your account, so you
 > sign in with the email they set up — you do not register yourself.
@@ -36,7 +43,7 @@ broken. An admin has not approved it yet. They do not need to sign up again.
 
 ---
 
-## 02 — Starting your day *(~26s)*
+## 02 — Starting your day _(~26s)_
 
 > Nothing unlocks until you punch in. Your outlet list stays locked, and you
 > cannot log a visit, until you have started the day.
@@ -56,7 +63,7 @@ ends of your distance claim. A missing one costs you the claim.
 
 ---
 
-## 03 — Visiting an outlet *(~45s)*
+## 03 — Visiting an outlet _(~45s)_
 
 > With your day open, tap Log a visit. Your outlets come up sorted by how close
 > they are to you right now, so the shop you are standing in is usually first.
@@ -80,7 +87,7 @@ ends of your distance claim. A missing one costs you the claim.
 
 ---
 
-## 04 — Adding a shop that is not on your list *(~30s)*
+## 04 — Adding a shop that is not on your list _(~30s)_
 
 > Walked into a shop that is not on your list? You do not have to go anywhere
 > else, and you do not have to wait for the office.
@@ -102,7 +109,7 @@ another name. Search for it instead of adding it again.
 
 ---
 
-## 05 — Logging your expenses *(~30s)*
+## 05 — Logging your expenses _(~30s)_
 
 > Expenses live under Yours, in Expense reports. You work a week at a time.
 >
@@ -125,7 +132,7 @@ another name. Search for it instead of adding it again.
 
 ---
 
-## 06 — Ending your day *(~19s)*
+## 06 — Ending your day _(~19s)_
 
 > At the end of the day, come back and close it off.
 >
