@@ -378,9 +378,14 @@ service cloud.firestore {
     }
 
     // ── EXPENSES ────────────────────────────────────────────────────────────
+    // The allowance rates and the ₹/km fuel rate. Setting them is a money
+    // decision, so it rides on the same permission as clearing a report rather
+    // than on being an admin — a sales manager who signs off expenses is the
+    // person who sets what they are worth. The screen was already visible to
+    // them; before this the save simply failed.
     match /expense_config/{id} {
       allow read: if approved();
-      allow write: if isAdmin();
+      allow write: if hasPerm('clear_expenses');
     }
 
     match /expense_reports/{id} {

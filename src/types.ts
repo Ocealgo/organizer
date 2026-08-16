@@ -290,6 +290,13 @@ export interface ExpenseEntry {
   /** True when the amount came from distance × rate rather than being typed. */
   autoCalculated?: boolean
   distanceKm?: number
+  /**
+   * The ₹/km in force when this was claimed, copied onto the entry rather than
+   * looked up later. A manager changing the rate must not restate what has
+   * already been claimed, and a cleared week has to still explain its own
+   * arithmetic months afterwards.
+   */
+  ratePerKm?: number
   dutySessionId?: string
 }
 

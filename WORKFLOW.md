@@ -528,6 +528,26 @@ Admin can click any expense to navigate directly to the visit log for that user 
 
 ---
 
+#### Fuel — claimed by distance, not by amount
+
+When a ₹/km rate is configured, selecting **Fuel** replaces the amount field with a distance field:
+the rep enters kilometres and the amount is `km × ratePerKm`. There is no way to type a rupee figure
+for fuel, so a claim cannot drift from the rate.
+
+- The rate lives on `expense_config/main` as `ratePerKm`, set on the **Rates** tab of the admin
+  expense view. It is gated on `clear_expenses` — the person who signs off a report is the person who
+  sets what it is worth. (Previously the tab was visible to any sales manager with `view_expenses`
+  but the save was denied by rules; both sides now agree.)
+- Leaving the rate blank turns the feature off and fuel goes back to a typed amount. A rate of zero
+  is rejected rather than stored, since it would silently make every fuel claim worth nothing.
+- The entry stores `distanceKm`, `ratePerKm` and `autoCalculated: true`. **The rate is copied onto
+  the entry**, not looked up later — changing the rate must not restate claims already made, and a
+  cleared week has to still explain its own arithmetic months afterwards.
+- Both the rep's list and the admin review line show the working (`12 km at ₹4 per km`).
+
+Not wired up: the day's `claimedDistanceKm` from the duty session is not used to pre-fill or check
+the kilometres claimed. See §5.4b — the two numbers exist and nothing compares them.
+
 ### 5.11 Product Manager
 
 CRUD for the product catalog.

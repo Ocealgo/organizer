@@ -160,6 +160,9 @@ const VAR_CATS: { value: ExpenseCategory; label: string }[] = [
 
 const DEFAULT_CONFIG: ExpenseConfig = { hq: 200, ex: 300, os: 450 }
 
+/** Money, to the paisa. Keeps 13 km x 4.5 off the floating-point tail. */
+const round2 = (n: number) => Math.round(n * 100) / 100
+
 // ── Root ──────────────────────────────────────────────────────────────────────
 export default function ExpenseLogger({ onBack, onViewVisitLog, onLogVisit, defaultToDay }: Props) {
   const { appUser } = useAuth()
@@ -186,7 +189,7 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
   const [weekStart, setWeekStart] = useState(getWeekStart())
   const [selectedDay, setSelectedDay] = useState(localDateStr())
   const [addVarDay, setAddVarDay] = useState<string | null>(null)
-  const [varForm, setVarForm] = useState({ category: 'bus_fare' as ExpenseCategory, amount: '', customLabel: '', notes: '' })
+  const [varForm, setVarForm] = useState({ category: 'bus_fare' as ExpenseCategory, amount: '', km: '', customLabel: '', notes: '' })
   const [addDaDay, setAddDaDay] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [csvMode, setCsvMode] = useState(false)
@@ -299,8 +302,17 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
 
   const handleAddVariable = async () => {
     if (!addVarDay) return
-    const amount = parseFloat(varForm.amount)
+
+    // Fuel is claimed as a distance and priced by the rate, so the rep never
+    // types a rupee figure and the amount cannot drift from the rate the
+    // manager set. Without a rate configured it falls back to a typed amount.
+    const km = parseFloat(varForm.km)
+    if (fuelByDistance) {
+      if (isNaN(km) || km <= 0) { await showAlert('Distance needed', 'Enter how many kilometres you travelled.'); return }
+    }
+    const amount = fuelByDistance ? round2(km * fuelRate!) : parseFloat(varForm.amount)
     if (isNaN(amount) || amount <= 0) { await showAlert('Amount needed', 'Enter an amount above zero.'); return }
+
     const rpt = await getOrCreateReport()
     await addDoc(collection(db, 'expense_entries'), {
       reportId: rpt.id!, userId: appUser.uid,
@@ -308,11 +320,14 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
       category: varForm.category,
       ...(varForm.category === 'other' && varForm.customLabel ? { customLabel: varForm.customLabel } : {}),
       amount,
+      // The rate is recorded on the entry, not just applied to it. A rate
+      // change later must not silently restate what was already claimed.
+      ...(fuelByDistance ? { autoCalculated: true, distanceKm: km, ratePerKm: fuelRate } : {}),
       ...(varForm.notes ? { notes: varForm.notes } : {}),
       createdAt: Date.now(),
     })
     await syncReportTotal(rpt.id!, amount)
-    setVarForm({ category: 'bus_fare', amount: '', customLabel: '', notes: '' })
+    setVarForm({ category: 'bus_fare', amount: '', km: '', customLabel: '', notes: '' })
     setAddVarDay(null)
   }
 
@@ -419,6 +434,12 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
   const isLocked = report?.status === 'cleared'
 
   const money = (n: number) => `₹${n.toLocaleString('en-IN')}`
+
+  // Fuel is priced by the rate a manager set, not by what the rep types. No
+  // rate configured means the feature is simply off and the old typed amount
+  // stands — a zero rate would otherwise make every fuel claim worth nothing.
+  const fuelRate = config.ratePerKm && config.ratePerKm > 0 ? config.ratePerKm : null
+  const fuelByDistance = varForm.category === 'fuel' && fuelRate !== null
 
   const STATUS_TEXT: Record<string, string> = {
     draft: 'Draft',
@@ -688,6 +709,13 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
                               <span style={{ display: 'block', fontSize: 14, fontWeight: 400, color: t.text }}>
                                 {e.customLabel || cat?.label}
                               </span>
+                              {/* Shows its own arithmetic, so a claim can be
+                                  checked without knowing today's rate. */}
+                              {e.distanceKm !== undefined && (
+                                <span style={{ display: 'block', fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 3 }}>
+                                  {e.distanceKm} km{e.ratePerKm ? ` at ${money(e.ratePerKm)} per km` : ''}
+                                </span>
+                              )}
                               {e.notes && (
                                 <span style={{ display: 'block', fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 3 }}>
                                   {e.notes}
@@ -742,11 +770,29 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
                                   placeholder="What was this expense" style={inputStyle(t)} />
                               </Field>
                             )}
-                            <Field label="Amount">
-                              <input type="number" inputMode="decimal" value={varForm.amount}
-                                onChange={e => setVarForm(f => ({ ...f, amount: e.target.value }))}
-                                placeholder="45" style={inputStyle(t)} />
-                            </Field>
+
+                            {fuelByDistance ? (
+                              <Field label="Distance travelled"
+                                hint={`Paid at ${money(fuelRate!)} per km. You do not enter the amount — it is worked out from this.`}>
+                                <input type="number" inputMode="decimal" value={varForm.km}
+                                  onChange={e => setVarForm(f => ({ ...f, km: e.target.value }))}
+                                  placeholder="Kilometres" style={inputStyle(t)} />
+                                <div style={{ fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 7 }}>
+                                  {parseFloat(varForm.km) > 0
+                                    ? `That is ${money(round2(parseFloat(varForm.km) * fuelRate!))}.`
+                                    : 'Enter the distance to see what it comes to.'}
+                                </div>
+                              </Field>
+                            ) : (
+                              <Field label="Amount"
+                                hint={varForm.category === 'fuel'
+                                  ? 'No ₹ per km rate has been set, so enter the amount yourself.'
+                                  : undefined}>
+                                <input type="number" inputMode="decimal" value={varForm.amount}
+                                  onChange={e => setVarForm(f => ({ ...f, amount: e.target.value }))}
+                                  placeholder="45" style={inputStyle(t)} />
+                              </Field>
+                            )}
                             <Field label="Notes">
                               <input value={varForm.notes}
                                 onChange={e => setVarForm(f => ({ ...f, notes: e.target.value }))}
@@ -756,7 +802,7 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
                               <PrimaryButton onClick={handleAddVariable}>Add</PrimaryButton>
                               <GhostButton onClick={() => {
                                 setAddVarDay(null)
-                                setVarForm({ category: 'bus_fare', amount: '', customLabel: '', notes: '' })
+                                setVarForm({ category: 'bus_fare', amount: '', km: '', customLabel: '', notes: '' })
                               }}>
                                 Cancel
                               </GhostButton>
@@ -828,7 +874,8 @@ function AdminView({ onBack, appUser, onViewVisitLog }: { onBack: () => void; ap
   const { modal, showAlert, showConfirm } = useConfirm()
   const [tab, setTab] = useState<'reports' | 'config'>('reports')
   const [config, setConfig] = useState<ExpenseConfig>(DEFAULT_CONFIG)
-  const [configForm, setConfigForm] = useState({ hq: '200', ex: '300', os: '450' })
+  const [configForm, setConfigForm] = useState({ hq: '200', ex: '300', os: '450', ratePerKm: '' })
+  const canSetRates = can(appUser, 'clear_expenses')
   const [savingConfig, setSavingConfig] = useState(false)
   const [reports, setReports] = useState<ExpenseReport[]>([])
   const [entries, setEntries] = useState<ExpenseEntry[]>([])
@@ -847,7 +894,10 @@ function AdminView({ onBack, appUser, onViewVisitLog }: { onBack: () => void; ap
       if (snap.exists()) {
         const d = snap.data() as ExpenseConfig
         setConfig({ ...DEFAULT_CONFIG, ...d })
-        setConfigForm({ hq: String(d.hq ?? 200), ex: String(d.ex ?? 300), os: String(d.os ?? 450) })
+        setConfigForm({
+          hq: String(d.hq ?? 200), ex: String(d.ex ?? 300), os: String(d.os ?? 450),
+          ratePerKm: d.ratePerKm !== undefined ? String(d.ratePerKm) : '',
+        })
       }
     })
     const u2 = onSnapshot(collection(db, 'expense_reports'), snap => {
@@ -868,9 +918,29 @@ function AdminView({ onBack, appUser, onViewVisitLog }: { onBack: () => void; ap
   const handleSaveConfig = async () => {
     const hq = parseFloat(configForm.hq), ex = parseFloat(configForm.ex), os = parseFloat(configForm.os)
     if ([hq, ex, os].some(isNaN)) { await showAlert('Amounts needed', 'Enter a number for each of the three rates.'); return }
+
+    // Left blank the ₹/km rate is simply unset, and the fuel claim falls back
+    // to a typed amount. Zero is not the same as unset and is rejected — it
+    // would silently make every fuel claim worth nothing.
+    const rateRaw = configForm.ratePerKm.trim()
+    const ratePerKm = rateRaw === '' ? undefined : parseFloat(rateRaw)
+    if (ratePerKm !== undefined && (isNaN(ratePerKm) || ratePerKm <= 0)) {
+      await showAlert('Check the fuel rate', 'Enter a rate above zero, or leave it blank to let reps type the amount themselves.')
+      return
+    }
+
     setSavingConfig(true)
     try {
-      await setDoc(doc(db, 'expense_config', 'main'), { hq, ex, os, updatedAt: Date.now(), updatedBy: appUser.uid })
+      await setDoc(doc(db, 'expense_config', 'main'), {
+        hq, ex, os,
+        ...(ratePerKm !== undefined ? { ratePerKm } : {}),
+        updatedAt: Date.now(), updatedBy: appUser.uid,
+      })
+    } catch (e: any) {
+      await showAlert('Could not save',
+        e?.code === 'permission-denied'
+          ? 'Setting the rates needs the clear_expenses permission.'
+          : 'Something went wrong. Try again.')
     } finally { setSavingConfig(false) }
   }
 
@@ -986,7 +1056,12 @@ This cannot be undone.`, 'Clear it')) return
       <TabBar
         value={tab}
         onChange={setTab}
-        tabs={[{ id: 'reports', label: 'Reports' }, { id: 'config', label: 'Allowances' }]}
+        tabs={[
+          { id: 'reports', label: 'Reports' },
+          // Setting what a day is worth is a money decision, so it follows the
+          // same permission as signing one off.
+          ...(canSetRates ? [{ id: 'config' as const, label: 'Rates' }] : []),
+        ]}
       />
 
       <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 28 }}>
@@ -1010,6 +1085,17 @@ This cannot be undone.`, 'Clear it')) return
                   </Field>
                 )
               })}
+              <div style={{ borderTop: `0.5px solid ${t.border}`, paddingTop: 20 }}>
+                <Field label="Fuel rate — ₹ per km"
+                  hint={config.ratePerKm
+                    ? `Currently ${money(config.ratePerKm)} per km. A rep logging fuel enters the distance and the amount is worked out from it.`
+                    : 'Not set. Until it is, a rep logging fuel types the amount themselves.'}>
+                  <input type="number" inputMode="decimal" value={configForm.ratePerKm}
+                    onChange={e => setConfigForm(f => ({ ...f, ratePerKm: e.target.value }))}
+                    placeholder="Leave blank to let reps type the amount" style={inputStyle(t)} />
+                </Field>
+              </div>
+
               <div>
                 <PrimaryButton onClick={handleSaveConfig} disabled={savingConfig}>
                   {savingConfig ? 'Saving' : 'Save rates'}
@@ -1162,6 +1248,14 @@ This cannot be undone.`, 'Clear it')) return
                                               {e.type === 'allowance'
                                                 ? `${ALLOW_INFO[e.allowanceType!].label} allowance · ${ALLOW_INFO[e.allowanceType!].sub}`
                                                 : (e.customLabel || cat?.label)}
+                                              {/* The claim carries its own working, so the
+                                                  rate in force then is what is shown now. */}
+                                              {e.distanceKm !== undefined && (
+                                                <span style={{ color: t.text3 }}>
+                                                  {' · '}{e.distanceKm} km
+                                                  {e.ratePerKm ? ` at ${money(e.ratePerKm)}/km` : ''}
+                                                </span>
+                                              )}
                                               {e.notes && (
                                                 <span style={{ color: t.text3 }}>{' · '}{e.notes}</span>
                                               )}
