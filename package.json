@@ -17,11 +17,12 @@
     "cap:sync": "npm run build && npx cap sync",
     "android": "npm run build && npx cap sync android && npx cap open android",
     "e2e:server": "firebase emulators:exec --only auth,firestore,storage --project demo-ocealgo \"vite --mode test --port 5173 --host 127.0.0.1 --strictPort\"",
-    "e2e": "playwright test",
+    "e2e": "playwright test --project=desktop --project=mobile",
     "e2e:ui": "playwright test --ui",
     "e2e:report": "playwright show-report",
     "e2e:desktop": "playwright test --project=desktop",
-    "e2e:mobile": "playwright test --project=mobile"
+    "e2e:mobile": "playwright test --project=mobile",
+    "walkthroughs": "playwright test --project=walkthrough"
   },
   "dependencies": {
     "@capacitor/camera": "^8.2.2",

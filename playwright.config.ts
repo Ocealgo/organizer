@@ -36,6 +36,33 @@ export default defineConfig({
 
   projects: [
     {
+      /**
+       * Not a test project. Scripted rep journeys whose output is the video —
+       * phone-sized, because that is what a rep holds, and paced for a viewer
+       * rather than for speed. Run it with `npm run walkthroughs`; `npm run e2e`
+       * names its two projects explicitly so this never runs by accident.
+       */
+      name: 'walkthrough',
+      testDir: './tests/walkthroughs',
+      outputDir: './tests/walkthroughs/clips',
+      use: {
+        ...devices['Pixel 7'],
+        isMobile: true,
+        hasTouch: true,
+        // A rep watching this should see the app working, not apologising for a
+        // permission the recorder never granted.
+        permissions: ['geolocation'],
+        geolocation: { latitude: 9.9312, longitude: 76.2673, accuracy: 12 },
+        locale: 'en-IN',
+        timezoneId: 'Asia/Kolkata',
+        video: { mode: 'on', size: { width: 412, height: 915 } },
+        trace: 'off',
+        screenshot: 'off',
+        actionTimeout: 20_000,
+      },
+      timeout: 180_000,
+    },
+    {
       name: 'desktop',
       use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },
     },
