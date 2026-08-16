@@ -295,7 +295,7 @@ export interface ExpenseEntry {
 
 // ── ALERT ─────────────────────────────────────────────────────────────────────
 export interface Alert {
-  id?: string; type: 'new_party' | 'credit_settlement' | 'low_stock' | 'stock_dispatched' | 'new_allocation' | 'visit_log_submitted' | 'leave_requested' | 'leave_approved' | 'visit_share_requested' | 'expense_submitted'
+  id?: string; type: 'new_party' | 'credit_settlement' | 'low_stock' | 'stock_dispatched' | 'new_allocation' | 'visit_log_submitted' | 'leave_requested' | 'leave_approved' | 'visit_share_requested' | 'expense_submitted' | 'duty_auto_closed'
   message: string; relatedId: string; read: boolean; createdAt: number
   toUid?: string        // only that user sees it
   toRole?: 'admin_group' // only admin/super_admin see it
@@ -693,6 +693,15 @@ export interface DutySession {
   outletsPlanned?: number
   outletsVisited?: number
 
+  /**
+   * Closed by the app rather than by the officer, because the day was left
+   * open. There is no closing reading and no distance is claimed — the day is
+   * tidied up, not completed. Kept as a distinct flag so a forgotten day never
+   * reads in a report as a real day that happened to cover no ground.
+   */
+  autoClosed?: boolean
+  autoClosedAt?: number
+
   status: DutyStatus
   createdAt: number
 }
@@ -818,7 +827,13 @@ export interface CompetitorObservation {
   schemeNote?: string
 }
 
-export type VisitSessionStatus = 'open' | 'closed'
+/**
+ * `abandoned` is a visit that was punched into and never punched out of, swept
+ * up when its duty session was. It is deliberately not `closed`: a closed visit
+ * carries the compulsory outcome and remarks, and an abandoned one never
+ * collected them, so counting the two together would overstate the day.
+ */
+export type VisitSessionStatus = 'open' | 'closed' | 'abandoned'
 
 /**
  * One outlet visit inside a duty session. Opened by the outlet punch-in and
@@ -870,6 +885,9 @@ export interface OutletVisit {
   punchOutAt?: number
   punchOutLocation?: GeoPoint
   durationMinutes?: number
+
+  /** Set when the visit was swept up with an abandoned duty session. */
+  abandonedAt?: number
 
   status: VisitSessionStatus
   createdAt: number

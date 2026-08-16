@@ -221,13 +221,14 @@ export default function FieldReport({ onBack }: Props) {
                       </span>
                       <span style={{ display: 'block', fontSize: 13, color: t.text3, marginTop: 3 }}>
                         {s.date} · {hhmm(s.startAt)}
-                        {s.endAt ? `–${hhmm(s.endAt)}` : ' · still out'}
+                        {s.autoClosed ? ' · never ended' : s.endAt ? `–${hhmm(s.endAt)}` : ' · still out'}
                         {' · '}{vs.length} {vs.length === 1 ? 'visit' : 'visits'}
                       </span>
                     </span>
                     <span style={{ fontSize: 14, whiteSpace: 'nowrap',
-                                   color: s.status === 'active' || meterIssue ? t.warn : t.text2 }}>
-                      {s.claimedDistanceKm !== undefined ? `${s.claimedDistanceKm} km`
+                                   color: s.status === 'active' || s.autoClosed || meterIssue ? t.warn : t.text2 }}>
+                      {s.autoClosed ? 'Not ended'
+                        : s.claimedDistanceKm !== undefined ? `${s.claimedDistanceKm} km`
                         : meterIssue ? 'No meter' : '—'}
                     </span>
                   </button>
@@ -240,7 +241,10 @@ export default function FieldReport({ onBack }: Props) {
                         <div style={{ marginBottom: 8 }}><Eyebrow>The day</Eyebrow></div>
                         <Detail label="Punched in" value={hhmm(s.startAt)} loc={s.startLocation} />
                         <Detail label="Punched out"
-                          value={s.endAt ? hhmm(s.endAt) : 'Still out'} loc={s.endLocation} />
+                          value={s.autoClosed ? 'Never — closed automatically'
+                            : s.endAt ? hhmm(s.endAt) : 'Still out'}
+                          warn={s.autoClosed}
+                          loc={s.autoClosed ? undefined : s.endLocation} />
                         {meterIssue ? (
                           <Detail label="Meter"
                             value={`${ODOMETER_STATUS_LABEL[s.odometerStatus!]}${s.odometerIssueNote ? ` — ${s.odometerIssueNote}` : ''}`} warn />
@@ -276,8 +280,11 @@ export default function FieldReport({ onBack }: Props) {
                             <div key={v.id} style={{ borderTop: `0.5px solid ${t.border}`, padding: '13px 0' }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline' }}>
                                 <span style={{ fontSize: 14, fontWeight: 500, color: t.text }}>{v.partyName}</span>
-                                <span style={{ fontSize: 12, color: t.text3, whiteSpace: 'nowrap' }}>
-                                  {hhmm(v.punchInAt)}{v.punchOutAt ? `–${hhmm(v.punchOutAt)}` : ' · open'}
+                                <span style={{ fontSize: 12, whiteSpace: 'nowrap',
+                                               color: v.status === 'abandoned' ? t.warn : t.text3 }}>
+                                  {hhmm(v.punchInAt)}
+                                  {v.status === 'abandoned' ? ' · never closed'
+                                    : v.punchOutAt ? `–${hhmm(v.punchOutAt)}` : ' · open'}
                                   {v.durationMinutes ? ` · ${v.durationMinutes}m` : ''}
                                 </span>
                               </div>

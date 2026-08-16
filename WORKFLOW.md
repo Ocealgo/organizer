@@ -325,6 +325,44 @@ For each distributor: expandable card showing all linked retailers and their **p
 
 ---
 
+### 5.4b Duty Session — Punch In / Punch Out
+
+The field day is opened by a punch-in (meter status, opening reading, photo, location, battery) and
+closed by a punch-out. Everything else the field app does hangs off it: the outlet list stays locked
+until `isOnDuty`, and every outlet visit is filed against the open session.
+
+#### Forgetting to end the day
+
+There is no backend — `firebase.json` declares no Cloud Functions — so nothing can fire on a
+schedule. Both halves of the safety net therefore run on the officer's device, which is also the only
+party [firestore.rules](firestore.rules) lets close their own session.
+
+**18:00 — the nudge.** A local notification is scheduled at punch-in for 18:00 and cancelled at
+punch-out (`src/device/notify.ts`). It fires with the app closed, which is the case that matters. A
+day started after 18:00 gets none. Alongside it, the sales home shows a warn banner from 18:00 while
+still on duty. Permission is requested once, at punch-in; a refusal just means no notification.
+
+**23:00 — the sweep.** `closeAbandonedSessions()` runs on app open and closes any session that is
+dated before today, or is today's and past 23:00. In practice a day forgotten on Tuesday night is
+tidied on Wednesday morning rather than at 23:00 sharp.
+
+An auto-closed day records:
+
+- `status: 'closed'`, `autoClosed: true`, `autoClosedAt`, and an `endAt`
+- **no** `endOdometerKm` and **no** `claimedDistanceKm` — no reading was taken, so none is invented
+- any outlet visit still open is set to `status: 'abandoned'` (not `closed` — it never collected its
+  compulsory outcome and remarks), and is excluded from the visit count in Sales Reports
+- a `duty_auto_closed` alert to `admin_group`, so a forgotten day is seen rather than silently
+  reading as a day with no distance
+
+**The odometer chain.** `lastClosingOdometer()` falls back to `startOdometerKm` when there is no
+closing reading. Without that fallback the "not lower than your last closing reading" floor silently
+disappears after an auto-close, which would make forgetting to punch out the way to reset your own
+meter baseline.
+
+Auto-closed days are labelled as such in the sales home, the duty summary and the admin Field Report
+("never ended" / "Not ended"), so they never read as a real day that happened to cover no ground.
+
 ### 5.5 Visit Logger
 
 Sales reps log all shop visits for the current day. All visits bundle into one `DailyVisitLog` document keyed `{salesPersonId}_{date}`.

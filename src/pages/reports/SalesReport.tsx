@@ -196,6 +196,10 @@ export default function SalesReport({ onBack }: Props) {
     outletVisits.forEach(v => {
       const s = byUid.get(v.uid)
       if (!s) return
+      // A visit abandoned with its duty session never collected an outcome.
+      // Counting it would inflate the visit total and dilute conversion with a
+      // denominator entry that could never have converted.
+      if (v.status === 'abandoned') return
       s.visits++
       partySets.get(v.uid)!.add(v.partyId)
       daySets.get(v.uid)!.add(v.date)
@@ -364,7 +368,8 @@ export default function SalesReport({ onBack }: Props) {
         Date: v.date,
         'Sales Person': v.name,
         Party: v.partyName,
-        Outcome: v.remarksCategory ? VISIT_OUTCOME_LABEL[v.remarksCategory as VisitOutcomeCategory] : 'open',
+        Outcome: v.status === 'abandoned' ? 'Never closed — day left open'
+          : v.remarksCategory ? VISIT_OUTCOME_LABEL[v.remarksCategory as VisitOutcomeCategory] : 'open',
         Minutes: v.durationMinutes ?? '',
         Reason: v.remarksReason ?? '',
         Remarks: v.remarksText ?? '',

@@ -17,7 +17,8 @@ import { Party, DailyVisitLog, LeaveRecord, Holiday } from '../../types'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr, localMonthStr } from '../../utils/date'
 import { Eyebrow, StatGrid, StatCard, RowGroup, ListRow, EmptyState, GhostButton } from '../../components/ui'
-import { useDutySession } from '../../hooks/useDutySession'
+import { useDutySession, closeAbandonedSessions } from '../../hooks/useDutySession'
+import { REMINDER_HOUR, AUTO_CLOSE_HOUR } from '../../device/notify'
 import DutyScreen from './DutyScreen'
 import OutletVisitScreen from './OutletVisitScreen'
 
@@ -60,6 +61,14 @@ export default function SalesView({ name }: Props) {
       setParties(snap.docs.map(d => ({ id: d.id, ...d.data() } as Party)))
     })
   }, [])
+
+  // There is no server to run this at 23:00, so the officer's own device — the
+  // only party the rules let close their session — sweeps up on app open. A day
+  // forgotten last night is tidied this morning.
+  useEffect(() => {
+    if (!appUser) return
+    void closeAbandonedSessions(appUser.uid, appUser.name)
+  }, [appUser?.uid])
 
   useEffect(() => {
     if (!appUser) return
@@ -111,6 +120,18 @@ export default function SalesView({ name }: Props) {
       setTodayLeave(rec ?? null)
     })
   }, [appUser])
+
+  // The in-app half of the end-of-day nudge. The scheduled notification reaches
+  // a pocketed phone; this reaches someone who has the app open and has simply
+  // not thought about it. Stops ticking the moment it is true.
+  const [pastReminderHour, setPastReminderHour] = useState(() => new Date().getHours() >= REMINDER_HOUR)
+  useEffect(() => {
+    if (pastReminderHour) return
+    const id = setInterval(() => {
+      if (new Date().getHours() >= REMINDER_HOUR) setPastReminderHour(true)
+    }, 60_000)
+    return () => clearInterval(id)
+  }, [pastReminderHour])
 
   // Auto-log "no entry" after noon if no visit log for today (skip if on full day leave)
   const noEntryCreated = React.useRef(false)
@@ -183,6 +204,8 @@ export default function SalesView({ name }: Props) {
     ? 'Today is a public holiday. Nothing is expected from you.'
     : isOnFullLeave
       ? 'You are on full day leave today. Visit logging is paused.'
+      : isDayClosed && dutySession?.autoClosed
+        ? `Your day was closed for you because it was left open — ${visitsToday} ${visitsToday === 1 ? 'visit' : 'visits'} logged, and no distance could be claimed.`
       : isDayClosed
         ? `Your day is finished — ${visitsToday} ${visitsToday === 1 ? 'visit' : 'visits'} logged and ${dutySession?.claimedDistanceKm ?? 0} km travelled.`
         : !isOnDuty
@@ -204,6 +227,28 @@ export default function SalesView({ name }: Props) {
       </div>
 
       <div style={{ padding: '0 20px 56px', display: 'flex', flexDirection: 'column', gap: 30 }}>
+
+        {/* Still on duty late in the day. A day left open claims no distance,
+            so this is worth interrupting for. */}
+        {isOnDuty && pastReminderHour && (
+          <div style={{ background: t.tint, borderRadius: 6, padding: '14px 16px' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start',
+                          justifyContent: 'space-between', gap: 12 }}>
+              <div style={{ minWidth: 0, flex: '1 1 240px' }}>
+                <div style={{ fontSize: 14, fontWeight: 500, color: t.warn }}>
+                  Your day is still open
+                </div>
+                <div style={{ fontSize: 13, color: t.text3, marginTop: 3, lineHeight: 1.5 }}>
+                  Record your closing reading before you finish. A day left open is closed
+                  for you at {AUTO_CLOSE_HOUR - 12}pm and claims no distance.
+                </div>
+              </div>
+              <GhostButton onClick={() => setScreen('duty')} style={{ flexShrink: 0 }}>
+                End the day
+              </GhostButton>
+            </div>
+          </div>
+        )}
 
         {/* Leave status */}
         {todayLeave && (todayLeave.status === 'pending_approval' || todayLeave.status === 'active' || todayLeave.status === 'unmark_requested') && (
@@ -249,7 +294,9 @@ export default function SalesView({ name }: Props) {
             <ListRow
               title={isDayClosed ? 'Day finished' : isOnDuty ? 'End the day' : 'Start the day'}
               desc={isDayClosed
-                ? `${dutySession?.claimedDistanceKm ?? 0} km recorded`
+                ? dutySession?.autoClosed
+                  ? 'Closed automatically — no closing reading was given'
+                  : `${dutySession?.claimedDistanceKm ?? 0} km recorded`
                 : isOnDuty
                   ? `Started at ${new Date(dutySession!.startAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} · closing reading and photo`
                   : 'Meter reading, photo and location'}

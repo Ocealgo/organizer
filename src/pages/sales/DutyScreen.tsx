@@ -11,6 +11,7 @@ import { getFixOrNull } from '../../device/location'
 import { capture, upload, CapturedPhoto } from '../../device/photo'
 import { batteryPercent } from '../../device/battery'
 import { lastClosingOdometer } from '../../hooks/useDutySession'
+import { scheduleEndOfDayReminder, cancelEndOfDayReminder } from '../../device/notify'
 import { localDateStr } from '../../utils/date'
 
 interface Props {
@@ -138,6 +139,9 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
           createdAt: Date.now(),
         }
         await setDoc(sessionRef, payload)
+        // Only once the day exists. Scheduling before the write would leave a
+        // reminder for a day that failed to start.
+        void scheduleEndOfDayReminder()
       } else if (session?.id) {
         const photoPath = needsReading && photo
           ? await upload(photo, { uid: appUser.uid, sessionId: session.id, kind: 'odometer_end' })
@@ -153,6 +157,7 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
           ...(distance !== null ? { claimedDistanceKm: distance } : {}),
           status: 'closed',
         })
+        void cancelEndOfDayReminder()
       }
       onBack()
     } catch (e: any) {
@@ -178,6 +183,7 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
     if (session.claimedDistanceKm !== undefined) rows.push(['Distance', `${session.claimedDistanceKm} km`])
     if (session.odometerStatus && session.odometerStatus !== 'recorded')
       rows.push(['Meter', ODOMETER_STATUS_LABEL[session.odometerStatus]])
+    if (session.autoClosed) rows.push(['Closed', 'Automatically — the day was left open'])
 
     return (
       <div style={{ minHeight: '100vh', background: t.bg }}>
