@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { signInWithEmailAndPassword, signOut, type ConfirmationResult } from "firebase/auth";
+import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../../firebase";
 import { useTheme } from "../../context/ThemeContext";
-import { sendSignInCode, confirmAsExistingUser, phoneAuthMessage } from "../../auth/phoneAuth";
-import { isIndianMobile, asTyped, pretty } from "../../lib/phone";
-import { Eyebrow, Field, Note, GhostButton, PrimaryButton, inputStyle } from "../../components/ui";
+import { readIdentifier, emailForLogin } from "../../auth/resolveLogin";
+import { Eyebrow, Field, Note, PrimaryButton, inputStyle } from "../../components/ui";
 
 interface Props {
   onSwitch: () => void;
@@ -14,61 +13,32 @@ interface Props {
 
 export default function LoginPage({ onSwitch, onForgot, notice }: Props) {
   const { t } = useTheme();
-  const [form, setForm] = useState({ email: "", password: "" });
+  const [form, setForm] = useState({ identifier: "", password: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showPass, setShowPass] = useState(false);
 
-  // The phone route signs in with a code instead of a password. It is the same
-  // account either way — the number is linked to it at signup — so whichever
-  // door a rep comes through, they land on the same uid with the same role.
-  const [mode, setMode] = useState<"email" | "phone">("email");
-  const [phone, setPhone] = useState("");
-  const [code, setCode] = useState("");
-  const [pending, setPending] = useState<ConfirmationResult | null>(null);
-
-  const sendCode = async () => {
-    setError("");
-    if (!isIndianMobile(phone))
-      return setError("Enter your 10-digit mobile number.");
-    setLoading(true);
-    try {
-      setPending(await sendSignInCode(phone));
-    } catch (e) {
-      setError(phoneAuthMessage(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const verifyCode = async () => {
-    setError("");
-    if (code.trim().length < 6)
-      return setError("Enter the six-digit code from the message.");
-    if (!pending) return setError("That code has expired. Ask for a new one.");
-    setLoading(true);
-    try {
-      await confirmAsExistingUser(pending, code.trim());
-      // Signed in. AuthContext picks it up and App swaps the screen out.
-    } catch (e: any) {
-      if (e?.code === "oc/unknown-number") {
-        await signOut(auth).catch(() => {});
-        setPending(null);
-        setCode("");
-        setError("No account uses that number. Sign in with your email, or ask an admin.");
-      } else setError(phoneAuthMessage(e));
-    } finally {
-      setLoading(false);
-    }
-  };
+  // A wrong password, an unregistered number and an unknown email all end up
+  // here. Telling them apart would let anyone with the login screen work out
+  // which numbers and addresses belong to staff, so they read identically.
+  const NO_MATCH = "Those details do not match an account.";
 
   const handleLogin = async () => {
     setError("");
-    if (!form.email || !form.password)
-      return setError("Enter your email and password.");
+    if (!form.identifier.trim() || !form.password)
+      return setError("Enter your email or mobile number, and your password.");
+
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, form.email, form.password);
+      const id = readIdentifier(form.identifier);
+      if (id.kind === "unusable") return setError(NO_MATCH);
+
+      // A number has to be swapped for the account's email first; an email is
+      // already what Firebase wants. Either way the password does the work.
+      const email = await emailForLogin(id);
+      if (!email) return setError(NO_MATCH);
+
+      await signInWithEmailAndPassword(auth, email, form.password);
       // Nothing else to do here. A pending, rejected or deactivated account is
       // held by the status screen in App.tsx, which explains the situation and
       // offers a way out.
@@ -82,11 +52,11 @@ export default function LoginPage({ onSwitch, onForgot, notice }: Props) {
     } catch (e: any) {
       if (
         e.code === "auth/invalid-credential" ||
-        e.code === "auth/wrong-password"
+        e.code === "auth/wrong-password" ||
+        e.code === "auth/user-not-found" ||
+        e.code === "auth/invalid-email"
       )
-        setError("That email and password do not match.");
-      else if (e.code === "auth/user-not-found")
-        setError("No account uses that email address.");
+        setError(NO_MATCH);
       else setError("Something went wrong. Try again.");
     } finally {
       setLoading(false);
@@ -116,137 +86,71 @@ export default function LoginPage({ onSwitch, onForgot, notice }: Props) {
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <div style={{ display: "flex", gap: 20 }}>
-            {(["email", "phone"] as const).map((m) => (
+          <Field label="Email or mobile number">
+            <input
+              type="text"
+              autoComplete="username"
+              value={form.identifier}
+              onChange={(e) => setForm({ ...form, identifier: e.target.value })}
+              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+              placeholder="you@example.com or 9876543210"
+              style={inputStyle(t)}
+            />
+          </Field>
+
+          <Field label="Password">
+            <div style={{ position: "relative" }}>
+              <input
+                type={showPass ? "text" : "password"}
+                autoComplete="current-password"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                placeholder="Your password"
+                style={{ ...inputStyle(t), paddingRight: 62 }}
+              />
               <button
-                key={m}
                 className="oc-action"
-                onClick={() => {
-                  setMode(m);
-                  setError("");
-                  setPending(null);
-                  setCode("");
-                }}
+                onClick={() => setShowPass(!showPass)}
                 style={{
-                  background: "none", border: "none", padding: "0 0 6px", cursor: "pointer",
-                  fontSize: 13, fontWeight: 400,
-                  color: mode === m ? t.text : t.text3,
-                  borderBottom: `1px solid ${mode === m ? t.text : "transparent"}`,
+                  position: "absolute",
+                  right: 12,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  color: t.text3,
+                  fontSize: 13,
+                  fontWeight: 400,
+                  cursor: "pointer",
+                  padding: 0,
                 }}
               >
-                {m === "email" ? "Email" : "Mobile number"}
+                {showPass ? "Hide" : "Show"}
               </button>
-            ))}
-          </div>
-
-          {mode === "email" ? (
-            <>
-              <Field label="Email">
-                <input
-                  type="email"
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  placeholder="you@example.com"
-                  style={inputStyle(t)}
-                />
-              </Field>
-
-              <Field label="Password">
-                <div style={{ position: "relative" }}>
-                  <input
-                    type={showPass ? "text" : "password"}
-                    value={form.password}
-                    onChange={(e) => setForm({ ...form, password: e.target.value })}
-                    onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-                    placeholder="Your password"
-                    style={{ ...inputStyle(t), paddingRight: 62 }}
-                  />
-                  <button
-                    className="oc-action"
-                    onClick={() => setShowPass(!showPass)}
-                    style={{
-                      position: "absolute",
-                      right: 12,
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      background: "none",
-                      border: "none",
-                      color: t.text3,
-                      fontSize: 13,
-                      fontWeight: 400,
-                      cursor: "pointer",
-                      padding: 0,
-                    }}
-                  >
-                    {showPass ? "Hide" : "Show"}
-                  </button>
-                </div>
-              </Field>
-            </>
-          ) : !pending ? (
-            <Field label="Mobile number" hint="The number registered on your account.">
-              <input
-                type="tel"
-                inputMode="numeric"
-                value={phone}
-                onChange={(e) => setPhone(asTyped(e.target.value))}
-                onKeyDown={(e) => e.key === "Enter" && sendCode()}
-                placeholder="10-digit mobile number"
-                style={inputStyle(t)}
-              />
-            </Field>
-          ) : (
-            <Field label="Code" hint={`Sent to ${pretty(phone)}.`}>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                onKeyDown={(e) => e.key === "Enter" && verifyCode()}
-                placeholder="123456"
-                style={inputStyle(t)}
-              />
-            </Field>
-          )}
+            </div>
+          </Field>
 
           {notice && !error && <Note>{notice}</Note>}
           {error && <Note tone="warn">{error}</Note>}
 
           <div>
-            {mode === "email" ? (
-              <PrimaryButton onClick={handleLogin} disabled={loading} style={{ width: "100%", padding: "13px 16px" }}>
-                {loading ? "Signing in" : "Sign in"}
-              </PrimaryButton>
-            ) : !pending ? (
-              <PrimaryButton onClick={sendCode} disabled={loading} style={{ width: "100%", padding: "13px 16px" }}>
-                {loading ? "Sending" : "Send code"}
-              </PrimaryButton>
-            ) : (
-              <PrimaryButton onClick={verifyCode} disabled={loading} style={{ width: "100%", padding: "13px 16px" }}>
-                {loading ? "Checking" : "Sign in"}
-              </PrimaryButton>
-            )}
+            <PrimaryButton onClick={handleLogin} disabled={loading} style={{ width: "100%", padding: "13px 16px" }}>
+              {loading ? "Signing in" : "Sign in"}
+            </PrimaryButton>
           </div>
 
-          {mode === "phone" && pending && (
-            <GhostButton onClick={() => { setPending(null); setCode(""); setError(""); }}>
-              Use a different number
-            </GhostButton>
-          )}
-
-          {mode === "email" && (
-            <button
-              className="oc-action"
-              onClick={onForgot}
-              style={{
-                background: "none", border: "none", padding: 0, textAlign: "left",
-                fontSize: 13, fontWeight: 400, color: t.text3, cursor: "pointer",
-                textDecoration: "underline", textUnderlineOffset: 3,
-              }}
-            >
-              Forgotten your password?
-            </button>
-          )}
+          <button
+            className="oc-action"
+            onClick={onForgot}
+            style={{
+              background: "none", border: "none", padding: 0, textAlign: "left",
+              fontSize: 13, fontWeight: 400, color: t.text3, cursor: "pointer",
+              textDecoration: "underline", textUnderlineOffset: 3,
+            }}
+          >
+            Forgotten your password?
+          </button>
 
           <div style={{ fontSize: 13, fontWeight: 400, color: t.text3 }}>
             No account yet?{" "}

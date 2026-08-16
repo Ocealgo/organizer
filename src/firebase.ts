@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app'
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore'
 import { getAuth, connectAuthEmulator } from 'firebase/auth'
 import { getStorage, connectStorageEmulator } from 'firebase/storage'
+import { getFunctions, connectFunctionsEmulator } from 'firebase/functions'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -17,6 +18,9 @@ export const db = getFirestore(app)
 export const auth = getAuth(app)
 // Field evidence — odometer readings, shelf photos, expense bills.
 export const storage = getStorage(app)
+// Deployed alongside the app, in the region the reps are actually in. This
+// region has to match the one in functions/index.js or every call 404s.
+export const functions = getFunctions(app, 'asia-south1')
 
 /**
  * End-to-end runs point the whole app at the local emulator suite.
@@ -32,6 +36,7 @@ if (import.meta.env.VITE_USE_EMULATORS === 'true') {
   connectAuthEmulator(auth, `http://${host}:9099`, { disableWarnings: true })
   connectFirestoreEmulator(db, host, 8080)
   connectStorageEmulator(storage, host, 9199)
+  connectFunctionsEmulator(functions, host, 5001)
   // eslint-disable-next-line no-console
   console.info(`[firebase] using emulators on ${host} — project ${firebaseConfig.projectId}`)
 }

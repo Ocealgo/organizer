@@ -16,7 +16,7 @@
     "storage:deploy:prod": "firebase deploy --only storage --project prod",
     "cap:sync": "npm run build && npx cap sync",
     "android": "npm run build && npx cap sync android && npx cap open android",
-    "e2e:server": "firebase emulators:exec --only auth,firestore,storage --project demo-ocealgo \"vite --mode test --port 5173 --host 127.0.0.1 --strictPort\"",
+    "e2e:server": "firebase emulators:exec --only auth,firestore,storage,functions --project demo-ocealgo \"vite --mode test --port 5173 --host 127.0.0.1 --strictPort\"",
     "e2e": "playwright test --project=desktop --project=mobile",
     "e2e:ui": "playwright test --ui",
     "e2e:report": "playwright show-report",

@@ -3,47 +3,71 @@ import { signOut, updatePassword, sendPasswordResetEmail } from 'firebase/auth'
 import { auth } from '../../firebase'
 import { useTheme } from '../../context/ThemeContext'
 import { sendSignInCode, confirmAsExistingUser, phoneAuthMessage } from '../../auth/phoneAuth'
-import { isIndianMobile, asTyped, pretty } from '../../lib/phone'
+import { readIdentifier } from '../../auth/resolveLogin'
+import { pretty } from '../../lib/phone'
 import { Eyebrow, Field, Note, GhostButton, PrimaryButton, inputStyle } from '../../components/ui'
 import type { ConfirmationResult } from 'firebase/auth'
 
 /**
- * Resetting a forgotten password with an SMS code.
+ * Getting back in when the password is gone.
  *
- * Firebase has no "reset by OTP" call. What it has is phone sign-in, and a
- * password that can be changed by whoever is currently signed in. So the code
- * is not checked against the old password at all — proving you hold the number
- * on the account IS the reset. Enter code, you are signed in, set a new
- * password, and we sign you straight back out so the new one gets used.
+ * Same box as the sign-in screen: whichever of the two things a rep registered
+ * with, they type that. What happens next differs because the two channels
+ * differ, not because the app wants them to.
  *
- * The sign-out at the end matters more than it looks. Without it somebody who
+ *   a number → a six-digit code, checked here
+ *   an email → a link, opened from the inbox
+ *
+ * Firebase has no reset-by-code call. What it has is phone sign-in, and a
+ * password that can be changed by whoever is currently signed in — so proving
+ * you hold the number IS the reset. Enter the code, you are signed in, choose
+ * a password, and we sign you straight back out so the new one gets used.
+ *
+ * That sign-out matters more than it looks. Without it, somebody who just
  * reset their password lands in the app in a session they opened by SMS, never
- * types the password they just chose, and forgets it again by next week.
+ * types the password they chose, and has forgotten it again by next week.
  */
 interface Props { onDone: (message?: string) => void }
 
-type Step = 'number' | 'code' | 'password' | 'emailed'
+type Step = 'identify' | 'code' | 'password' | 'emailed'
 
 export default function ForgotPasswordPage({ onDone }: Props) {
   const { t } = useTheme()
-  const [step, setStep] = useState<Step>('number')
+  const [step, setStep] = useState<Step>('identify')
+  const [identifier, setIdentifier] = useState('')
   const [phone, setPhone] = useState('')
+  const [sentTo, setSentTo] = useState('')
   const [code, setCode] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
-  const [email, setEmail] = useState('')
   const [pending, setPending] = useState<ConfirmationResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   const fail = (msg: string) => { setError(msg); setLoading(false) }
 
-  const send = async () => {
+  const start = async () => {
     setError('')
-    if (!isIndianMobile(phone)) return setError('Enter the 10-digit mobile number on your account.')
+    const id = readIdentifier(identifier)
+    if (id.kind === 'unusable')
+      return setError('Enter the email address or 10-digit mobile number on your account.')
+
     setLoading(true)
+    if (id.kind === 'email') {
+      try {
+        await sendPasswordResetEmail(auth, id.email)
+      } catch { /* deliberately silent — see below */ }
+      // The same outcome either way, whether or not that address is on an
+      // account. Anything else turns this box into a way to test who has one.
+      setSentTo(id.email)
+      setStep('emailed')
+      setLoading(false)
+      return
+    }
+
     try {
-      setPending(await sendSignInCode(phone))
+      setPending(await sendSignInCode(id.phone))
+      setPhone(id.phone)
       setStep('code')
       setLoading(false)
     } catch (e) { fail(phoneAuthMessage(e)) }
@@ -59,13 +83,15 @@ export default function ForgotPasswordPage({ onDone }: Props) {
       setStep('password')
       setLoading(false)
     } catch (e: any) {
-      // An unknown number is deliberately not spelled out. "No account uses
-      // that number" tells anyone with a phone book which of your reps are on
-      // the system, and this screen needs no sign-in to reach.
+      // An unregistered number is not spelled out. "No account uses that
+      // number" tells anyone with a phone book which of your reps are on the
+      // system, and this screen takes no sign-in to reach.
       if (e?.code === 'oc/unknown-number') {
         await signOut(auth).catch(() => {})
-        fail('If that number is on an account, a code has been sent. Check your messages.')
-        setStep('number')
+        setPending(null)
+        setCode('')
+        setStep('identify')
+        fail('That code did not work. Check the number and try again.')
       } else fail(phoneAuthMessage(e))
     }
   }
@@ -83,22 +109,6 @@ export default function ForgotPasswordPage({ onDone }: Props) {
     } catch {
       fail('Could not change the password. Ask for a new code and try again.')
     }
-  }
-
-  // The free, always-available fallback. SMS can be out of quota, out of
-  // credit, or simply not arriving in a shop with no signal; an emailed link
-  // costs nothing and works everywhere, so it stays one tap away throughout.
-  const emailInstead = async () => {
-    setError('')
-    if (!email.includes('@')) return setError('Enter the email address on your account.')
-    setLoading(true)
-    try {
-      await sendPasswordResetEmail(auth, email.trim())
-    } catch { /* deliberately silent — see below */ }
-    // Always the same outcome, whether or not the address is on an account.
-    // Anything else turns this box into a way to test who has an account.
-    setStep('emailed')
-    setLoading(false)
   }
 
   const shell = (children: React.ReactNode) => (
@@ -125,7 +135,7 @@ export default function ForgotPasswordPage({ onDone }: Props) {
   if (step === 'emailed') return shell(
     <>
       {heading('Check your email', 'Link sent',
-        `If ${email.trim()} is on an account, a reset link is on its way. It expires in an hour.`)}
+        `If ${sentTo} is on an account, a reset link is on its way. It expires in an hour.`)}
       <GhostButton onClick={() => onDone()}>Back to sign in</GhostButton>
     </>
   )
@@ -135,11 +145,13 @@ export default function ForgotPasswordPage({ onDone }: Props) {
       {heading('Almost done', 'Choose a password', 'Your number checked out. Pick something you will remember.')}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         <Field label="New password">
-          <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+          <input type="password" autoComplete="new-password" value={password}
+            onChange={e => setPassword(e.target.value)}
             placeholder="At least six characters" style={inputStyle(t)} />
         </Field>
         <Field label="Confirm password">
-          <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)}
+          <input type="password" autoComplete="new-password" value={confirm}
+            onChange={e => setConfirm(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && save()}
             placeholder="Type it again" style={inputStyle(t)} />
         </Field>
@@ -154,10 +166,10 @@ export default function ForgotPasswordPage({ onDone }: Props) {
   if (step === 'code') return shell(
     <>
       {heading('Check your messages', 'Enter the code',
-        `We sent a six-digit code to ${pretty(phone)}.`)}
+        `We sent a six-digit code to +91 ${pretty(phone)}.`)}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         <Field label="Code">
-          <input type="text" inputMode="numeric" value={code}
+          <input type="text" inputMode="numeric" autoComplete="one-time-code" value={code}
             onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
             onKeyDown={e => e.key === 'Enter' && verify()}
             placeholder="123456" style={inputStyle(t)} />
@@ -166,8 +178,8 @@ export default function ForgotPasswordPage({ onDone }: Props) {
         <PrimaryButton onClick={verify} disabled={loading} style={{ width: '100%', padding: '13px 16px' }}>
           {loading ? 'Checking' : 'Continue'}
         </PrimaryButton>
-        <GhostButton onClick={() => { setStep('number'); setCode(''); setError('') }}>
-          Use a different number
+        <GhostButton onClick={() => { setStep('identify'); setCode(''); setError('') }}>
+          Start again
         </GhostButton>
       </div>
     </>
@@ -176,33 +188,18 @@ export default function ForgotPasswordPage({ onDone }: Props) {
   return shell(
     <>
       {heading('Forgotten password', 'Reset it',
-        'We will text a code to the number on your account.')}
+        'Give us whichever you registered with. A number gets a code, an email gets a link.')}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-        <Field label="Mobile number">
-          <input type="tel" inputMode="numeric" value={phone}
-            onChange={e => setPhone(asTyped(e.target.value))}
-            onKeyDown={e => e.key === 'Enter' && send()}
-            placeholder="10-digit mobile number" style={inputStyle(t)} />
+        <Field label="Email or mobile number">
+          <input type="text" autoComplete="username" value={identifier}
+            onChange={e => setIdentifier(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && start()}
+            placeholder="you@example.com or 9876543210" style={inputStyle(t)} />
         </Field>
         {error && <Note tone="warn">{error}</Note>}
-        <PrimaryButton onClick={send} disabled={loading} style={{ width: '100%', padding: '13px 16px' }}>
-          {loading ? 'Sending' : 'Send code'}
+        <PrimaryButton onClick={start} disabled={loading} style={{ width: '100%', padding: '13px 16px' }}>
+          {loading ? 'Sending' : 'Continue'}
         </PrimaryButton>
-
-        <div style={{ borderTop: `1px solid ${t.border}`, paddingTop: 20 }}>
-          <div style={{ fontSize: 13, color: t.text3, marginBottom: 14, lineHeight: 1.6 }}>
-            No signal, or no number on your account? Get a link by email instead.
-          </div>
-          <Field label="Email">
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && emailInstead()}
-              placeholder="you@example.com" style={inputStyle(t)} />
-          </Field>
-          <div style={{ marginTop: 14 }}>
-            <GhostButton onClick={emailInstead} disabled={loading}>Email me a link</GhostButton>
-          </div>
-        </div>
-
         <GhostButton onClick={() => onDone()}>Back to sign in</GhostButton>
       </div>
     </>

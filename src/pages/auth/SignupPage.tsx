@@ -174,10 +174,17 @@ export default function SignupPage({ onSwitch }: Props) {
             placeholder="you@example.com" style={inputStyle(t)} />
         </Field>
 
-        <Field label="Mobile number" hint="We text a code to confirm it. Used to sign in and to reset your password.">
-          <input type="tel" inputMode="numeric" value={form.phone}
-            onChange={e => setForm({ ...form, phone: asTyped(e.target.value) })}
-            placeholder="10-digit mobile number" style={inputStyle(t)} />
+        <Field label="Mobile number" hint="Indian numbers only. We text a code to confirm it, and it is how you reset a forgotten password.">
+          <div style={{ position: 'relative' }}>
+            <span style={{
+              position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)',
+              fontSize: 14, fontWeight: 400, color: t.text3, pointerEvents: 'none',
+            }}>+91</span>
+            <input type="tel" inputMode="numeric" value={form.phone}
+              onChange={e => setForm({ ...form, phone: asTyped(e.target.value) })}
+              placeholder="9876543210"
+              style={{ ...inputStyle(t), paddingLeft: 48 }} />
+          </div>
         </Field>
 
         {([
