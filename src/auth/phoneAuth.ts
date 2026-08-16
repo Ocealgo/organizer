@@ -131,9 +131,12 @@ export function phoneAuthMessage(e: any): string {
       return 'Text messages need billing enabled on the Firebase project. Ask an admin.'
     case 'auth/unauthorized-domain':
       return 'This address is not on the app\'s allowed list in Firebase. Ask an admin.'
+    // These two look alike and are not. Splitting them is the difference
+    // between checking one setting and checking four.
     case 'auth/captcha-check-failed':
+      return 'Firebase rejected this page as an unrecognised address. The domain you are on needs adding to the authorised list. Ask an admin.'
     case 'auth/invalid-app-credential':
-      return 'The app could not prove it is genuine to Firebase. Usually Phone sign-in is switched off, or the API key is restricted. Ask an admin.'
+      return 'Firebase would not accept this app\'s credentials. Usually the API key is restricted to other addresses, or App Check is enforced without this app registered. Ask an admin.'
     case 'auth/app-not-authorized':
       return 'This build is not authorised for Firebase sign-in. Ask an admin.'
 
