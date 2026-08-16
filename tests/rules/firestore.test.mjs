@@ -12,7 +12,7 @@
 import { readFileSync } from 'node:fs'
 import { before, after, beforeEach, describe, it } from 'node:test'
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing'
-import { doc, setDoc, getDoc, updateDoc, deleteDoc, setLogLevel } from 'firebase/firestore'
+import { doc, setDoc, getDoc, updateDoc, deleteDoc, setLogLevel, collection, query, where, getDocs } from 'firebase/firestore'
 
 setLogLevel('error')
 
@@ -942,6 +942,30 @@ describe('field app — outlet visits', () => {
   it('an officer CANNOT reassign a visit to a different outlet', async () => {
     await seed((db) => setDoc(doc(db, 'outlet_visits', 'v1'), visit(U.rep)))
     await assertFails(updateDoc(doc(asUser(U.rep), 'outlet_visits', 'v1'), { partyId: 'p2' }))
+  })
+
+  // Read rules that name resource.data.uid constrain queries, not just gets:
+  // Firestore rejects a list unless the query itself proves every result will
+  // satisfy the rule. The app resumes an open visit by (sessionId, status), so
+  // it has to carry uid as well or the whole listener is denied and the screen
+  // silently shows nothing.
+  it('an officer CANNOT list visits without filtering on their own uid', async () => {
+    await seed((db) => setDoc(doc(db, 'outlet_visits', 'v1'), visit(U.rep)))
+    await assertFails(getDocs(query(
+      collection(asUser(U.rep), 'outlet_visits'),
+      where('sessionId', '==', 's1'),
+      where('status', '==', 'open'),
+    )))
+  })
+
+  it('an officer CAN list their own open visits when the query carries uid', async () => {
+    await seed((db) => setDoc(doc(db, 'outlet_visits', 'v1'), visit(U.rep)))
+    await assertSucceeds(getDocs(query(
+      collection(asUser(U.rep), 'outlet_visits'),
+      where('uid', '==', U.rep),
+      where('sessionId', '==', 's1'),
+      where('status', '==', 'open'),
+    )))
   })
 
   it('an officer CANNOT edit a visit once punched out', async () => {

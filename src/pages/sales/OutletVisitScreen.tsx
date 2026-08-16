@@ -76,8 +76,14 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
   // Resume an open visit if the app was closed mid-visit.
   useEffect(() => {
     if (!session.id) return
+    // uid is not redundant with sessionId. The read rule is written as
+    // `resource.data.uid == request.auth.uid`, and Firestore secures a list by
+    // the shape of the query, not per document — so without this filter the
+    // whole listener is denied and the officer punches in to a screen that
+    // silently drops them back on the outlet picker.
     const q = query(
       collection(db, 'outlet_visits'),
+      where('uid', '==', appUser.uid),
       where('sessionId', '==', session.id),
       where('status', '==', 'open'),
     )
@@ -86,7 +92,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
       setVisit(d ? ({ id: d.id, ...d.data() } as OutletVisit) : null)
       setLoading(false)
     }, err => { console.error('[OutletVisit] listener failed', err); setLoading(false) })
-  }, [session.id])
+  }, [session.id, appUser.uid])
 
   useEffect(() => { if (!visit) void locate() }, [visit])
 

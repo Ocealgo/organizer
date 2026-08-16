@@ -16,3 +16,9 @@ ui-debug.log
 # NEVER commit service account keys — they bypass all security rules
 *serviceAccount*.json
 *-firebase-adminsdk-*.json
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/tests/e2e/.artifacts/

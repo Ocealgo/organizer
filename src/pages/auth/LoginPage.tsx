@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-import { auth, db } from "../../firebase";
+import { auth } from "../../firebase";
 import { useTheme } from "../../context/ThemeContext";
 import { Eyebrow, Field, Note, PrimaryButton, inputStyle } from "../../components/ui";
 
@@ -22,22 +21,17 @@ export default function LoginPage({ onSwitch }: Props) {
       return setError("Enter your email and password.");
     setLoading(true);
     try {
-      const { user } = await signInWithEmailAndPassword(
-        auth,
-        form.email,
-        form.password,
-      );
-      const snap = await getDoc(doc(db, "users", user.uid));
-      if (snap.exists()) {
-        const data = snap.data();
-        if (data.status === "pending") {
-          await auth.signOut();
-          setError("Your account is still waiting for an admin to approve it.");
-        } else if (data.status === "rejected") {
-          await auth.signOut();
-          setError("Your request for access was turned down. Speak to an admin.");
-        }
-      }
+      await signInWithEmailAndPassword(auth, form.email, form.password);
+      // Nothing else to do here. A pending, rejected or deactivated account is
+      // held by the status screen in App.tsx, which explains the situation and
+      // offers a way out.
+      //
+      // This used to re-read the user document and sign the account straight
+      // back out with an inline message. It raced: AuthContext's listener often
+      // resolved first, App swapped in the status screen, and the signOut then
+      // remounted a blank LoginPage — losing the very message that explained
+      // what had happened. Two places owning one decision, and the quieter one
+      // winning at random.
     } catch (e: any) {
       if (
         e.code === "auth/invalid-credential" ||

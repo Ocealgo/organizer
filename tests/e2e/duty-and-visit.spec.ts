@@ -1,0 +1,115 @@
+import { test, expect, clickStable } from './fixtures/app'
+
+/**
+ * The field day: punch in, visit an outlet, punch out.
+ *
+ * This is the spine of the app — the outlet list is locked behind the duty
+ * session, and every visit is filed against it. If this path breaks, a rep
+ * cannot work at all, so it is worth testing end to end rather than in pieces.
+ */
+
+test.describe('the duty gate', () => {
+  test('visit logging is locked until the day is started', async ({ page, loginAs }) => {
+    await loginAs('rep')
+
+    await expect(page.getByText('You have not started your day yet. Punch in to unlock your outlet list.')).toBeVisible()
+    const logVisit = page.getByRole('button', { name: /Log a visit/ })
+    await expect(logVisit).toBeDisabled()
+    await expect(page.getByText('Locked until you start the day')).toBeVisible()
+  })
+
+  test('punching in unlocks the outlet list', async ({ page, loginAs, stubCamera }) => {
+    await loginAs('rep')
+
+    await clickStable(page.getByRole('button', { name: /Start the day/ }))
+    await expect(page.getByRole('heading', { name: 'Start your day' })).toBeVisible()
+
+    await page.getByPlaceholder('Kilometres on the meter').fill('12500')
+    await stubCamera()
+    await page.getByRole('button', { name: 'Take the photo' }).click()
+    await expect(page.getByRole('button', { name: 'Retake' })).toBeVisible()
+
+    await page.getByRole('button', { name: 'Start the day' }).click()
+
+    await expect(page.getByText(/Nothing logged yet today/)).toBeVisible()
+    await expect(page.getByRole('button', { name: /Log a visit/ })).toBeEnabled()
+  })
+})
+
+test.describe('an outlet visit', () => {
+  /** Punch in so the visit specs start on an open day. */
+  async function startDay(page: any, stubCamera: () => Promise<void>) {
+    await clickStable(page.getByRole('button', { name: /Start the day/ }))
+    await page.getByPlaceholder('Kilometres on the meter').fill('12500')
+    await stubCamera()
+    await page.getByRole('button', { name: 'Take the photo' }).click()
+    await page.getByRole('button', { name: 'Start the day' }).click()
+    await expect(page.getByRole('button', { name: /Log a visit/ })).toBeEnabled()
+  }
+
+  test('a visit cannot be closed without an outcome and real remarks', async ({ page, loginAs, stubCamera }) => {
+    await loginAs('rep2')
+    await startDay(page, stubCamera)
+
+    await clickStable(page.getByRole('button', { name: /Log a visit/ }))
+    await expect(page.getByRole('heading', { name: 'Which outlet?' })).toBeVisible()
+
+    await clickStable(page.getByRole('button', { name: /Anand Stores/ }))
+    await page.getByRole('button', { name: 'Punch in' }).click()
+    await expect(page.getByRole('heading', { name: 'Anand Stores' })).toBeVisible()
+
+    // Nothing filled in — the punch-out must refuse and say why.
+    const punchOut = page.getByRole('button', { name: /Punch out of this outlet/ })
+    await expect(punchOut).toBeDisabled()
+
+    await page.getByPlaceholder(/At least 15 characters/).fill('Too short')
+    await expect(punchOut).toBeDisabled()
+
+    // CustomSelect is a div, not a <select> — its placeholder is rendered text.
+    await page.getByText('Select the outcome').click()
+    await page.getByText('Order booked', { exact: true }).click()
+    await page.getByPlaceholder(/At least 15 characters/)
+      .fill('Owner reordered the 72s pack and asked about the new mini pack.')
+
+    await expect(punchOut).toBeEnabled()
+    await punchOut.click()
+
+    await expect(page.getByRole('heading', { name: 'Which outlet?' })).toBeVisible()
+  })
+
+  test('an outlet missing from the list can be added on the spot', async ({ page, loginAs, stubCamera }) => {
+    await loginAs('rep')
+    await startDay(page, stubCamera)
+
+    await clickStable(page.getByRole('button', { name: /Log a visit/ }))
+    await page.getByPlaceholder('Search by name or place').fill('Kumar Medicals')
+    await expect(page.getByText('No outlets found')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Add an outlet' }).first().click()
+    await expect(page.getByRole('heading', { name: 'Add an outlet' })).toBeVisible()
+
+    await page.getByPlaceholder('Rajan Enterprises').fill('Kumar Medicals')
+    await page.getByPlaceholder('10-digit mobile number').fill('9876543210')
+    await page.getByPlaceholder('Koramangala').fill('Kaloor')
+    await page.getByRole('button', { name: /Save retailer/ }).click()
+
+    // Straight into the punch-in confirmation for the shop just added.
+    await expect(page.getByRole('button', { name: 'Punch in' })).toBeVisible()
+    await expect(page.getByText('Kumar Medicals').first()).toBeVisible()
+  })
+
+  test('a duplicate phone number is refused', async ({ page, loginAs, stubCamera }) => {
+    await loginAs('rep')
+    await startDay(page, stubCamera)
+
+    await clickStable(page.getByRole('button', { name: /Log a visit/ }))
+    await page.getByRole('button', { name: 'Add an outlet' }).first().click()
+
+    await page.getByPlaceholder('Rajan Enterprises').fill('Copycat Stores')
+    await page.getByPlaceholder('10-digit mobile number').fill('9000000002') // Anand Stores
+    await page.getByPlaceholder('Koramangala').fill('Kaloor')
+    await page.getByRole('button', { name: /Save retailer/ }).click()
+
+    await expect(page.getByText(/already registered to Anand Stores/)).toBeVisible()
+  })
+})
