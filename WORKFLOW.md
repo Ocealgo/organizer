@@ -528,6 +528,22 @@ Admin can click any expense to navigate directly to the visit log for that user 
 
 ---
 
+#### Nil returns — a week with nothing to claim
+
+A rep with no entries can declare **"Nothing to claim this week"**. It creates the report as a draft
+like any other week and submits it with `totalAmount: 0` and `nilReturn: true`.
+
+This exists because the absence of a report was doing double duty. `expense_reports` docs are created
+lazily on the first entry, so a rep who genuinely spent nothing — company vehicle, on leave, worked
+out of HQ — left no document at all, and was indistinguishable from a rep who forgot to file. A
+declared nil closes the week the normal way: submitted, then acknowledged.
+
+- The reviewer sees "· nothing to claim" on the row, and Clear becomes **Acknowledge the week** with
+  the money warning replaced — nothing is being paid.
+- `nilReturn` is only read when the total is still zero. Adding an entry later makes the declaration
+  obsolete rather than wrong, and a real submit clears the flag, so nothing has to reconcile it.
+- Approval is unchanged: acknowledging still needs `clear_expenses`.
+
 #### Fuel — claimed by distance, not by amount
 
 When a ₹/km rate is configured, selecting **Fuel** replaces the amount field with a distance field:

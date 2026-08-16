@@ -567,6 +567,57 @@ describe('expenses', () => {
     }))
     await assertFails(updateDoc(doc(asUser(U.rep), 'expense_reports', 'r1'), { status: 'cleared' }))
   })
+
+  // The ₹/km fuel rate and the daily allowances live here. Setting them decides
+  // what every future claim is worth, so it rides on clear_expenses — the same
+  // permission as signing a report off — not on merely being able to see them.
+  it('a rep CANNOT set the expense rates', async () => {
+    await assertFails(setDoc(doc(asUser(U.rep), 'expense_config', 'main'), { hq: 200, ratePerKm: 999 }))
+  })
+
+  it('a manager on the shipped defaults CANNOT set the expense rates', async () => {
+    // view_expenses is on by default, clear_expenses is not. Seeing the rates
+    // must not imply setting them.
+    await assertFails(setDoc(doc(asUser(U.mgr), 'expense_config', 'main'), { hq: 200, ratePerKm: 999 }))
+  })
+
+  it('a manager granted clear_expenses CAN set the expense rates', async () => {
+    await assertSucceeds(setDoc(doc(asUser(U.mgrPlus), 'expense_config', 'main'), {
+      hq: 200, ex: 300, os: 450, ratePerKm: 4.5, updatedAt: 1, updatedBy: U.mgrPlus,
+    }))
+  })
+
+  it('an admin CAN set the expense rates', async () => {
+    await assertSucceeds(setDoc(doc(asUser(U.admin), 'expense_config', 'main'), {
+      hq: 200, ex: 300, os: 450, ratePerKm: 4.5, updatedAt: 1, updatedBy: U.admin,
+    }))
+  })
+
+  it('anyone approved CAN read the rates — a rep needs them to see what a claim comes to', async () => {
+    await seed((db) => setDoc(doc(db, 'expense_config', 'main'), { hq: 200, ex: 300, os: 450, ratePerKm: 4.5 }))
+    await assertSucceeds(getDoc(doc(asUser(U.rep), 'expense_config', 'main')))
+  })
+
+  // A nil return is created as a draft like any other week, then submitted.
+  it('a rep CAN declare a nil return for their own week', async () => {
+    await seed((db) => setDoc(doc(db, 'expense_reports', 'r1'), {
+      userId: U.rep, userName: 'rep_1', weekStart: '2026-07-27', weekEnd: '2026-08-02',
+      status: 'draft', totalAmount: 0, createdAt: 1,
+    }))
+    await assertSucceeds(updateDoc(doc(asUser(U.rep), 'expense_reports', 'r1'), {
+      status: 'submitted', totalAmount: 0, nilReturn: true, submittedAt: 2,
+    }))
+  })
+
+  it('a rep CANNOT declare a nil return on somebody else\'s week', async () => {
+    await seed((db) => setDoc(doc(db, 'expense_reports', 'r2'), {
+      userId: U.rep2, userName: 'rep_2', weekStart: '2026-07-27', weekEnd: '2026-08-02',
+      status: 'draft', totalAmount: 0, createdAt: 1,
+    }))
+    await assertFails(updateDoc(doc(asUser(U.rep), 'expense_reports', 'r2'), {
+      status: 'submitted', totalAmount: 0, nilReturn: true, submittedAt: 2,
+    }))
+  })
 })
 
 describe('sales manager — permission enforcement', () => {

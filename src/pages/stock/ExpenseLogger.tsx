@@ -337,6 +337,37 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
     await syncReportTotal(entry.reportId, -entry.amount)
   }
 
+  /**
+   * A week with nothing to claim, declared rather than left blank.
+   *
+   * Without this, a rep who genuinely spent nothing — company vehicle, on
+   * leave, worked out of HQ — leaves no report at all, and looks exactly like
+   * a rep who forgot. The reviewer cannot tell those apart, so a missing week
+   * stops meaning anything. Declaring zero closes the week the same way any
+   * other week closes: submitted, then cleared.
+   */
+  const handleSubmitNil = async () => {
+    if (weekEntries.length > 0) return
+    if (!await showConfirm(
+      'Nothing to claim this week?',
+      `You are declaring that you had no expenses for ${weekLabel(activeWeekStart)}. It goes to an admin like any other week, and you can still add entries and resubmit if that changes.`,
+      'Declare nil',
+    )) return
+
+    setSubmitting(true)
+    try {
+      const rpt = await getOrCreateReport()
+      await updateDoc(doc(db, 'expense_reports', rpt.id!), {
+        status: 'submitted', totalAmount: 0, nilReturn: true, submittedAt: Date.now(),
+      })
+      await addDoc(collection(db, 'alerts'), {
+        type: 'expense_submitted',
+        message: `${appUser.name} declared nothing to claim for ${weekLabel(activeWeekStart)}`,
+        relatedId: rpt.id!, read: false, toRole: 'admin_group', createdAt: Date.now(),
+      })
+    } finally { setSubmitting(false) }
+  }
+
   const handleSubmitWeek = async () => {
     if (!report || weekEntries.length === 0) { await showAlert('Nothing to submit yet', 'Log at least one expense for the week first.'); return }
     if (!await showConfirm('Submit this week?', `Expenses for ${weekLabel(activeWeekStart)} go to an admin for review. You can still edit them afterwards.`, 'Submit')) return
@@ -344,7 +375,7 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
     try {
       const total = totalOf(weekEntries)
       await updateDoc(doc(db, 'expense_reports', report.id!), {
-        status: 'submitted', totalAmount: total, submittedAt: Date.now(),
+        status: 'submitted', totalAmount: total, nilReturn: false, submittedAt: Date.now(),
       })
       await addDoc(collection(db, 'alerts'), {
         type: 'expense_submitted',
@@ -836,9 +867,25 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
             </Section>
           )}
 
+          {viewMode === 'week' && weekEntries.length === 0 && !isLocked
+            && (!report || report.status === 'draft' || report.status === 'rejected') && (
+            <Section label="Submit">
+              <div style={{ maxWidth: 460 }}>
+                <div style={{ fontSize: 14, fontWeight: 400, color: t.text3, lineHeight: 1.6, marginBottom: 14 }}>
+                  Nothing is logged for this week. If you genuinely had no expenses, say so — left
+                  blank it is indistinguishable from a week you forgot to fill in.
+                </div>
+                <PrimaryButton onClick={handleSubmitNil} disabled={submitting}>
+                  {submitting ? 'Submitting' : 'Nothing to claim this week'}
+                </PrimaryButton>
+              </div>
+            </Section>
+          )}
+
           {report?.status === 'submitted' && (
             <Note>
-              Submitted{report.submittedAt
+              {report.nilReturn && weekTotal === 0 ? 'Declared as nothing to claim' : 'Submitted'}
+              {report.submittedAt
                 ? ` on ${new Date(report.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`
                 : ''} and waiting on an admin. You can still edit entries.
             </Note>
@@ -950,9 +997,17 @@ function AdminView({ onBack, appUser, onViewVisitLog }: { onBack: () => void; ap
       return
     }
     const liveTotal = reportTotal(r.id!)
-    if (!await showConfirm('Clear this report?', `${r.userName} is marked as paid ₹${liveTotal.toLocaleString('en-IN')} for ${weekLabel(r.weekStart)}.
+    const isNil = r.nilReturn && liveTotal === 0
+    if (!await showConfirm(
+      isNil ? 'Acknowledge this week?' : 'Clear this report?',
+      isNil
+        ? `${r.userName} declared nothing to claim for ${weekLabel(r.weekStart)}. Nothing is paid — this just closes the week off.
 
-This cannot be undone.`, 'Clear it')) return
+This cannot be undone.`
+        : `${r.userName} is marked as paid ₹${liveTotal.toLocaleString('en-IN')} for ${weekLabel(r.weekStart)}.
+
+This cannot be undone.`,
+      isNil ? 'Acknowledge' : 'Clear it')) return
     setClearingId(r.id!)
     try {
       await updateDoc(doc(db, 'expense_reports', r.id!), {
@@ -963,7 +1018,9 @@ This cannot be undone.`, 'Clear it')) return
       })
       await addDoc(collection(db, 'alerts'), {
         type: 'expense_submitted',
-        message: `Your expenses for ${weekLabel(r.weekStart)} were cleared — ₹${liveTotal.toLocaleString('en-IN')}${clearNote ? `. ${clearNote}` : '.'}`,
+        message: isNil
+          ? `Your nil return for ${weekLabel(r.weekStart)} was acknowledged${clearNote ? `. ${clearNote}` : '.'}`
+          : `Your expenses for ${weekLabel(r.weekStart)} were cleared — ₹${liveTotal.toLocaleString('en-IN')}${clearNote ? `. ${clearNote}` : '.'}`,
         relatedId: r.id!, read: false, toUid: r.userId, createdAt: Date.now(),
       })
       setClearNote('')
@@ -1171,6 +1228,7 @@ This cannot be undone.`, 'Clear it')) return
                           </span>
                           <span style={{ display: 'block', fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 3 }}>
                             {weekLabel(r.weekStart)}
+                            {r.nilReturn && reportTotal(r.id!) === 0 && ' · nothing to claim'}
                             {r.status === 'submitted' && r.submittedAt &&
                               ` · submitted ${new Date(r.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`}
                             {r.status === 'cleared' && r.clearedAt &&
@@ -1294,10 +1352,17 @@ This cannot be undone.`, 'Clear it')) return
 
                           {r.status === 'submitted' && (
                             <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 460 }}>
-                              <Note tone="warn">
-                                Clear this only once the money has physically reached the salesperson
-                                and the payment is recorded in Zoho Inventory. It cannot be undone.
-                              </Note>
+                              {r.nilReturn && reportTotal(r.id!) === 0 ? (
+                                <Note>
+                                  They declared nothing to claim for this week. Nothing is paid —
+                                  acknowledging it just closes the week off.
+                                </Note>
+                              ) : (
+                                <Note tone="warn">
+                                  Clear this only once the money has physically reached the salesperson
+                                  and the payment is recorded in Zoho Inventory. It cannot be undone.
+                                </Note>
+                              )}
 
                               <Field label="Note on clearing" hint="Optional. How it was paid, for example.">
                                 <input value={clearNote} onChange={e => setClearNote(e.target.value)}
@@ -1305,7 +1370,9 @@ This cannot be undone.`, 'Clear it')) return
                               </Field>
                               <div>
                                 <PrimaryButton onClick={() => handleClear(r)} disabled={!!clearingId || !!rejectingId}>
-                                  {clearingId === r.id ? 'Clearing' : `Clear ${money(reportTotal(r.id!))}`}
+                                  {clearingId === r.id ? 'Clearing'
+                                    : r.nilReturn && reportTotal(r.id!) === 0 ? 'Acknowledge the week'
+                                    : `Clear ${money(reportTotal(r.id!))}`}
                                 </PrimaryButton>
                               </div>
 

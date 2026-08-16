@@ -263,6 +263,14 @@ export interface ExpenseReport {
   weekEnd: string
   status: 'draft' | 'submitted' | 'cleared' | 'rejected'
   totalAmount: number
+  /**
+   * Declared as having nothing to claim, rather than simply never filed.
+   * Without this a quiet week and a forgotten week are the same absence, and
+   * a reviewer cannot tell them apart. Only meaningful while the total is
+   * still zero — adding an entry later makes the declaration obsolete rather
+   * than wrong, so nothing has to go back and unset it.
+   */
+  nilReturn?: boolean
   submittedAt?: number
   clearedAt?: number
   clearedBy?: string
