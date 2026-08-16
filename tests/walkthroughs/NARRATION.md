@@ -16,7 +16,19 @@ re-run rather than a re-shoot. Stitching needs ffmpeg on the machine.
 
 Each clip already carries its on-screen captions, so it is watchable as-is. This
 script is what a human would say over the top — longer and warmer than a caption
-can be. Timings are approximate; the captions are the anchor.
+can be.
+
+```bash
+npm run walkthroughs:narrate   # speak the quoted lines, one wav per chapter
+```
+
+**The quoted lines have to fit their clip.** The heading on each chapter is how
+long that chapter is on screen, and the narration is mixed in starting at the
+title card. Overrun it and the film holds a frozen frame waiting for the voice
+to finish, which the stitcher will tell you about. Roughly two and a half words
+a second is the budget — the passages below are written to it, so if you add a
+sentence, take one out. Only the quoted lines are spoken; the bold notes are for
+whoever is running the session.
 
 **Re-record rather than re-shoot.** When a screen changes, change the script and
 run it again. That is the whole reason these are scripted instead of captured by
@@ -24,126 +36,116 @@ hand.
 
 ---
 
-## 01 — Signing in _(~30s)_
+## 01 — Signing in _(25s on screen)_
 
-> This is the Ocealgo app on your phone. Your admin creates your account, so you
-> sign in with the email they set up — you do not register yourself.
+> This is the Ocealgo app. Your admin creates your account — sign in with the
+> email they set up.
 >
-> If you are not sure what you typed, tap Show next to the password.
+> The first line on the home screen tells you what today looks like. Read it
+> first.
 >
-> The first line on the home screen always tells you what today looks like. Read
-> that line first, every time. Right now it says you have not started your day.
->
-> Underneath, the screen is in three parts. **Today** is the three things you do
-> every day. **Trade** is your network of shops, your stock and the credit book.
-> **Yours** is your own record — what you have logged, your leave, your expenses.
+> Below that: **Today**, what you do every day. **Trade**, your shops and credit.
+> **Yours**, your own record.
+
+**Worth saying over the top:** you never register yourself, and Show beside the
+password field reveals what you typed. Today holds three things, and Yours is
+where leave and expenses live.
 
 **If a rep gets stuck:** an account that says "Waiting for approval" is not
 broken. An admin has not approved it yet. They do not need to sign up again.
 
 ---
 
-## 02 — Starting your day _(~26s)_
+## 02 — Starting your day _(28s on screen)_
 
-> Nothing unlocks until you punch in. Your outlet list stays locked, and you
-> cannot log a visit, until you have started the day.
+> Nothing unlocks until you punch in. Your outlet list stays locked until you do.
 >
-> Your location is recorded quietly in the background. If your phone cannot find
-> it, carry on anyway — the day is simply recorded without one. It never stops
-> you working.
+> Your location is recorded in the background. If your phone cannot find it,
+> carry on.
 >
-> Tell the app about your vehicle meter, then type the opening reading exactly as
-> it shows. Then photograph it. **The number has to be readable in the photo** —
-> that photo is what proves the distance you claim at the end of the day.
->
-> No vehicle today, or a broken meter? Say so instead, and write a short reason.
+> Enter the opening meter reading exactly as it shows, then photograph it.
+> **The number must be readable** — that photo proves the distance you claim.
+> No vehicle? Say so, with a reason.
 
 **The point to land:** the opening reading and the closing reading are the two
 ends of your distance claim. A missing one costs you the claim.
 
 ---
 
-## 03 — Visiting an outlet _(~45s)_
+## 03 — Visiting an outlet _(48s on screen)_
 
 > With your day open, tap Log a visit. Your outlets come up sorted by how close
-> they are to you right now, so the shop you are standing in is usually first.
->
-> Before you punch in, it tells you how far you are from where that shop is
-> registered. That is recorded, not enforced — it never stops you.
+> they are.
 >
 > Inside the visit, work down the screen. What is on their shelf. Any competitor
-> brand you can see, with its price if it is on the pack. If they ordered, switch
-> Book an order on and the order is raised for you — you do not raise it
-> separately afterwards.
+> brand, with its price. If they ordered, switch Book an order on and it is
+> raised for you.
 >
 > Then the outcome. **This is the part your manager actually reads.** Pick what
 > happened, and write what was said. Fifteen characters is the minimum, not the
-> target — "no stock" tells nobody anything; "owner says the rival brand is
-> running a twenty percent scheme" tells them everything.
+> target — "no stock" tells nobody anything.
 >
 > Punch out, and on to the next shop.
 
 **The point to land:** the remarks are the visit. Everything else is numbers.
+"Owner says the rival brand is running a twenty percent scheme" is what a useful
+remark looks like — read that one out if the room needs an example.
+
+**On screen but unsaid:** before punching in, the app shows how far the rep is
+from where that shop is registered. That is recorded, not enforced — it never
+blocks the visit. Worth pointing at, because reps assume it is a tripwire.
 
 ---
 
-## 04 — Adding a shop that is not on your list _(~30s)_
+## 04 — Adding a shop that is not on your list _(33s on screen)_
 
-> Walked into a shop that is not on your list? You do not have to go anywhere
-> else, and you do not have to wait for the office.
+> A shop that is not on your list? You do not have to wait for the office.
 >
-> Search first. Half of all duplicates are the same shop under a slightly
-> different spelling, so look before you add.
+> Search first — half of all duplicates are the same shop spelled differently.
 >
-> Then Add an outlet. It asks for just enough to start visiting them — name,
-> phone, and the area. The full address, the district and the pincode can be
-> filled in later from Network by whoever has time.
+> Then Add an outlet. It asks just enough to start visiting them: name, phone,
+> area. The rest can be filled in later from Network.
 >
-> The shop is registered exactly where you are standing, so the next person to
-> visit knows where it is.
->
-> Save, and you drop straight into punching in. No trip back to the office.
+> The shop is registered where you are standing. Save, and you drop straight into
+> punching in.
 
 **If the phone number is refused:** that shop is already on the system under
 another name. Search for it instead of adding it again.
 
 ---
 
-## 05 — Logging your expenses _(~30s)_
+## 05 — Logging your expenses _(34s on screen)_
 
-> Expenses live under Yours, in Expense reports. You work a week at a time.
+> Expenses live under Yours, in Expense reports. A week at a time.
 >
-> Each working day gets a daily allowance — HQ if you stayed local, EX if you
-> went beyond twenty-five kilometres, OS if you stayed over. Pick the one that
-> matches where you actually went.
+> Each day gets an allowance — HQ local, EX beyond twenty-five kilometres, OS
+> overnight. Add anything else: bus fare, food, lodging.
 >
-> For anything else, add it against the day: bus fare, food, lodging, printing.
+> Fuel is different — enter the **distance**, never a rupee figure.
 >
-> Fuel works differently. If your manager has set a rate per kilometre, you enter
-> the **distance** and the app works out the amount. You never type a rupee
-> figure for fuel.
->
-> When the week is done, submit it. An admin reviews it and clears it, and you
-> are told either way.
->
-> Had nothing to claim at all that week? **Say so** — tap "Nothing to claim this
-> week". A blank week looks exactly like a week you forgot, and nobody can tell
-> the difference.
+> Submit the week when it is done. Nothing to claim? **Say so** — a blank week
+> looks like a week you forgot.
+
+**The two that get missed:** fuel is entered as distance only, and it needs your
+manager to have set a rate per kilometre first. And "Nothing to claim this week"
+is a button — an untouched week is indistinguishable from a forgotten one, and
+an admin reviews and clears every submission either way.
 
 ---
 
-## 06 — Ending your day _(~19s)_
+## 06 — Ending your day _(21s on screen)_
 
 > At the end of the day, come back and close it off.
 >
-> Enter the closing meter reading and photograph it, the same as the morning. The
-> app works out your distance from the two numbers.
+> Enter the closing reading and photograph it, just like the morning. The app
+> works out your distance.
 >
-> Sixty-three kilometres, recorded.
->
-> **If you forget this, the day claims no distance at all.** The app will remind
-> you at six, and close the day for you late at night — but a day closed for you
-> records nothing. Make ending the day a habit.
+> **Forget this and the day claims no distance at all.** Make ending the day a
+> habit.
+
+**The bit the clip does not say:** the app reminds you at six and closes the day
+for you late at night — but a day closed for you records nothing. That is why it
+has to be a habit rather than something the app can rescue.
 
 ---
 
