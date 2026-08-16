@@ -24,6 +24,7 @@
     "e2e:mobile": "playwright test --project=mobile",
     "walkthroughs": "playwright test --project=walkthrough",
     "walkthroughs:cards": "playwright test --project=walkthrough cards.spec.ts",
+    "walkthroughs:sting": "node scripts/make-sting.mjs",
     "walkthroughs:film": "node scripts/stitch-walkthroughs.mjs"
   },
   "dependencies": {

@@ -17,6 +17,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, writeFileSync, rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { FFMPEG, FFPROBE } from './ffmpeg-path.mjs'
 
 const ROOT = resolve(import.meta.dirname, '..')
 const CLIPS = join(ROOT, 'tests/walkthroughs/clips')
@@ -39,29 +40,6 @@ const H = 916
 const FPS = 30
 const CARD_SECONDS = 2.5
 const BOOKEND_SECONDS = 3.5
-
-/** winget installs outside PATH for the current shell, so look there too. */
-function findBinary(name) {
-  const local = process.env.LOCALAPPDATA
-  if (local) {
-    const base = join(local, 'Microsoft/WinGet/Packages')
-    if (existsSync(base)) {
-      const stack = [base]
-      while (stack.length) {
-        const dir = stack.pop()
-        for (const e of readdirSync(dir, { withFileTypes: true })) {
-          const p = join(dir, e.name)
-          if (e.isDirectory()) stack.push(p)
-          else if (e.name.toLowerCase() === `${name}.exe`) return p
-        }
-      }
-    }
-  }
-  return name // fall back to PATH
-}
-
-const FFMPEG = findBinary('ffmpeg')
-const FFPROBE = findBinary('ffprobe')
 
 const seconds = (file) => parseFloat(execFileSync(FFPROBE, [
   '-v', 'error', '-show_entries', 'format=duration', '-of',
