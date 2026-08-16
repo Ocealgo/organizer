@@ -25,6 +25,7 @@
     "walkthroughs": "playwright test --project=walkthrough",
     "walkthroughs:cards": "playwright test --project=walkthrough cards.spec.ts",
     "walkthroughs:sting": "node scripts/make-sting.mjs",
+    "walkthroughs:narrate": "node scripts/narrate.mjs",
     "walkthroughs:film": "node scripts/stitch-walkthroughs.mjs"
   },
   "dependencies": {
