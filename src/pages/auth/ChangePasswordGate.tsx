@@ -28,6 +28,8 @@ export default function ChangePasswordGate({ uid, name, byName }: Props) {
   const [confirm, setConfirm] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  /** The password really did change, even if the app could not record it. */
+  const [changed, setChanged] = useState(false)
 
   const save = async () => {
     setError('')
@@ -37,13 +39,31 @@ export default function ChangePasswordGate({ uid, name, byName }: Props) {
     if (next === current) return setError('Choose something other than the temporary one.')
     if (!auth.currentUser) return
     setBusy(true)
+
+    // The two halves fail in ways that need saying differently. Changing the
+    // password can fail and change nothing. Clearing the flag can only fail
+    // AFTER the password has already changed — at which point the temporary
+    // one is gone, and telling somebody to "try again" would have them typing
+    // a password that no longer exists.
     try {
       await changePassword(auth.currentUser, current, next)
-      // Only once the new password is really in place. Clearing the flag first
-      // would drop the gate on a change that then failed.
-      await updateDoc(doc(db, 'users', uid), { mustChangePassword: false })
     } catch (e) {
       setError(accountMessage(e))
+      setBusy(false)
+      return
+    }
+
+    try {
+      await updateDoc(doc(db, 'users', uid), { mustChangePassword: false })
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[ChangePasswordGate] password changed but the flag was not cleared', e)
+      setChanged(true)
+      setError(
+        'Your password IS changed — use the new one from now on. The app could not '
+        + 'record that it happened, so this screen will not go away. Tell an admin the '
+        + 'security rules need deploying.',
+      )
     } finally {
       setBusy(false)
     }
@@ -84,8 +104,8 @@ export default function ChangePasswordGate({ uid, name, byName }: Props) {
 
           {error && <Note tone="warn">{error}</Note>}
 
-          <PrimaryButton onClick={save} disabled={busy} style={{ width: '100%', padding: '13px 16px' }}>
-            {busy ? 'Saving' : 'Save and carry on'}
+          <PrimaryButton onClick={save} disabled={busy || changed} style={{ width: '100%', padding: '13px 16px' }}>
+            {busy ? 'Saving' : changed ? 'Password already changed' : 'Save and carry on'}
           </PrimaryButton>
           <GhostButton onClick={() => signOut(auth)}>Sign out</GhostButton>
         </div>
