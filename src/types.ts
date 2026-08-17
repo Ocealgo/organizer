@@ -28,6 +28,9 @@ export interface AppUser {
   /** E.164, e.g. `+919876543210`. Absent on accounts created before signup asked. */
   phone?: string
   role: UserRole; status: AccountStatus
+  /** Set when someone else reset this password. Cleared once the owner picks their own. */
+  mustChangePassword?: boolean
+  passwordResetBy?: string; passwordResetByName?: string; passwordResetAt?: unknown
   createdAt: number; approvedAt?: number; approvedBy?: string
   permissions?: PermissionMap   // only meaningful for role === 'sales_manager'
 }

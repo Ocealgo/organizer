@@ -8,6 +8,7 @@ import LoginPage from "./pages/auth/LoginPage";
 import SignupPage from "./pages/auth/SignupPage";
 import ForgotPasswordPage from "./pages/auth/ForgotPasswordPage";
 import AddPhoneGate from "./pages/auth/AddPhoneGate";
+import ChangePasswordGate from "./pages/auth/ChangePasswordGate";
 import ProfilePage from "./pages/profile/ProfilePage";
 import SalesView from "./pages/sales/SalesView";
 import MarketingView from "./pages/marketing/MarketingView";
@@ -135,6 +136,17 @@ function AppContent() {
           <GhostButton onClick={() => signOut(auth)}>Sign out</GhostButton>
         </div>
       </div>
+    );
+
+  // A password somebody else chose and read out loud comes first, ahead even
+  // of the number gate. Until it is replaced, two people know it.
+  if (appUser.mustChangePassword)
+    return (
+      <ChangePasswordGate
+        uid={appUser.uid}
+        name={appUser.name}
+        byName={appUser.passwordResetByName}
+      />
     );
 
   // A mobile number is mandatory, and this is where that is actually true —

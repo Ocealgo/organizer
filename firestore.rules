@@ -122,10 +122,16 @@ service cloud.firestore {
       // nobody has proved they hold — the document is forced to agree with
       // what was verified rather than merely being checked by the form that
       // submitted it.
+      // mustChangePassword may only ever be cleared here, never set. A manager
+      // resets a password through a function that writes it with admin rights;
+      // letting a client raise it would let anyone lock a colleague out of
+      // their own account behind a password-change screen.
       allow update: if isSelf(uid)
-        && onlyChanged(['name', 'phone'])
+        && onlyChanged(['name', 'phone', 'mustChangePassword'])
         && (isUnchanged('phone')
-            || request.resource.data.phone == request.auth.token.phone_number);
+            || request.resource.data.phone == request.auth.token.phone_number)
+        && (isUnchanged('mustChangePassword')
+            || request.resource.data.mustChangePassword == false);
 
       // Admin: approve / reject / deactivate / change role / tune permissions.
       //   · a super_admin's doc is untouchable by anyone

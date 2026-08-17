@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { collection, doc, updateDoc } from 'firebase/firestore'
+import { httpsCallable } from 'firebase/functions'
 import { onSnapshot } from '../../data/live'
-import { db } from '../../firebase'
+import { db, functions } from '../../firebase'
 import { AppUser, UserRole, Permission, PermissionMap } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
@@ -118,6 +119,45 @@ export default function UserManagement({ onBack }: Props) {
   const setPermission = async (uid: string, current: PermissionMap, key: Permission, value: boolean) =>
     run(uid, 'change that permission', { permissions: { ...current, [key]: value } })
 
+  /**
+   * Reset somebody's password and show what to read them.
+   *
+   * The password comes back once and is never stored anywhere this screen can
+   * fetch again — reopening the Team list will not show it a second time. So
+   * the alert has to be treated as the only copy, which is also the reason it
+   * says so out loud rather than trusting whoever is reading to realise.
+   */
+  const resetPassword = async (uid: string, name: string) => {
+    const ok = await showDanger(
+      `Reset ${name}'s password?`,
+      'Their current password stops working immediately. You will be shown a temporary '
+      + 'one to read to them, and they will be asked to choose their own the next time '
+      + 'they sign in.',
+      'Reset it',
+    )
+    if (!ok) return
+
+    setUpdating(uid)
+    try {
+      const call = httpsCallable<{ uid: string }, { password: string; name: string }>(
+        functions, 'adminResetPassword',
+      )
+      const { data } = await call({ uid })
+      await showAlert(
+        `Read this to ${data.name || name}:  ${data.password}`,
+        'This is the only time it is shown. If you lose it before they sign in, reset '
+        + 'again for a new one.',
+      )
+    } catch (e: any) {
+      await showAlert(
+        'Could not reset that password',
+        e?.message || 'Something went wrong. Try again.',
+      )
+    } finally {
+      setUpdating(null)
+    }
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 56 }}>
       <PageHeader
@@ -170,6 +210,7 @@ export default function UserManagement({ onBack }: Props) {
                   viewerIsAdmin={viewerIsAdmin}
                   roles={assignableRoles}
                   onDeactivate={deactivateUser}
+                  onResetPassword={resetPassword}
                   onRoleChange={changeRole}
                   onPermissionChange={setPermission} />
               ))}
@@ -347,10 +388,11 @@ function PermissionEditor({ user, onChange }: {
 }
 
 // ── ACTIVE ───────────────────────────────────────────────────────────────────
-function UserCard({ user, updating, currentUser, viewerIsAdmin, roles, onDeactivate, onRoleChange, onPermissionChange }: {
+function UserCard({ user, updating, currentUser, viewerIsAdmin, roles, onDeactivate, onResetPassword, onRoleChange, onPermissionChange }: {
   user: AppUser; updating: string | null; currentUser: AppUser
   viewerIsAdmin: boolean; roles: UserRole[]
   onDeactivate: (uid: string, name: string) => void
+  onResetPassword: (uid: string, name: string) => void
   onRoleChange: (uid: string, role: UserRole, current?: PermissionMap) => void
   onPermissionChange: (uid: string, current: PermissionMap, key: Permission, value: boolean) => void
 }) {
@@ -361,18 +403,42 @@ function UserCard({ user, updating, currentUser, viewerIsAdmin, roles, onDeactiv
   const canDeactivate = viewerIsAdmin && !isSuper && currentUser.uid !== user.uid
   const canEditRole = viewerIsAdmin && !isSuper && user.status === 'approved'
 
+  // Mirrors MAY_RESET in functions/index.js, which is the copy that decides.
+  // This one only decides whether to draw a button; a browser saying it is an
+  // admin proves nothing, so the function checks again against the database.
+  const canReset =
+    !isSuper
+    && currentUser.uid !== user.uid
+    && user.status === 'approved'
+    && (viewerIsAdmin
+        ? user.role !== 'super_admin'
+        : currentUser.role === 'sales_manager'
+          && (user.role === 'offline_sales' || user.role === 'online_sales'))
+
   return (
     <CardShell>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
         <Identity user={user}
           note={`${ROLE_LABELS_PLAIN[user.role]}${user.status === 'rejected' ? ' · turned down' : ''}`} />
-        {canDeactivate && (
-          <GhostButton onClick={() => onDeactivate(user.uid, user.name)} disabled={isUpdating}
-            style={{ flexShrink: 0 }}>
-            Deactivate
-          </GhostButton>
-        )}
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+          {canReset && (
+            <GhostButton onClick={() => onResetPassword(user.uid, user.name)} disabled={isUpdating}>
+              Reset password
+            </GhostButton>
+          )}
+          {canDeactivate && (
+            <GhostButton onClick={() => onDeactivate(user.uid, user.name)} disabled={isUpdating}>
+              Deactivate
+            </GhostButton>
+          )}
+        </div>
       </div>
+      {user.mustChangePassword && (
+        <div style={{ fontSize: 13, color: t.text3, marginTop: 10 }}>
+          Password was reset{user.passwordResetByName ? ` by ${user.passwordResetByName}` : ''}.
+          Waiting for them to choose their own.
+        </div>
+      )}
 
       {canEditRole && (
         <div style={{ marginTop: 14 }}>
