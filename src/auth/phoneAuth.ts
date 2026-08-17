@@ -6,18 +6,27 @@
  * The verifier is invisible — nobody sees a puzzle — but it is stateful, and
  * so is the element it renders into.
  *
- * A fresh element every time, thrown away afterwards
- * --------------------------------------------------
- * `verifier.clear()` releases the verifier but leaves grecaptcha's widget in
- * the DOM node, and grecaptcha refuses to render twice into the same node:
- * "reCAPTCHA has already been rendered in this element". Reusing one container
- * therefore works exactly once per page load and fails on every retry after —
- * including the retry somebody makes immediately after a first attempt failed
- * for an unrelated reason, which is precisely when they are least able to tell
- * the two problems apart.
+ * One verifier, rendered once, reset between uses
+ * -----------------------------------------------
+ * This was originally a fresh verifier and a fresh element per send, which is
+ * the obvious way to write it and is wrong twice over.
  *
- * So the element is created per send and removed with the verifier. Recreating
- * a div costs nothing next to the cost of debugging the alternative.
+ * `verifier.clear()` releases the verifier but leaves grecaptcha's widget in
+ * the node, and grecaptcha will not render twice into the same node — so a
+ * shared element works once per page load and then throws "reCAPTCHA has
+ * already been rendered in this element" forever.
+ *
+ * Worse, building the verifier inside the click handler and executing it
+ * immediately runs the challenge in an async continuation, after the user
+ * gesture that started it has lapsed, against a widget that may not have
+ * finished rendering. That yields a token the server rejects as
+ * INVALID_APP_CREDENTIAL while every setting in the console looks correct —
+ * an expensive thing to debug, because nothing about the message points here.
+ *
+ * So: one verifier for the life of the page, `render()`ed before anything uses
+ * it, and reset after each send so the next one gets a fresh challenge rather
+ * than a spent token. This is the shape the Firebase documentation uses, and
+ * the reasons it uses it are the two paragraphs above.
  */
 import {
   RecaptchaVerifier, signInWithPhoneNumber, linkWithPhoneNumber, deleteUser,
@@ -28,25 +37,54 @@ import { doc, getDoc } from 'firebase/firestore'
 import { auth, db } from '../firebase'
 import { toE164 } from '../lib/phone'
 
-async function withVerifier<T>(run: (v: RecaptchaVerifier) => Promise<T>): Promise<T> {
-  // Its own node, never anyone else's and never a second time. See above.
-  //
-  // Moved off-screen rather than `display: none`. grecaptcha measures and
-  // executes inside this element, and an element with no box at all is a
-  // category of thing it has historically been unhappy about — whereas one
-  // that is simply somewhere nobody looks behaves like any other.
-  const host = document.createElement('div')
-  host.style.position = 'absolute'
-  host.style.left = '-9999px'
-  host.style.top = '0'
-  document.body.appendChild(host)
+declare global {
+  interface Window { grecaptcha?: { reset: (widgetId: number) => void } }
+}
 
-  const verifier = new RecaptchaVerifier(auth, host, { size: 'invisible' })
+let ready: Promise<{ verifier: RecaptchaVerifier; widgetId: number }> | null = null
+
+/**
+ * The page's one verifier, built and rendered on first use.
+ *
+ * Parked off-screen rather than `display: none`: grecaptcha measures and
+ * executes inside this element, and an element with no box at all is a
+ * category of thing it has historically objected to.
+ */
+function ensureVerifier() {
+  if (!ready) {
+    ready = (async () => {
+      const host = document.createElement('div')
+      host.id = 'oc-recaptcha'
+      host.style.position = 'absolute'
+      host.style.left = '-9999px'
+      host.style.top = '0'
+      document.body.appendChild(host)
+
+      const verifier = new RecaptchaVerifier(auth, host, { size: 'invisible' })
+      // Rendering up front rather than letting the first verify() do it. A
+      // challenge executed against a half-rendered widget is where the bad
+      // tokens come from.
+      const widgetId = await verifier.render()
+      return { verifier, widgetId }
+    })().catch((e) => {
+      // Never cache a broken verifier — the next attempt should get to build
+      // a new one rather than inheriting this failure for the whole session.
+      ready = null
+      throw e
+    })
+  }
+  return ready
+}
+
+async function withVerifier<T>(run: (v: RecaptchaVerifier) => Promise<T>): Promise<T> {
+  const { verifier, widgetId } = await ensureVerifier()
   try {
     return await run(verifier)
   } finally {
-    try { verifier.clear() } catch { /* already gone */ }
-    host.remove()
+    // The token is single-use whether or not the send worked. Left unreset,
+    // the next attempt presents a spent challenge and is refused for reasons
+    // that have nothing to do with the number being typed.
+    try { window.grecaptcha?.reset(widgetId) } catch { /* nothing to reset */ }
   }
 }
 
