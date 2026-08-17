@@ -3,13 +3,21 @@
  *
  * Firebase will not send an OTP from the web without a reCAPTCHA to prove the
  * request came from a browser and not a script running up somebody's SMS bill.
- * The verifier is invisible — nobody sees a puzzle — but it is stateful: once
- * it has been spent on a send it has to be thrown away before the next one, or
- * the second send fails with a stale-token error that reads like a network
- * problem and sends you looking in the wrong place.
+ * The verifier is invisible — nobody sees a puzzle — but it is stateful, and
+ * so is the element it renders into.
  *
- * So: one verifier per send, always torn down. The cost of recreating it is
- * nothing next to the cost of debugging the alternative.
+ * A fresh element every time, thrown away afterwards
+ * --------------------------------------------------
+ * `verifier.clear()` releases the verifier but leaves grecaptcha's widget in
+ * the DOM node, and grecaptcha refuses to render twice into the same node:
+ * "reCAPTCHA has already been rendered in this element". Reusing one container
+ * therefore works exactly once per page load and fails on every retry after —
+ * including the retry somebody makes immediately after a first attempt failed
+ * for an unrelated reason, which is precisely when they are least able to tell
+ * the two problems apart.
+ *
+ * So the element is created per send and removed with the verifier. Recreating
+ * a div costs nothing next to the cost of debugging the alternative.
  */
 import {
   RecaptchaVerifier, signInWithPhoneNumber, linkWithPhoneNumber, deleteUser,
@@ -20,26 +28,18 @@ import { doc, getDoc } from 'firebase/firestore'
 import { auth, db } from '../firebase'
 import { toE164 } from '../lib/phone'
 
-/** The reCAPTCHA needs somewhere in the DOM to live, even when invisible. */
-const CONTAINER_ID = 'oc-recaptcha'
-
-function container() {
-  let el = document.getElementById(CONTAINER_ID)
-  if (!el) {
-    el = document.createElement('div')
-    el.id = CONTAINER_ID
-    document.body.appendChild(el)
-  }
-  return el
-}
-
 async function withVerifier<T>(run: (v: RecaptchaVerifier) => Promise<T>): Promise<T> {
-  const verifier = new RecaptchaVerifier(auth, container(), { size: 'invisible' })
+  // Its own node, never anyone else's and never a second time. See above.
+  const host = document.createElement('div')
+  host.style.display = 'none'
+  document.body.appendChild(host)
+
+  const verifier = new RecaptchaVerifier(auth, host, { size: 'invisible' })
   try {
     return await run(verifier)
   } finally {
-    // Clearing is not optional. See the note at the top of this file.
     try { verifier.clear() } catch { /* already gone */ }
+    host.remove()
   }
 }
 
