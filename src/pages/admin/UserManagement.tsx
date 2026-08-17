@@ -20,7 +20,7 @@ type Tab = 'pending' | 'active' | 'deactivated'
 export default function UserManagement({ onBack }: Props) {
   const { appUser } = useAuth()
   const { t } = useTheme()
-  const { modal, showDanger, showAlert } = useConfirm()
+  const { modal, showConfirm, showDanger, showAlert } = useConfirm()
   const [users, setUsers] = useState<AppUser[]>([])
   const [tab, setTab] = useState<Tab>('pending')
   const [updating, setUpdating] = useState<string | null>(null)
@@ -108,13 +108,48 @@ export default function UserManagement({ onBack }: Props) {
       ...(role === 'sales_manager' ? { permissions: DEFAULT_SALES_MANAGER_PERMISSIONS } : {}),
     })
 
-  const changeRole = async (uid: string, role: UserRole, current?: PermissionMap) =>
-    run(uid, 'change this role', {
+  /**
+   * Change what somebody is, once you have said you meant to.
+   *
+   * A role is a row of chips, and a row of chips is one mis-tap away from
+   * turning a rep into an admin or stripping a manager of everything they use.
+   * Nothing else on this screen changes what a person can reach with a single
+   * click and no question asked.
+   */
+  const changeRole = async (uid: string, role: UserRole, current?: PermissionMap) => {
+    const target = users.find(u => u.uid === uid)
+    if (!target || target.role === role) return // the chip they are already on
+
+    const losingAuthority = target.role === 'admin' || target.role === 'sales_manager'
+    const gainingAdmin = role === 'admin' || role === 'super_admin'
+
+    const detail = [
+      `They are ${ROLE_LABELS_PLAIN[target.role]} now.`,
+      gainingAdmin
+        ? 'An admin can approve accounts, change roles and reset passwords.'
+        : losingAuthority
+          ? 'They lose the screens and approvals that came with their current role.'
+          : 'They will see a different set of screens next time the app loads.',
+      role === 'sales_manager' && !current
+        ? 'They start on the default manager permissions, which you can tune afterwards.'
+        : '',
+    ].filter(Boolean).join(' ')
+
+    const ask = (losingAuthority || gainingAdmin) ? showDanger : showConfirm
+    const ok = await ask(
+      `Make ${target.name} ${ROLE_LABELS_PLAIN[role]}?`,
+      detail,
+      'Change role',
+    )
+    if (!ok) return
+
+    await run(uid, 'change this role', {
       role,
       // Seed defaults the first time someone becomes a manager; keep any
       // existing tuning if they already had a permission map.
       ...(role === 'sales_manager' && !current ? { permissions: DEFAULT_SALES_MANAGER_PERMISSIONS } : {}),
     })
+  }
 
   const setPermission = async (uid: string, current: PermissionMap, key: Permission, value: boolean) =>
     run(uid, 'change that permission', { permissions: { ...current, [key]: value } })
