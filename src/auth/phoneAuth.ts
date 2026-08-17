@@ -76,6 +76,43 @@ function ensureVerifier() {
   return ready
 }
 
+/**
+ * A probe for when a send fails and the console settings all look right.
+ *
+ * Run `__phoneDebug()` from the browser console. It builds a verifier, renders
+ * it, solves the challenge and reports the token — and stops there. It
+ * deliberately does not send: an invisible reCAPTCHA hands back the same token
+ * until it is reset, so solving here and then sending would present a
+ * twice-used token and fail for a reason the probe itself created.
+ *
+ * A long token means the browser half works and the server is refusing it.
+ * No token, or a short one, means the failure is here and the console settings
+ * are a red herring. Those two point at completely different places, and the
+ * error Firebase returns does not distinguish them.
+ */
+if (import.meta.env.DEV) {
+  ;(window as unknown as Record<string, unknown>).__phoneDebug = async () => {
+    const host = document.createElement('div')
+    host.style.position = 'absolute'
+    host.style.left = '-9999px'
+    document.body.appendChild(host)
+    try {
+      const probe = new RecaptchaVerifier(auth, host, { size: 'invisible' })
+      const widgetId = await probe.render()
+      const token = await probe.verify()
+      console.log('[phoneDebug] widget id   :', widgetId)
+      console.log('[phoneDebug] token length:', token ? token.length : '(none)')
+      console.log('[phoneDebug] token starts:', token ? token.slice(0, 30) : '(none)')
+      console.log('[phoneDebug] site key    :',
+        (window as any).___grecaptcha_cfg ? 'grecaptcha loaded' : 'grecaptcha MISSING')
+    } catch (e) {
+      console.error('[phoneDebug] failed before producing a token:', e)
+    } finally {
+      host.remove()
+    }
+  }
+}
+
 async function withVerifier<T>(run: (v: RecaptchaVerifier) => Promise<T>): Promise<T> {
   const { verifier, widgetId } = await ensureVerifier()
   try {
