@@ -28,6 +28,26 @@ import { Eyebrow, GhostButton } from "./components/ui";
 // quietly resurrects data somebody deliberately removed, is not worth having.
 // Products are added from the Products screen.
 
+/**
+ * Whether an account with no verified mobile number is stopped before the app.
+ *
+ * Off. Two reasons, and the second is the one that matters.
+ *
+ * A gate needs a door. Verification depends on an SMS arriving, and while that
+ * is unreliable this stops being "add your number" and becomes "you cannot
+ * work today" — for every rep at once, which is a far worse outage than the
+ * problem it was added to solve.
+ *
+ * And it is no longer carrying much. It existed because a verified number was
+ * the only dependable way back into a locked-out account; a manager can now
+ * reset a password directly, so recovery does not rest on the number any more.
+ *
+ * Signup still asks for a number and the Account screen still takes one — this
+ * only decides whether anyone is *stopped*. Turn back on when a code reliably
+ * arrives and there is a reason to insist.
+ */
+const REQUIRE_VERIFIED_PHONE = false
+
 function AppContent() {
   const { firebaseUser, appUser, loading } = useAuth();
   const { theme, toggle, t } = useTheme();
@@ -149,15 +169,15 @@ function AppContent() {
       />
     );
 
-  // A mobile number is mandatory, and this is where that is actually true —
-  // the signup form can only speak for accounts made after it started asking.
-  // Everyone else meets it here on their next sign-in.
+  // Where "every account has a number" would be enforced, if it were. See
+  // REQUIRE_VERIFIED_PHONE above for why it is not, and what to weigh before
+  // switching it back on.
   //
-  // super_admin is exempt on purpose. If the phone provider is misconfigured,
-  // the SMS region policy is wrong, or the billing lapses, this screen has no
-  // way past it — and locking the one account that can fix any of those out of
-  // the app would turn a small outage into an unrecoverable one.
-  if (!firebaseUser.phoneNumber && appUser.role !== "super_admin")
+  // super_admin stays exempt regardless. If the phone provider is
+  // misconfigured, the region policy is wrong, or billing lapses, this screen
+  // has no way past it — and locking out the one account that can fix any of
+  // those turns a small outage into an unrecoverable one.
+  if (REQUIRE_VERIFIED_PHONE && !firebaseUser.phoneNumber && appUser.role !== "super_admin")
     return <AddPhoneGate name={appUser.name} />;
 
   // sales_manager lands on the AdminDashboard too — what they actually see
