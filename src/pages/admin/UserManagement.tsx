@@ -226,7 +226,11 @@ export default function UserManagement({ onBack }: Props) {
             <div className="oc-list-flush" style={{ borderBottom: `0.5px solid ${t.border}` }}>
               {deactivated.map(u => (
                 <DeactivatedCard key={u.uid} user={u} updating={updating}
-                  roles={assignableRoles} canReactivate={viewerIsAdmin}
+                  roles={assignableRoles}
+                  // Bringing an admin back is the same authority as switching
+                  // one off, so it sits with the same person.
+                  canReactivate={viewerIsAdmin
+                    && (u.role !== 'admin' || appUser?.role === 'super_admin')}
                   onReactivate={reactivateUser} />
               ))}
             </div>
@@ -400,20 +404,27 @@ function UserCard({ user, updating, currentUser, viewerIsAdmin, roles, onDeactiv
   const chip = useChip()
   const isSuper = user.role === 'super_admin'
   const isUpdating = updating === user.uid
-  const canDeactivate = viewerIsAdmin && !isSuper && currentUser.uid !== user.uid
-  const canEditRole = viewerIsAdmin && !isSuper && user.status === 'approved'
+  const viewerIsSuper = currentUser.role === 'super_admin'
+
+  // An admin's account is a super admin's business, not another admin's. One
+  // admin able to switch off their peers can remove everyone in a position to
+  // undo it, so that reach stops a level above the people it applies to.
+  const targetIsAdmin = user.role === 'admin'
+  const canTouchTarget = !isSuper && (!targetIsAdmin || viewerIsSuper)
+
+  const canDeactivate = viewerIsAdmin && canTouchTarget && currentUser.uid !== user.uid
+  const canEditRole = viewerIsAdmin && canTouchTarget && user.status === 'approved'
 
   // Mirrors MAY_RESET in functions/index.js, which is the copy that decides.
   // This one only decides whether to draw a button; a browser saying it is an
   // admin proves nothing, so the function checks again against the database.
   const canReset =
-    !isSuper
+    canTouchTarget
     && currentUser.uid !== user.uid
     && user.status === 'approved'
     && (viewerIsAdmin
-        ? user.role !== 'super_admin'
-        : currentUser.role === 'sales_manager'
-          && (user.role === 'offline_sales' || user.role === 'online_sales'))
+        || (currentUser.role === 'sales_manager'
+            && (user.role === 'offline_sales' || user.role === 'online_sales')))
 
   return (
     <CardShell>
@@ -458,6 +469,12 @@ function UserCard({ user, updating, currentUser, viewerIsAdmin, roles, onDeactiv
       {isSuper && (
         <div style={{ fontSize: 13, color: t.text3, marginTop: 10 }}>
           The super admin account cannot be changed from here.
+        </div>
+      )}
+
+      {targetIsAdmin && !viewerIsSuper && (
+        <div style={{ fontSize: 13, color: t.text3, marginTop: 10 }}>
+          Only a super admin can change another admin's account.
         </div>
       )}
 

@@ -135,9 +135,14 @@ service cloud.firestore {
 
       // Admin: approve / reject / deactivate / change role / tune permissions.
       //   · a super_admin's doc is untouchable by anyone
+      //   · an ADMIN's doc is touchable only by a super_admin. An admin who can
+      //     deactivate their peers can remove everyone who might undo it, so
+      //     that authority stops one level up rather than being held by every
+      //     account that also holds it over them.
       //   · only a super_admin may grant super_admin
       allow update: if isAdmin()
         && resource.data.role != 'super_admin'
+        && (resource.data.role != 'admin' || isSuperAdmin())
         && onlyChanged(['role', 'status', 'permissions',
                         'approvedAt', 'approvedBy', 'approvedByName'])
         && (request.resource.data.role != 'super_admin' || isSuperAdmin());
