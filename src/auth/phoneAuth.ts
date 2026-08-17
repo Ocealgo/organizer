@@ -30,8 +30,15 @@ import { toE164 } from '../lib/phone'
 
 async function withVerifier<T>(run: (v: RecaptchaVerifier) => Promise<T>): Promise<T> {
   // Its own node, never anyone else's and never a second time. See above.
+  //
+  // Moved off-screen rather than `display: none`. grecaptcha measures and
+  // executes inside this element, and an element with no box at all is a
+  // category of thing it has historically been unhappy about — whereas one
+  // that is simply somewhere nobody looks behaves like any other.
   const host = document.createElement('div')
-  host.style.display = 'none'
+  host.style.position = 'absolute'
+  host.style.left = '-9999px'
+  host.style.top = '0'
   document.body.appendChild(host)
 
   const verifier = new RecaptchaVerifier(auth, host, { size: 'invisible' })
