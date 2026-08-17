@@ -91,7 +91,7 @@ function ensureVerifier() {
  * error Firebase returns does not distinguish them.
  */
 if (import.meta.env.DEV) {
-  ;(window as unknown as Record<string, unknown>).__phoneDebug = async () => {
+  ;(window as unknown as Record<string, unknown>).__phoneDebug = async (tenDigits?: string) => {
     const host = document.createElement('div')
     host.style.position = 'absolute'
     host.style.left = '-9999px'
@@ -102,9 +102,27 @@ if (import.meta.env.DEV) {
       const token = await probe.verify()
       console.log('[phoneDebug] widget id   :', widgetId)
       console.log('[phoneDebug] token length:', token ? token.length : '(none)')
-      console.log('[phoneDebug] token starts:', token ? token.slice(0, 30) : '(none)')
-      console.log('[phoneDebug] site key    :',
-        (window as any).___grecaptcha_cfg ? 'grecaptcha loaded' : 'grecaptcha MISSING')
+
+      if (!tenDigits) {
+        console.log('[phoneDebug] pass a number to also try the send, e.g. __phoneDebug("9876543210")')
+        return
+      }
+
+      // Straight at the REST endpoint with a token solved seconds ago, with
+      // none of this file's machinery in the way. If this is refused too then
+      // the fault is in the project and no amount of client work will move it;
+      // if it succeeds, the fault is mine and it is in what the SDK sends.
+      const key = (auth.app.options as { apiKey?: string }).apiKey
+      const res = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:sendVerificationCode?key=${key}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phoneNumber: toE164(tenDigits), recaptchaToken: token }),
+        },
+      )
+      console.log('[phoneDebug] raw send status:', res.status)
+      console.log('[phoneDebug] raw send body  :', await res.text())
     } catch (e) {
       console.error('[phoneDebug] failed before producing a token:', e)
     } finally {
