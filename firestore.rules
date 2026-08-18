@@ -67,6 +67,33 @@ service cloud.firestore {
       return approved() && userData().role == 'sales_manager';
     }
 
+    /**
+     * The role on somebody else's account.
+     *
+     * Needed because who may clear a claim depends on whose claim it is, not
+     * only on who is asking. A sales manager clears the officers they
+     * supervise; their own claims, and their peers', belong to an admin.
+     */
+    function roleOf(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data.role;
+    }
+
+    /**
+     * May the caller action a claim or a leave record belonging to `ownerUid`?
+     *
+     * Two things are refused here that a permission alone would allow. Nobody
+     * signs off their own — a sales manager working in the field files the
+     * same expenses they hold the power to clear, and that is the whole hole.
+     * And nobody signs off a peer at their own level, so managers cannot
+     * quietly clear each other. Both land on an admin instead.
+     */
+    function maySignOffFor(ownerUid, perm) {
+      return isAdmin()
+        || (hasPerm(perm)
+            && ownerUid != request.auth.uid
+            && !(roleOf(ownerUid) in ['sales_manager', 'admin', 'super_admin']));
+    }
+
     function isMarketing() {
       return approved() && userData().role in ['offline_marketing', 'online_marketing'];
     }
@@ -378,14 +405,15 @@ service cloud.firestore {
         || hasPerm('view_reports')
         || resource.data.uid == request.auth.uid;
 
-      allow create: if hasPerm('approve_leave')
+      allow create: if maySignOffFor(request.resource.data.uid, 'approve_leave')
         || (approved()
             && request.resource.data.uid == request.auth.uid
             && request.resource.data.status == 'pending_approval');
 
       // A user may only move their own ACTIVE leave to unmark_requested.
-      // Approving, rejecting and removing are permission-gated.
-      allow update: if hasPerm('approve_leave')
+      // Approving, rejecting and removing are permission-gated — and never by
+      // the person taking the leave, however many permissions they hold.
+      allow update: if maySignOffFor(resource.data.uid, 'approve_leave')
         || (approved()
             && resource.data.uid == request.auth.uid
             && resource.data.status == 'active'
@@ -421,8 +449,11 @@ service cloud.firestore {
         && request.resource.data.status == 'draft';
 
       // Owner may edit while draft or rejected — a submitted report is frozen
-      // until someone with clear_expenses clears or rejects it.
-      allow update: if hasPerm('clear_expenses')
+      // until someone who is allowed to sign off for THAT owner clears or
+      // rejects it. Holding clear_expenses is not enough on its own: a manager
+      // in the field files the same claims they can clear, so their own go to
+      // an admin like everybody else's above officer level.
+      allow update: if maySignOffFor(resource.data.userId, 'clear_expenses')
         || (approved()
             && resource.data.userId == request.auth.uid
             && resource.data.status in ['draft', 'rejected']);

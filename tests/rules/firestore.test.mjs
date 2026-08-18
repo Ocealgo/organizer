@@ -630,6 +630,99 @@ describe('leave', () => {
     await seed((db) => setDoc(doc(db, 'leave_records', 'lv2'), leave(U.rep2)))
     await assertFails(getDoc(doc(asUser(U.rep), 'leave_records', 'lv2')))
   })
+
+  // Managers work in the field too, which means they take leave and file
+  // expenses against the very permissions they hold over everyone else.
+  it('a manager CAN approve an officer\'s leave', async () => {
+    await seed((db) => setDoc(doc(db, 'leave_records', 'lv1'), leave(U.rep)))
+    await assertSucceeds(updateDoc(doc(asUser(U.mgrPlus), 'leave_records', 'lv1'), { status: 'active' }))
+  })
+
+  it('a manager CANNOT approve their OWN leave', async () => {
+    await seed((db) => setDoc(doc(db, 'leave_records', 'lv1'),
+      leave(U.mgrPlus, { role: 'sales_manager' })))
+    await assertFails(updateDoc(doc(asUser(U.mgrPlus), 'leave_records', 'lv1'), { status: 'active' }))
+  })
+
+  it('a manager CANNOT approve another manager\'s leave', async () => {
+    await seed((db) => setDoc(doc(db, 'leave_records', 'lv1'),
+      leave(U.mgr, { role: 'sales_manager' })))
+    await assertFails(updateDoc(doc(asUser(U.mgrPlus), 'leave_records', 'lv1'), { status: 'active' }))
+  })
+
+  it('an admin CAN approve a manager\'s leave', async () => {
+    await seed((db) => setDoc(doc(db, 'leave_records', 'lv1'),
+      leave(U.mgrPlus, { role: 'sales_manager' })))
+    await assertSucceeds(updateDoc(doc(asUser(U.admin), 'leave_records', 'lv1'), { status: 'active' }))
+  })
+
+  it('a manager CANNOT grant themselves leave outright', async () => {
+    await assertFails(setDoc(doc(asUser(U.mgrPlus), 'leave_records', 'lv_new'),
+      leave(U.mgrPlus, { role: 'sales_manager', status: 'active' })))
+  })
+})
+
+describe('a manager who also works in the field', () => {
+  // Everything here was reachable before only because managers never filed
+  // anything. Once they do, holding the permission that clears a claim and
+  // being the person making it is the same account.
+  const report = (uid, over = {}) => ({
+    userId: uid, name: uid, weekStart: '2026-08-17',
+    total: 450, status: 'submitted', createdAt: 1, ...over,
+  })
+
+  it('a manager CAN clear an officer\'s expense report', async () => {
+    await seed((db) => setDoc(doc(db, 'expense_reports', 'er1'), report(U.rep)))
+    await assertSucceeds(updateDoc(doc(asUser(U.mgrPlus), 'expense_reports', 'er1'),
+      { status: 'cleared' }))
+  })
+
+  it('a manager CANNOT clear their OWN expense report', async () => {
+    await seed((db) => setDoc(doc(db, 'expense_reports', 'er1'), report(U.mgrPlus)))
+    await assertFails(updateDoc(doc(asUser(U.mgrPlus), 'expense_reports', 'er1'),
+      { status: 'cleared' }))
+  })
+
+  it('a manager CANNOT clear a peer manager\'s expense report', async () => {
+    await seed((db) => setDoc(doc(db, 'expense_reports', 'er1'), report(U.mgr)))
+    await assertFails(updateDoc(doc(asUser(U.mgrPlus), 'expense_reports', 'er1'),
+      { status: 'cleared' }))
+  })
+
+  it('an admin CAN clear a manager\'s expense report', async () => {
+    await seed((db) => setDoc(doc(db, 'expense_reports', 'er1'), report(U.mgrPlus)))
+    await assertSucceeds(updateDoc(doc(asUser(U.admin), 'expense_reports', 'er1'),
+      { status: 'cleared' }))
+  })
+
+  it('a manager CANNOT clear an admin\'s expense report', async () => {
+    await seed((db) => setDoc(doc(db, 'expense_reports', 'er1'), report(U.admin)))
+    await assertFails(updateDoc(doc(asUser(U.mgrPlus), 'expense_reports', 'er1'),
+      { status: 'cleared' }))
+  })
+
+  it('a manager CAN still file and edit their own draft', async () => {
+    await assertSucceeds(setDoc(doc(asUser(U.mgrPlus), 'expense_reports', 'er_new'),
+      report(U.mgrPlus, { status: 'draft' })))
+  })
+
+  // The field spine itself was never role-gated — it keys on uid — so a
+  // manager could already punch in. This states it, so that stays true.
+  it('a manager CAN start a duty day like an officer', async () => {
+    await assertSucceeds(setDoc(doc(asUser(U.mgrPlus), 'duty_sessions', 'ds_mgr'), {
+      uid: U.mgrPlus, name: 'manager_2', date: '2026-08-19', status: 'active',
+      startAt: 1, startOdometerKm: 1000, odometerStatus: 'recorded',
+      startOdometerPhoto: 'https://storage.test/odo.jpg',
+    }))
+  })
+
+  it('a manager CANNOT start a duty day in somebody else\'s name', async () => {
+    await assertFails(setDoc(doc(asUser(U.mgrPlus), 'duty_sessions', 'ds_rep'), {
+      uid: U.rep, name: 'rep_1', date: '2026-08-19', status: 'active',
+      startAt: 1, startOdometerKm: 1000, odometerStatus: 'recorded',
+      startOdometerPhoto: 'https://storage.test/odo.jpg',
+    }))
+  })
 })
 
 describe('expenses', () => {
