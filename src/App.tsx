@@ -57,6 +57,20 @@ function AppContent() {
   const [showUserMgmt, setShowUserMgmt] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
 
+  // Which screen is open belongs to a person, not to the tab.
+  //
+  // This component survives a sign-out — the session changes underneath it
+  // rather than remounting it — so without this, signing out of an admin
+  // account and into a rep's leaves the rep looking at the Team screen the
+  // admin had open. The rules refuse them the data, so it renders empty, but
+  // an empty screen they should never see is still a screen they should never
+  // see, and it is the kind of thing that looks like a leak long before
+  // anybody works out that it is not one.
+  useEffect(() => {
+    setShowUserMgmt(false);
+    setShowProfile(false);
+  }, [firebaseUser?.uid]);
+
   if (loading)
     return (
       <div

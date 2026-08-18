@@ -1,4 +1,5 @@
 import { test, expect, clickStable } from './fixtures/app'
+import { noOneOnDuty } from './fixtures/seed'
 
 /**
  * The field day: punch in, visit an outlet, punch out.
@@ -39,10 +40,22 @@ test.describe('the duty gate', () => {
 test.describe('an outlet visit', () => {
   /** Punch in so the visit specs start on an open day. */
   async function startDay(page: any, stubCamera: () => Promise<void>) {
+    // Stated, not assumed. See noOneOnDuty in fixtures/seed.ts.
+    await noOneOnDuty()
     await clickStable(page.getByRole('button', { name: /Start the day/ }))
+    // Prove we are on the opening screen before typing into it. Both duty
+    // screens share the meter-reading placeholder, so filling blind on the
+    // closing screen succeeds and fails three lines later looking for a button
+    // that was never going to be there.
+    await expect(page.getByRole('heading', { name: 'Start your day' })).toBeVisible()
     await page.getByPlaceholder('Kilometres on the meter').fill('12500')
     await stubCamera()
     await page.getByRole('button', { name: 'Take the photo' }).click()
+    // Wait for the shot to actually land. Until it does the submit is still
+    // the capture control, so clicking straight through looks for a button
+    // that does not exist yet — which passes on a fast run and fails once
+    // enough specs have gone before it to slow the upload down.
+    await expect(page.getByRole('button', { name: 'Retake' })).toBeVisible()
     await page.getByRole('button', { name: 'Start the day' }).click()
     await expect(page.getByRole('button', { name: /Log a visit/ })).toBeEnabled()
   }

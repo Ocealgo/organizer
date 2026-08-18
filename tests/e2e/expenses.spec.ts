@@ -1,4 +1,5 @@
 import { test, expect, clickStable } from './fixtures/app'
+import { noWeeksFiled, noOneOnDuty } from './fixtures/seed'
 
 /**
  * Money paths. These are the ones worth being strict about — a wrong number
@@ -66,6 +67,14 @@ test.describe('fuel by distance', () => {
 // touches. Sharing an actor with a spec that files an expense makes the
 // assertion depend on teardown order, which is not a thing worth depending on.
 test.describe('nil returns', () => {
+  // A week nobody has touched, said out loud rather than assumed. A write from
+  // the spec before this one can land after the wipe, and an inherited week
+  // that is already submitted hides the very button these specs are about.
+  test.beforeEach(async () => {
+    await noWeeksFiled()
+    await noOneOnDuty()
+  })
+
   test('a week with nothing in it can be declared, not just left blank', async ({ page, loginAs }) => {
     await loginAs('rep2')
     await openExpenses(page)

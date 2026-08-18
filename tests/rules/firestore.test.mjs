@@ -20,6 +20,7 @@ const U = {
   rep: 'rep_1',
   rep2: 'rep_2',
   admin: 'admin_1',
+  admin2: 'admin_2',    // a second admin, so admin-on-admin has a target
   sa: 'super_1',
   pend: 'pending_1',
   off: 'deactivated_1',
@@ -74,6 +75,7 @@ beforeEach(async () => {
       mk(U.rep, 'offline_sales', 'approved', 'rep@ocealgo.test'),
       mk(U.rep2, 'offline_sales', 'approved', 'rep2@ocealgo.test'),
       mk(U.admin, 'admin', 'approved', 'admin@ocealgo.test'),
+      mk(U.admin2, 'admin', 'approved', 'admin2@ocealgo.test'),
       mk(U.sa, 'super_admin', 'approved', 'sa@ocealgo.test'),
       mk(U.pend, 'offline_sales', 'pending', 'pend@ocealgo.test'),
       mk(U.off, 'offline_sales', 'deactivated', 'off@ocealgo.test'),
@@ -207,6 +209,108 @@ describe('privilege escalation — the critical block', () => {
 
   it('nobody can delete a super_admin account', async () => {
     await assertFails(deleteDoc(doc(asUser(U.sa), 'users', U.sa)))
+  })
+})
+
+describe('admin authority stops at other admins', () => {
+  // An admin able to switch off their peers can remove everyone in a position
+  // to undo it. That reach belongs a level above the people it applies to.
+  it('an admin CANNOT deactivate another admin', async () => {
+    await assertFails(updateDoc(doc(asUser(U.admin), 'users', U.admin2), { status: 'deactivated' }))
+  })
+
+  it('an admin CANNOT demote another admin', async () => {
+    await assertFails(updateDoc(doc(asUser(U.admin), 'users', U.admin2), { role: 'offline_sales' }))
+  })
+
+  it('an admin CANNOT bring a deactivated admin back', async () => {
+    await seed(db => updateDoc(doc(db, 'users', U.admin2), { status: 'deactivated' }))
+    await assertFails(updateDoc(doc(asUser(U.admin), 'users', U.admin2), { status: 'approved' }))
+  })
+
+  it('a super_admin CAN deactivate an admin', async () => {
+    await assertSucceeds(updateDoc(doc(asUser(U.sa), 'users', U.admin2), { status: 'deactivated' }))
+  })
+
+  it('an admin keeps every power they had over managers and reps', async () => {
+    await assertSucceeds(updateDoc(doc(asUser(U.admin), 'users', U.mgr), { status: 'deactivated' }))
+    await assertSucceeds(updateDoc(doc(asUser(U.admin), 'users', U.rep), { role: 'online_sales' }))
+  })
+
+  it('a sales manager CANNOT deactivate anyone, admin or rep', async () => {
+    await assertFails(updateDoc(doc(asUser(U.mgrPlus), 'users', U.admin), { status: 'deactivated' }))
+    await assertFails(updateDoc(doc(asUser(U.mgrPlus), 'users', U.rep), { status: 'deactivated' }))
+  })
+})
+
+describe('your own mobile number', () => {
+  // Firebase only puts phone_number on the token once an SMS code has been
+  // confirmed, so pinning the field to it means an unverified number cannot
+  // reach the database at all — not merely that the form declines to send one.
+  const verified = (uid, number) => asUser(uid, {
+    email: 'rep@ocealgo.test', phone_number: number,
+  })
+
+  it('a rep CAN write the number they just verified', async () => {
+    await assertSucceeds(updateDoc(
+      doc(verified(U.rep, '+919800000001'), 'users', U.rep), { phone: '+919800000001' }))
+  })
+
+  it('a rep CANNOT write a number they did not verify', async () => {
+    await assertFails(updateDoc(
+      doc(verified(U.rep, '+919800000001'), 'users', U.rep), { phone: '+919899999999' }))
+  })
+
+  it('a rep with no verified number CANNOT write one at all', async () => {
+    await assertFails(updateDoc(doc(asUser(U.rep), 'users', U.rep), { phone: '+919800000001' }))
+  })
+
+  it('a rep CANNOT overwrite a number already on the account with an unverified one', async () => {
+    await seed(db => updateDoc(doc(db, 'users', U.rep), { phone: '+919800000002' }))
+    await assertFails(updateDoc(
+      doc(verified(U.rep, '+919800000001'), 'users', U.rep), { phone: '+919899999999' }))
+  })
+
+  it('a rep CANNOT set someone else\'s number, even a verified one', async () => {
+    await assertFails(updateDoc(
+      doc(verified(U.rep, '+919800000001'), 'users', U.rep2), { phone: '+919800000001' }))
+  })
+
+  it('name still travels alongside a number without loosening anything', async () => {
+    await assertSucceeds(updateDoc(
+      doc(verified(U.rep, '+919800000001'), 'users', U.rep),
+      { name: 'Ravi R', phone: '+919800000001' }))
+    await assertFails(updateDoc(
+      doc(verified(U.rep, '+919800000001'), 'users', U.rep),
+      { name: 'Ravi R', role: 'admin' }))
+  })
+})
+
+describe('a password somebody else reset', () => {
+  // The flag is raised by a Cloud Function running with admin rights. A client
+  // that could raise it would be able to hold a colleague behind a
+  // password-change screen they have no way to satisfy.
+  it('a rep CAN clear the flag once they have chosen their own password', async () => {
+    await seed(db => updateDoc(doc(db, 'users', U.rep), { mustChangePassword: true }))
+    await assertSucceeds(updateDoc(
+      doc(asUser(U.rep), 'users', U.rep), { mustChangePassword: false }))
+  })
+
+  it('a rep CANNOT raise the flag on themselves', async () => {
+    await assertFails(updateDoc(
+      doc(asUser(U.rep), 'users', U.rep), { mustChangePassword: true }))
+  })
+
+  it('a rep CANNOT raise the flag on a colleague', async () => {
+    await assertFails(updateDoc(
+      doc(asUser(U.rep), 'users', U.rep2), { mustChangePassword: true }))
+  })
+
+  it('clearing the flag cannot smuggle a role change alongside it', async () => {
+    await seed(db => updateDoc(doc(db, 'users', U.rep), { mustChangePassword: true }))
+    await assertFails(updateDoc(doc(asUser(U.rep), 'users', U.rep), {
+      mustChangePassword: false, role: 'admin',
+    }))
   })
 })
 

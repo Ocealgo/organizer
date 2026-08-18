@@ -69,7 +69,7 @@ function admin() {
  * land after the sweep had already passed that collection, and the next spec
  * would start with a stray expense on the books.
  */
-export async function resetWorld(): Promise<void> {
+async function clearOnce(): Promise<void> {
   const firestore = `http://127.0.0.1:8080/emulator/v1/projects/${PROJECT_ID}/databases/(default)/documents`
   const accounts = `http://127.0.0.1:9099/emulator/v1/projects/${PROJECT_ID}/accounts`
   const res = await Promise.all([
@@ -78,6 +78,92 @@ export async function resetWorld(): Promise<void> {
   ])
   const bad = res.find(r => !r.ok)
   if (bad) throw new Error(`Could not clear the emulator: ${bad.status} ${bad.statusText}`)
+}
+
+/**
+ * Collections a spec writes to and the next spec must not inherit.
+ *
+ * A leftover duty session is the one that bites: the next spec opens on a day
+ * that is already running, types its opening reading into what is actually the
+ * closing field, and fails looking for a button that was never going to be
+ * there. Nothing in the message points at the previous spec.
+ */
+const VOLATILE = ['duty_sessions', 'visit_logs', 'revisit_logs', 'expense_reports', 'leave_records']
+
+async function leftovers(): Promise<string | null> {
+  const db = getFirestore(admin())
+  for (const name of VOLATILE) {
+    const snap = await db.collection(name).limit(1).get()
+    if (!snap.empty) return name
+  }
+  return null
+}
+
+/**
+ * Guarantee nobody is on duty, right now.
+ *
+ * The wipe between specs is not enough on its own. A write issued by a spec
+ * that has already finished can arrive seconds later — after the wipe, after
+ * the reseed, in the middle of the next spec's sign-in — and the next spec
+ * then opens on a day it never started. It fails typing its opening reading
+ * into a closing field, three steps and one screen away from anything that
+ * points at the cause.
+ *
+ * So a spec that needs an unstarted day says so, here, immediately before it
+ * needs it, rather than inheriting the assumption from a hook that ran a page
+ * load ago. Preconditions a test depends on are worth stating out loud.
+ */
+export async function noOneOnDuty(): Promise<void> {
+  await emptyNow('duty_sessions')
+}
+
+/**
+ * No week already filed, and nothing logged against one.
+ *
+ * Same reasoning as noOneOnDuty. A spec that declares a nil week has to start
+ * from a week nobody has touched — inherit one that is already submitted and
+ * the button it is looking for is not drawn, which reads as the feature being
+ * broken rather than the world being dirty.
+ */
+export async function noWeeksFiled(): Promise<void> {
+  await emptyNow('expense_reports')
+  await emptyNow('expense_entries')
+}
+
+async function emptyNow(collectionName: string): Promise<void> {
+  const snap = await getFirestore(admin()).collection(collectionName).get()
+  await Promise.all(snap.docs.map(d => d.ref.delete()))
+}
+
+/**
+ * Wipe the emulator between specs, and make sure it took.
+ *
+ * The clear endpoint drops everything in one call, but it cannot drop a write
+ * that has not landed yet. A page from the spec that just finished can still
+ * have one in flight, and it arrives moments later into what is supposed to be
+ * a clean world — rare when a file runs alone, reliable once a long run has
+ * put enough latency between the click and the write.
+ *
+ * So the wipe is checked rather than trusted. Clearing twice costs
+ * milliseconds; a spec inheriting another spec's open duty day costs an
+ * afternoon, because the failure surfaces nowhere near the cause.
+ */
+const settle = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+export async function resetWorld(): Promise<void> {
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    await clearOnce()
+    // The pause is the point. Checking immediately after the wipe asks whether
+    // the straggler has landed, and the answer is usually "not yet" — which
+    // reads as clean and is not. Giving it a moment to arrive is what turns
+    // this from a check into a check that catches anything.
+    await settle(200)
+    const stale = await leftovers()
+    if (!stale) return
+    if (attempt === 5) {
+      throw new Error(`Emulator would not come clean — ${stale} still has documents`)
+    }
+  }
 }
 
 /**
