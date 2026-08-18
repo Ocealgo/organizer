@@ -111,6 +111,35 @@ export function canAny(user: AppUser | null | undefined, permissions: Permission
   return permissions.some(p => can(user, p))
 }
 
+/**
+ * May this person sign off a claim or a leave record belonging to that one?
+ *
+ * Mirrors maySignOffFor in firestore.rules, which is the copy that decides.
+ * This one exists so the screen does not offer a button the database is going
+ * to refuse — an action that fails on click reads as a broken app, not as a
+ * rule being enforced.
+ *
+ * Two things a permission alone would allow are refused. Nobody signs off
+ * their own: a sales manager working a territory files the same expenses they
+ * hold the power to clear. And nobody signs off a peer at their own level, so
+ * managers cannot quietly clear each other. Both land on an admin.
+ *
+ * `ownerRole` is undefined on records filed before roles were stamped on them.
+ * Those all predate managers having a field mode, so they belong to officers,
+ * and treating them as such is correct rather than merely convenient.
+ */
+export function maySignOffFor(
+  user: AppUser | null | undefined,
+  permission: Permission,
+  owner: { uid: string; role?: UserRoleKey },
+): boolean {
+  if (!user) return false
+  if (isAdminRole(user)) return true
+  if (!can(user, permission)) return false
+  if (owner.uid === user.uid) return false
+  return !(owner.role === 'sales_manager' || owner.role === 'admin' || owner.role === 'super_admin')
+}
+
 // ── Labels ───────────────────────────────────────────────────────────────────
 
 /** The one place role names are spelled out for the UI. */

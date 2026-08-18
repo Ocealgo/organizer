@@ -115,6 +115,11 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
         sessionId: session.id,
         uid: appUser.uid,
         name: appUser.name,
+        // Who was standing there, recorded at the time rather than looked up
+        // later. Managers cover outlets too, and a report that counts visits
+        // has to be able to separate territory coverage from supervision
+        // without joining back to a users collection it may not read.
+        role: appUser.role,
         date: localDateStr(),
         partyId: party.id!,
         partyName: party.name,

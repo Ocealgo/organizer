@@ -264,6 +264,13 @@ export interface ExpenseReport {
   id?: string
   userId: string
   userName: string
+  /**
+   * What the filer was when they filed. Decides who may sign the week off —
+   * a manager's claim goes to an admin, not to another manager. Absent on
+   * reports filed before managers could work in the field, and every one of
+   * those belongs to an officer.
+   */
+  userRole?: UserRole
   weekStart: string
   weekEnd: string
   status: 'draft' | 'submitted' | 'cleared' | 'rejected'
@@ -865,6 +872,12 @@ export interface OutletVisit {
   sessionId: string               // parent DutySession
   uid: string
   name: string
+  /**
+   * What the visitor was at the time. Managers work outlets as well as
+   * supervising them, so coverage counts every visit while per-person numbers
+   * stay separable. Absent on visits logged before managers had a field mode.
+   */
+  role?: UserRole
   date: string
 
   partyId: string

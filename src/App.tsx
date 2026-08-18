@@ -57,6 +57,12 @@ function AppContent() {
   const [showUserMgmt, setShowUserMgmt] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
 
+  // A sales manager is both a supervisor and somebody who works a territory:
+  // they meet distributors, sit in on calls, and cover outlets themselves. So
+  // they get both screens and choose, rather than the app deciding they are
+  // one thing. Everybody else has exactly one answer and never sees this.
+  const [managerMode, setManagerMode] = useState<"team" | "field">("team");
+
   // Which screen is open belongs to a person, not to the tab.
   //
   // This component survives a sign-out — the session changes underneath it
@@ -200,6 +206,8 @@ function AppContent() {
   const canViewUsers = can(appUser, "view_users");
   const isSales =
     appUser.role === "offline_sales" || appUser.role === "online_sales";
+  const isManagerInField =
+    appUser.role === "sales_manager" && managerMode === "field";
 
   return (
     <div style={{ background: t.bg, minHeight: "100vh" }}>
@@ -222,13 +230,61 @@ function AppContent() {
           <UserManagement onBack={() => setShowUserMgmt(false)} />
         ) : (
           <>
-            {isSales && <SalesView name={appUser.name} />}
+            {appUser.role === "sales_manager" && (
+              <ManagerModeSwitch value={managerMode} onChange={setManagerMode} />
+            )}
+            {(isSales || isManagerInField) && <SalesView name={appUser.name} />}
             {appUser.role === "offline_marketing" && <MarketingView />}
             {appUser.role === "online_marketing" && <OnlineMarketingView />}
-            {management && <AdminDashboard />}
+            {management && !isManagerInField && <AdminDashboard />}
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * The two halves of a sales manager's job.
+ *
+ * Deliberately at the top of the page rather than in the header menu: this is
+ * a change of what you are doing, not a setting, and somebody who punched in
+ * this morning needs to see at a glance which half they are looking at.
+ */
+function ManagerModeSwitch({
+  value,
+  onChange,
+}: {
+  value: "team" | "field";
+  onChange: (v: "team" | "field") => void;
+}) {
+  const { t } = useTheme();
+  return (
+    <div style={{ padding: "20px 20px 0", display: "flex", gap: 20 }}>
+      {(
+        [
+          ["team", "Your team"],
+          ["field", "Your day"],
+        ] as const
+      ).map(([id, label]) => (
+        <button
+          key={id}
+          className="oc-action"
+          onClick={() => onChange(id)}
+          style={{
+            background: "none",
+            border: "none",
+            padding: "0 0 8px",
+            cursor: "pointer",
+            fontSize: 14,
+            fontWeight: 400,
+            color: value === id ? t.text : t.text3,
+            borderBottom: `1px solid ${value === id ? t.text : "transparent"}`,
+          }}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }

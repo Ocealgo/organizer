@@ -111,6 +111,30 @@ test.describe('an outlet visit', () => {
     await expect(page.getByText('Kumar Medicals').first()).toBeVisible()
   })
 
+  test('a sales manager can work a day in the field like an officer', async ({ page, loginAs, isMobile }) => {
+    await noOneOnDuty()
+    await loginAs('manager')
+
+    // Both halves of the job, and the team half is what they land on.
+    await expect(page.getByRole('button', { name: 'Your team' })).toBeVisible()
+    await page.getByRole('button', { name: 'Your day' }).click()
+
+    // No vehicle, no meter, no explanation demanded. An officer is held to the
+    // reading because it evidences a distance claim; a manager on a train is
+    // not filing one.
+    await clickStable(page.getByRole('button', { name: /Start the day/ }))
+    await expect(page.getByRole('heading', { name: 'Start your day' })).toBeVisible()
+    await page.getByText('I am not using a vehicle').click()
+    await page.getByRole('button', { name: 'Start the day' }).click()
+
+    await expect(page.getByRole('button', { name: /Log a visit/ })).toBeEnabled()
+
+    // And the supervisor half is still one tap away.
+    await page.getByRole('button', { name: 'Your team' }).click()
+    if (isMobile) await page.getByRole('button', { name: 'Menu' }).click()
+    await expect(page.locator('header').getByRole('button', { name: 'Team' })).toBeVisible()
+  })
+
   test('a duplicate phone number is refused', async ({ page, loginAs, stubCamera }) => {
     await loginAs('rep')
     await startDay(page, stubCamera)

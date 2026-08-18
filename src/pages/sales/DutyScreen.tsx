@@ -99,7 +99,27 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
     return null
   })()
 
-  const noteNeeded = isIn ? effectiveStatus !== 'recorded' : (!isIn && meterUnreadable)
+  /**
+   * No reading this punch — which is a different question from whether the
+   * person has to justify it.
+   *
+   * The field is written either way, because the rules require an explanation
+   * field to exist whenever a reading does not. Whether somebody must actually
+   * type into it depends on what the reading is for.
+   */
+  const noMeterReading = isIn ? effectiveStatus !== 'recorded' : (!isIn && meterUnreadable)
+
+  /**
+   * An officer explains a missing reading; a manager does not.
+   *
+   * The reading and its photo are what evidence an officer's distance claim,
+   * so a gap in them is a gap in the evidence and has to be accounted for. A
+   * manager is as likely to spend the day on a train or in an office as in a
+   * vehicle, and making them write a paragraph about not driving turns a
+   * normal day into an exception report.
+   */
+  const mustExplainMissingReading = appUser.role !== 'sales_manager'
+  const noteNeeded = noMeterReading && mustExplainMissingReading
   const noteOk = !noteNeeded || note.trim().length >= MIN_NOTE
 
   const ready = !saving && noteOk &&
@@ -133,7 +153,7 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
           odometerStatus: odoStatus,
           ...(needsReading ? { startOdometerKm: km } : {}),
           ...(photoPath ? { startOdometerPhoto: photoPath } : {}),
-          ...(noteNeeded ? { odometerIssueNote: note.trim() } : {}),
+          ...(noMeterReading ? { odometerIssueNote: note.trim() } : {}),
           ...(battery !== undefined ? { startBatteryPct: battery } : {}),
           status: 'active',
           createdAt: Date.now(),

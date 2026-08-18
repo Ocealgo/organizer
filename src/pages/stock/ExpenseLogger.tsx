@@ -19,7 +19,7 @@ import {
   ExpenseReport, ExpenseEntry, LeaveRecord, AppUser, DailyVisitLog, Holiday,
 } from '../../types'
 import { useAuth } from '../../context/AuthContext'
-import { can } from '../../auth/permissions'
+import { can, maySignOffFor } from '../../auth/permissions'
 import { useTheme } from '../../context/ThemeContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr } from '../../utils/date'
@@ -263,7 +263,7 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
     const existing = reports.find(r => r.weekStart === activeWeekStart)
     if (existing) return existing
     const newReport: Omit<ExpenseReport, 'id'> = {
-      userId: appUser.uid, userName: appUser.name,
+      userId: appUser.uid, userName: appUser.name, userRole: appUser.role,
       weekStart: activeWeekStart, weekEnd, status: 'draft', totalAmount: 0, createdAt: Date.now(),
     }
     const ref = await addDoc(collection(db, 'expense_reports'), newReport)
@@ -407,7 +407,7 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
           rptId = existingRpt.id!
         } else {
           const ref = await addDoc(collection(db, 'expense_reports'), {
-            userId: appUser.uid, userName: appUser.name,
+            userId: appUser.uid, userName: appUser.name, userRole: appUser.role,
             weekStart: ws, weekEnd: addDays(ws, 6),
             status: 'draft', totalAmount: 0, createdAt: Date.now(),
           })
@@ -996,6 +996,15 @@ function AdminView({ onBack, appUser, onViewVisitLog }: { onBack: () => void; ap
       await showAlert('Not allowed', 'Clearing an expense report needs the clear_expenses permission.')
       return
     }
+    if (!maySignOffFor(appUser, 'clear_expenses', { uid: r.userId, role: r.userRole })) {
+      await showAlert(
+        'An admin has to clear this one',
+        r.userId === appUser.uid
+          ? 'You cannot clear your own claim, whatever else you can clear.'
+          : `${r.userName} is at your own level, so their claim goes to an admin.`,
+      )
+      return
+    }
     const liveTotal = reportTotal(r.id!)
     const isNil = r.nilReturn && liveTotal === 0
     if (!await showConfirm(
@@ -1030,6 +1039,17 @@ This cannot be undone.`,
   const handleReject = async (r: ExpenseReport) => {
     if (!can(appUser, 'clear_expenses')) {
       await showAlert('Not allowed', 'Sending a report back needs the clear_expenses permission.')
+      return
+    }
+    // Sending back is the same authority as clearing — it decides whether
+    // somebody gets paid this week — so it answers to the same question.
+    if (!maySignOffFor(appUser, 'clear_expenses', { uid: r.userId, role: r.userRole })) {
+      await showAlert(
+        'An admin has to handle this one',
+        r.userId === appUser.uid
+          ? 'You cannot action your own claim, whatever else you can action.'
+          : `${r.userName} is at your own level, so their claim goes to an admin.`,
+      )
       return
     }
     if (!rejectNote.trim()) { await showAlert('Reason needed', 'Say why it is going back, so they know what to fix.'); return }
