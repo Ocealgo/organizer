@@ -3,8 +3,9 @@ import { collection, addDoc, query, where, updateDoc, doc } from 'firebase/fires
 import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
-  AppUser, DutySession, OutletVisit, Party, Product, GeoPoint, LocationIssue, PaymentType,
-  OutletType, OUTLET_TYPE_LABEL,
+  AppUser, DutySession, OutletVisit, Party, Product, GeoPoint, LocationIssue,
+  PaymentType, PaymentMethod, UnifiedAllocation,
+  OutletType, OUTLET_TYPE_LABEL, OUTLET_STOCK_LABEL,
   VisitOutcomeCategory, VISIT_OUTCOME_LABEL, VISIT_OUTCOME_REASONS,
   NO_ORDER_CATEGORIES, SUGGESTED_REMARKS_LENGTH, validateVisitForPunchOut,
   CompetitorObservation, OutletStockLine,
@@ -83,6 +84,13 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
   const [reason, setReason] = useState('')
   const [remarks, setRemarks] = useState('')
 
+  // money
+  const [allocations, setAllocations] = useState<UnifiedAllocation[]>([])
+  const [collecting, setCollecting] = useState(false)
+  const [payAmount, setPayAmount] = useState('')
+  const [payMethod, setPayMethod] = useState<PaymentMethod>('cash')
+  const [payNote, setPayNote] = useState('')
+
   useEffect(() => {
     const u1 = onSnapshot(collection(db, 'parties'), s =>
       setParties(s.docs.map(d => ({ id: d.id, ...d.data() } as Party))))
@@ -111,6 +119,14 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
       setLoading(false)
     }, err => { console.error('[OutletVisit] listener failed', err); setLoading(false) })
   }, [session.id, appUser.uid])
+
+  // What this shop owes, so the rep knows before they ask for it.
+  useEffect(() => {
+    if (!visit?.partyId) return
+    const q = query(collection(db, 'allocations_v2'), where('partyId', '==', visit.partyId))
+    return onSnapshot(q, snap =>
+      setAllocations(snap.docs.map(d => ({ id: d.id, ...d.data() } as UnifiedAllocation))))
+  }, [visit?.partyId])
 
   useEffect(() => { if (!visit) void locate() }, [visit])
 
@@ -213,6 +229,85 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
     : isNaN(orderPackets) || orderPackets <= 0 ? 'Enter how much they ordered.'
     : null
 
+  // ── money ─────────────────────────────────────────────────────────────────
+  /**
+   * Who actually owes Ocealgo money.
+   *
+   * Distributors and retailers standing on their own. A retailer under a
+   * distributor buys from that distributor and settles with them, so there is
+   * nothing here for a rep to collect and asking would be wrong — the same
+   * line PaymentTransaction draws in types.ts.
+   */
+  const isDirectCustomer = !!visitedParty &&
+    (visitedParty.type === 'distributor' || !visitedParty.underDistributorId)
+
+  /** Bills the company has sent, on credit, not yet settled. */
+  const openBills = allocations
+    .filter(a => a.paymentType === 'credit'
+      && (a.status === 'sent' || a.status === 'overdue')
+      && a.fromType !== 'distributor')
+    .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
+
+  const outstanding = openBills.reduce(
+    (sum, a) => sum + Math.max(0, (a.totalAmount || 0) - (a.paidAmount || 0)), 0)
+  const overdueCount = openBills.filter(a => a.status === 'overdue').length
+  const creditLimit = visitedParty?.creditLimit
+  const headroom = creditLimit !== undefined ? creditLimit - outstanding : null
+
+  const payValue = parseFloat(payAmount)
+  const payProblem = !collecting ? null
+    : isNaN(payValue) || payValue <= 0 ? 'Enter how much you collected.'
+    : null
+
+  /**
+   * Apply a collection the way the revisit flow already does — oldest bill
+   * first, writing paidAmount straight onto the allocation.
+   *
+   * That is a rep writing to the financial ledger, which firestore.rules
+   * permits under an explicitly temporary allowance (GAP 3) pending a Cloud
+   * Function. Deliberately the same path rather than a second one: when that
+   * function arrives there should be one place to move, not two.
+   */
+  async function recordPayment(party: Party): Promise<{ id: string; amount: number }> {
+    const amount = payValue
+    const appliedTo: { allocId: string; amount: number }[] = []
+    let left = amount
+    for (const bill of openBills) {
+      if (left <= 0) break
+      const paid = bill.paidAmount || 0
+      const owed = (bill.totalAmount || 0) - paid
+      if (owed <= 0) continue
+      const apply = Math.min(left, owed)
+      await updateDoc(doc(db, 'allocations_v2', bill.id!), {
+        paidAmount: paid + apply,
+        ...(paid + apply >= (bill.totalAmount || 0) ? { status: 'paid', paidAt: Date.now() } : {}),
+      })
+      appliedTo.push({ allocId: bill.id!, amount: apply })
+      left -= apply
+    }
+
+    const txn = await addDoc(collection(db, 'payment_transactions'), {
+      partyId: party.id!, partyName: party.name, partyType: party.type,
+      amount, paymentMethod: payMethod,
+      collectionType: 'collected_by_salesperson',
+      collectedBy: appUser.uid, collectedByName: appUser.name,
+      notes: payNote.trim(),
+      status: 'pending_approval',
+      date: localDateStr(),
+      createdAt: Date.now(),
+      appliedTo,
+    })
+
+    await addDoc(collection(db, 'alerts'), {
+      type: 'credit_settlement',
+      message: `₹${amount.toLocaleString('en-IN')} collected from ${party.name} by ${appUser.name} during a visit`,
+      relatedId: party.id!, toRole: 'admin_group',
+      read: false, createdAt: Date.now(),
+    })
+
+    return { id: txn.id, amount }
+  }
+
   const missingCategoryField = visit
     ? requiredFor(visit.outletType).find(k =>
         extra[k] === undefined || extra[k] === '' || extra[k] === null)
@@ -225,7 +320,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
     contactPersonName: 'Enter the contact person',
   }
 
-  const punchOutBlocker = orderProblem
+  const punchOutBlocker = orderProblem ?? payProblem
     ?? (missingCategoryField ? FIELD_LABEL[missingCategoryField] : remarksProblem)
 
   async function punchOut() {
@@ -242,10 +337,15 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
           qtyOnShelf: parseInt(v),
         }))
 
-      // Book the order first — if this fails the visit stays open and retryable.
+      // Money first — if any of it fails the visit stays open and retryable,
+      // rather than closing over a collection that never landed.
       let allocationId: string | undefined
       if (orderPlaced) {
         allocationId = await bookOrder(visit)
+      }
+      let payment: { id: string; amount: number } | undefined
+      if (collecting && visitedParty) {
+        payment = await recordPayment(visitedParty)
       }
 
       await updateDoc(doc(db, 'outlet_visits', visit.id), {
@@ -253,6 +353,11 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
         competitors,
         orderPlaced,
         ...(allocationId ? { allocationId } : {}),
+        ...(payment ? {
+          paymentCollected: payment.amount,
+          paymentMethod: payMethod,
+          paymentTransactionId: payment.id,
+        } : {}),
         ...extra,
         remarksCategory: category,
         ...(reason ? { remarksReason: reason } : {}),
@@ -309,6 +414,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
     setOrderProductId(''); setOrderQty(''); setExtra({})
     setOrderSourceId(''); setOrderUnit('packets'); setOrderPrice('')
     setOrderPayment('credit'); setOrderDate(localDateStr())
+    setCollecting(false); setPayAmount(''); setPayMethod('cash'); setPayNote('')
     setCategory(''); setReason(''); setRemarks('')
   }
 
@@ -473,7 +579,9 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
 
         {/* Stock audit */}
         <div>
-          <div style={{ marginBottom: 10 }}><Eyebrow>What is on their shelf</Eyebrow></div>
+          <div style={{ marginBottom: 10 }}>
+            <Eyebrow>{OUTLET_STOCK_LABEL[visit.outletType]}</Eyebrow>
+          </div>
           {products.length === 0 ? (
             <div style={{ fontSize: 14, color: t.text3 }}>No products configured.</div>
           ) : (
@@ -620,6 +728,74 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
             </div>
           )}
         </div>
+
+        {/* ── Money ───────────────────────────────────────────────────────────
+            Only for the people who actually owe Ocealgo: distributors, and
+            retailers standing on their own. A retailer under a distributor
+            buys from that distributor and settles with them, so there is
+            nothing here for a rep to collect and asking would be wrong. */}
+        {isDirectCustomer && (
+          <div>
+            <div style={{ marginBottom: 10 }}><Eyebrow>Money</Eyebrow></div>
+
+            <div style={{ background: t.tint, borderRadius: 6, padding: '13px 15px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between',
+                            alignItems: 'baseline', gap: 12 }}>
+                <span style={{ fontSize: 13, color: t.text3 }}>Outstanding</span>
+                <span style={{ fontSize: 15, fontWeight: 500,
+                               color: overdueCount > 0 ? t.warn : t.text }}>
+                  ₹{outstanding.toLocaleString('en-IN')}
+                </span>
+              </div>
+              <div style={{ fontSize: 12, color: t.text3, marginTop: 4, lineHeight: 1.6 }}>
+                {outstanding === 0
+                  ? 'Nothing owed. Their bills are settled.'
+                  : `Across ${openBills.length} ${openBills.length === 1 ? 'bill' : 'bills'}` +
+                    (overdueCount > 0 ? ` · ${overdueCount} past the due date` : '')}
+                {creditLimit !== undefined && headroom !== null && (
+                  <div style={{ marginTop: 3, color: headroom < 0 ? t.warn : t.text3 }}>
+                    {headroom < 0
+                      ? `Over their ₹${creditLimit.toLocaleString('en-IN')} limit by ₹${Math.abs(headroom).toLocaleString('en-IN')}.`
+                      : `₹${headroom.toLocaleString('en-IN')} left of a ₹${creditLimit.toLocaleString('en-IN')} limit.`}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <ToggleRow label="Collected a payment" value={collecting} onChange={setCollecting} />
+            </div>
+
+            {collecting && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+                <input type="number" inputMode="decimal" value={payAmount}
+                  onChange={e => setPayAmount(e.target.value)}
+                  placeholder="How much did you take?" style={inputStyle(t)} />
+                <ChipGroup value={payMethod} onChange={setPayMethod}
+                  options={[
+                    { id: 'cash' as const, label: 'Cash' },
+                    { id: 'upi' as const, label: 'UPI' },
+                    { id: 'cheque' as const, label: 'Cheque' },
+                    { id: 'bank_transfer' as const, label: 'Bank transfer' },
+                  ]} />
+                <input value={payNote} onChange={e => setPayNote(e.target.value)}
+                  placeholder="Cheque number, reference, anything (optional)"
+                  style={inputStyle(t)} />
+                {payValue > 0 && (
+                  <div style={{ fontSize: 12, color: payValue > outstanding ? t.warn : t.text3,
+                                lineHeight: 1.6 }}>
+                    {payValue > outstanding
+                      ? `That is ₹${(payValue - outstanding).toLocaleString('en-IN')} more than they owe. The extra sits unapplied until there is a bill for it.`
+                      : `Clears their oldest bills first, leaving ₹${(outstanding - payValue).toLocaleString('en-IN')} outstanding.`}
+                    <div style={{ marginTop: 3 }}>
+                      An admin confirms it reached the company. Until then it is your word for it.
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* The outcome, and anything worth adding to it */}
         <div>

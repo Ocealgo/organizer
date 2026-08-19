@@ -78,6 +78,22 @@ export const OUTLET_TYPE_LABEL: Record<OutletType, string> = {
   general: 'General retail',
 }
 
+/**
+ * What counting their stock means, in the words of the place you are standing.
+ *
+ * A distributor has a godown, not a shelf, and asking a stockist what is "on
+ * their shelf" gets you the two packets by the door rather than the eight
+ * hundred out the back. Same field, same number, question the rep can answer.
+ */
+export const OUTLET_STOCK_LABEL: Record<OutletType, string> = {
+  grocery: 'What is on their shelf',
+  distributor: 'What they hold in the godown',
+  pharmacy: 'What is on the counter',
+  cosmetics: 'What is on the display',
+  hospital: 'What they have in store',
+  general: 'What is on their shelf',
+}
+
 /** A single position fix. `isMock` comes from Android's mock-provider flag. */
 export interface GeoPoint {
   lat: number
@@ -1011,7 +1027,19 @@ export interface OutletVisit {
   orderPlaced: boolean
   allocationId?: string
   indentId?: string
+
+  /**
+   * Money taken off the counter during this visit.
+   *
+   * `paymentTransactionId` points at a `payment_transactions` document still
+   * waiting on an admin's confirmation that the cash reached the company. The
+   * amount and method are copied here too, so a day's collections can be read
+   * off the field report without joining anything — and so the visit's own
+   * account of what happened survives the transaction being rejected.
+   */
   paymentTransactionId?: string
+  paymentCollected?: number
+  paymentMethod?: PaymentMethod
 
   // Category-specific mandatory fields (spec §3.2)
   contactPersonName?: string      // hospital

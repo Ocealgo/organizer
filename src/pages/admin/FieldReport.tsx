@@ -293,6 +293,11 @@ export default function FieldReport({ onBack }: Props) {
                               </div>
                               <div style={{ fontSize: 12, color: t.text3, marginTop: 3 }}>
                                 {OUTLET_TYPE_LABEL[v.outletType]}
+                                {v.paymentCollected !== undefined && (
+                                  <span style={{ color: t.text2 }}>
+                                    {` · ₹${v.paymentCollected.toLocaleString('en-IN')} collected`}
+                                  </span>
+                                )}
                                 {v.distanceFromOutletM !== undefined && (
                                   // Coloured only when it is outside the geofence. The
                                   // number is on every line; the point of the colour is
