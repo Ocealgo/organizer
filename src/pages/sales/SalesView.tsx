@@ -41,12 +41,12 @@ export default function SalesView({ name }: Props) {
   const [allLeaveRecords, setAllLeaveRecords] = useState<LeaveRecord[]>([])
   const [visitLogLoaded, setVisitLogLoaded] = useState(false)
   const [monthlyVisitLogCount, setMonthlyVisitLogCount] = useState(0)
-  const [monthlyRevisitLogCount, setMonthlyRevisitLogCount] = useState(0)
+  const [collectedToday, setCollectedToday] = useState(0)
+  const [collectedThisMonth, setCollectedThisMonth] = useState(0)
   const [outletVisitsToday, setOutletVisitsToday] = useState(0)
   const [outletVisitsLoaded, setOutletVisitsLoaded] = useState(false)
   const [holidaysLoaded, setHolidaysLoaded] = useState(false)
   const [leaveLoaded, setLeaveLoaded] = useState(false)
-  const [revisitLogsToday, setRevisitLogsToday] = useState(0)
   const [ordersToday, setOrdersToday] = useState(0)
   const [monthlyOrderCount, setMonthlyOrderCount] = useState(0)
   const [highlightAllocationId, setHighlightAllocationId] = useState<string | undefined>()
@@ -100,15 +100,29 @@ export default function SalesView({ name }: Props) {
     }
   }, [appUser])
 
+  /**
+   * Money this rep has taken off shops, which is work with nothing else on
+   * this screen to show for it.
+   *
+   * It replaced a count of `revisit_logs` — a card that could only ever read
+   * zero for anyone working the outlet flow, since that flow writes no revisit
+   * logs. Cash collected is the third real thing a rep does after visiting and
+   * booking, and until now they had to open the credit book to see any of it.
+   */
   useEffect(() => {
     if (!appUser) return
-    const q = query(collection(db, 'revisit_logs'), where('salesPersonId', '==', appUser.uid))
+    const q = query(collection(db, 'payment_transactions'), where('collectedBy', '==', appUser.uid))
     return onSnapshot(q, snap => {
-      const month = currentMonth()
       const today = todayStr()
-      const docs = snap.docs.map(d => d.data())
-      setMonthlyRevisitLogCount(docs.filter(d => (d.date as string).startsWith(month)).length)
-      setRevisitLogsToday(docs.filter(d => d.date === today).length)
+      const month = currentMonth()
+      // A rejected receipt is not money the company got, so it is not money
+      // this rep collected.
+      const kept = snap.docs
+        .map(d => d.data() as { amount?: number; date?: string; status?: string })
+        .filter(p => p.status !== 'rejected' && typeof p.amount === 'number')
+      const sum = (rows: typeof kept) => rows.reduce((n, p) => n + (p.amount ?? 0), 0)
+      setCollectedToday(sum(kept.filter(p => p.date === today)))
+      setCollectedThisMonth(sum(kept.filter(p => (p.date ?? '').startsWith(month))))
     })
   }, [appUser])
 
@@ -378,8 +392,10 @@ export default function SalesView({ name }: Props) {
             context={`${monthlyVisitLogCount} days logged this month`} />
           <StatCard value={isOnFullLeave ? '—' : ordersToday} label="Orders today"
             context={`${monthlyOrderCount} this month`} />
-          <StatCard value={isOnFullLeave ? '—' : revisitLogsToday} label="Logs today"
-            context={`${monthlyRevisitLogCount} this month`} />
+          <StatCard
+            value={isOnFullLeave ? '—' : `₹${collectedToday.toLocaleString('en-IN')}`}
+            label="Collected today"
+            context={`₹${collectedThisMonth.toLocaleString('en-IN')} this month`} />
         </StatGrid>
 
         {/* Today's work */}
