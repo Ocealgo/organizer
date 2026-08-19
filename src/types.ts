@@ -1025,7 +1025,10 @@ export interface OutletVisit {
   photos: OutletPhoto[]
 
   orderPlaced: boolean
+  /** The first order placed here. Kept for readers written before there could be more than one. */
   allocationId?: string
+  /** Every order placed during this visit — a shop orders more than one thing. */
+  allocationIds?: string[]
   indentId?: string
 
   /**

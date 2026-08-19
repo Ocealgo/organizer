@@ -16,6 +16,8 @@ import {
   Field, ChipGroup, Note, GhostButton, PrimaryButton, inputStyle,
 } from '../../components/ui'
 
+import { bookAllocation } from '../../data/bookAllocation'
+
 interface Props { onBack: () => void; parties: Party[]; isAdmin?: boolean; highlightId?: string; salesRepOnly?: boolean }
 
 const STATUS_LABEL: Record<AllocationStatus, string> = {
@@ -170,39 +172,25 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
     setSaving(true)
     try {
       const packets = toPackets(form.packets)
-      const cartons = unit === 'cartons' ? parseInt(form.packets) : Math.floor(packets / config.packetsPerCarton)
       const party = parties.find(p => p.id === form.partyId)!
       const product = products.find(p => p.id === form.productId)
       const isCompanyOrigin = form.fromType === 'company'
-      const price = isCompanyOrigin ? parseFloat(form.pricePerPacket) : 0
-      const plannedDate = isCompanyOrigin ? form.plannedDate : today
-      const fromDist = !isCompanyOrigin ? parties.find(p => p.id === form.fromId) : null
-      const allocRef = await addDoc(collection(db, 'allocations_v2'), {
-        fromType: form.fromType,
-        fromId: isCompanyOrigin ? 'company' : form.fromId,
-        fromName: isCompanyOrigin ? 'Ocealgo' : (fromDist?.name || ''),
-        partyId: form.partyId, partyName: party.name, partyType: party.type,
-        productId: form.productId, productName: product?.name || '',
-        packets, cartons, pricePerPacket: price, totalAmount: packets * price,
-        paymentType: form.paymentType, plannedDate,
-        ...(form.paymentType === 'credit' && isCompanyOrigin ? { creditDueDate: form.creditDueDate } : {}),
-        status: 'pending' as AllocationStatus, notes: form.notes,
-        createdBy: appUser!.uid, createdByName: appUser!.name,
-        createdAt: Date.now(), month: plannedDate.slice(0, 7),
-        lockedAtCreation: isCompanyOrigin,
+      // One write path, shared with the order a rep books standing in a shop.
+      // They used to be two, and the second one claimed to lock company stock
+      // without locking any — see src/data/bookAllocation.ts.
+      await bookAllocation({
+        party,
+        product: product!,
+        packets,
+        supplier: isCompanyOrigin ? null : (parties.find(p => p.id === form.fromId) ?? null),
+        pricePerPacket: isCompanyOrigin ? parseFloat(form.pricePerPacket) : 0,
+        paymentType: form.paymentType,
+        plannedDate: isCompanyOrigin ? form.plannedDate : today,
+        creditDueDate: form.creditDueDate,
+        notes: form.notes,
+        by: appUser!,
+        packetsPerCarton: config.packetsPerCarton,
       })
-      await addDoc(collection(db, 'alerts'), {
-        type: 'new_allocation',
-        message: `New allocation: ${toDisplay(packets, config.packetsPerCarton)} of ${product?.name || 'product'} to ${party.name}, from ${isCompanyOrigin ? 'Ocealgo' : fromDist?.name || 'a distributor'}`,
-        relatedId: allocRef.id, read: false, createdAt: Date.now(),
-      })
-      await updateDoc(doc(db, 'parties', form.partyId), { status: 'active' })
-      if (form.fromType === 'company') {
-        await updateDoc(doc(db, 'config', 'stock'), {
-          [`productStock.${form.productId}.locked`]: increment(packets),
-          updatedAt: Date.now(),
-        })
-      }
       setForm(emptyForm)
       setErrors({})
       setTab('list')

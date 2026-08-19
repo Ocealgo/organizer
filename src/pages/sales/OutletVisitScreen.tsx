@@ -17,6 +17,7 @@ import QuickAddParty from '../../components/QuickAddParty'
 import { PageHeader, Eyebrow, ChipGroup, GhostButton, PrimaryButton, EmptyState, inputStyle } from '../../components/ui'
 import { getFixOrReason, checkGeofence, distanceM, DEFAULT_GEOFENCE_RADIUS_M } from '../../device/location'
 import { setPartyPin, accurateEnoughForPin } from '../../data/partyPin'
+import { bookAllocation, cancelAllocation } from '../../data/bookAllocation'
 import { localDateStr } from '../../utils/date'
 
 interface Props {
@@ -61,7 +62,9 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
   // visit form
   const [stock, setStock] = useState<Record<string, string>>({})
   const [competitors, setCompetitors] = useState<CompetitorObservation[]>([])
-  const [orderPlaced, setOrderPlaced] = useState(false)
+  const [orderOpen, setOrderOpen] = useState(false)
+  const [placingOrder, setPlacingOrder] = useState(false)
+  const [removingOrder, setRemovingOrder] = useState<string | null>(null)
   const [orderProductId, setOrderProductId] = useState('')
   const [orderQty, setOrderQty] = useState('')
   /**
@@ -87,6 +90,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
   // money
   const [allocations, setAllocations] = useState<UnifiedAllocation[]>([])
   const [collecting, setCollecting] = useState(false)
+  const [collectingBusy, setCollectingBusy] = useState(false)
   const [payAmount, setPayAmount] = useState('')
   const [payMethod, setPayMethod] = useState<PaymentMethod>('cash')
   const [payNote, setPayNote] = useState('')
@@ -215,16 +219,13 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
     ? (orderUnit === 'cartons' ? rawQty * (orderProduct.unitsPerCarton || 1) : rawQty)
     : NaN
 
-  /**
-   * An order half filled in must not be silently dropped on punch-out.
-   *
-   * The switch used to be the only thing consulted — the write was guarded on
-   * `orderPlaced && orderProductId && qty > 0`, so a rep who flipped it on and
-   * then missed the quantity punched out with `orderPlaced: true` recorded
-   * against the visit and no order booked anywhere. It now blocks the
-   * punch-out and says which part is missing.
-   */
-  const orderProblem = !orderPlaced ? null
+  /** What has actually been booked here, live from the allocations listener. */
+  const placedHere = allocations
+    .filter(a => (visit?.allocationIds ?? []).includes(a.id!) && a.status !== 'cancelled')
+    .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
+
+  /** Why the order form is not ready to be placed. Never blocks punch-out. */
+  const orderProblem = !orderProductId && !orderQty ? null
     : !orderProductId ? 'Choose which product they ordered.'
     : isNaN(orderPackets) || orderPackets <= 0 ? 'Enter how much they ordered.'
     : null
@@ -255,7 +256,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
   const headroom = creditLimit !== undefined ? creditLimit - outstanding : null
 
   const payValue = parseFloat(payAmount)
-  const payProblem = !collecting ? null
+  const payProblem = !payAmount.trim() ? null
     : isNaN(payValue) || payValue <= 0 ? 'Enter how much you collected.'
     : null
 
@@ -268,7 +269,11 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
    * Function. Deliberately the same path rather than a second one: when that
    * function arrives there should be one place to move, not two.
    */
-  async function recordPayment(party: Party): Promise<{ id: string; amount: number }> {
+  async function recordPayment() {
+    if (!visit || !visitedParty || payProblem || !payValue) return
+    const party = visitedParty
+    setCollectingBusy(true); setError(null)
+    try {
     const amount = payValue
     const appliedTo: { allocId: string; amount: number }[] = []
     let left = amount
@@ -305,7 +310,19 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
       read: false, createdAt: Date.now(),
     })
 
-    return { id: txn.id, amount }
+      // On the visit the moment it is taken. A rep with the company's cash in
+      // their pocket and a phone that dies before punch-out must still have
+      // said so.
+      await updateDoc(doc(db, 'outlet_visits', visit.id!), {
+        paymentCollected: (visit.paymentCollected ?? 0) + amount,
+        paymentMethod: payMethod,
+        paymentTransactionId: txn.id,
+      })
+      setPayAmount(''); setPayNote(''); setCollecting(false)
+    } catch (e: any) {
+      console.error('[OutletVisit] could not record the payment', e)
+      setError(e?.message || 'Could not record the payment.')
+    } finally { setCollectingBusy(false) }
   }
 
   const missingCategoryField = visit
@@ -320,8 +337,12 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
     contactPersonName: 'Enter the contact person',
   }
 
-  const punchOutBlocker = orderProblem ?? payProblem
-    ?? (missingCategoryField ? FIELD_LABEL[missingCategoryField] : remarksProblem)
+  // An order or a payment half-typed and never placed does not block leaving —
+  // it was never written, so there is nothing to lose. Only the visit's own
+  // required parts do.
+  const punchOutBlocker = missingCategoryField
+    ? FIELD_LABEL[missingCategoryField]
+    : remarksProblem
 
   async function punchOut() {
     if (!visit?.id || punchOutBlocker) return
@@ -337,27 +358,12 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
           qtyOnShelf: parseInt(v),
         }))
 
-      // Money first — if any of it fails the visit stays open and retryable,
-      // rather than closing over a collection that never landed.
-      let allocationId: string | undefined
-      if (orderPlaced) {
-        allocationId = await bookOrder(visit)
-      }
-      let payment: { id: string; amount: number } | undefined
-      if (collecting && visitedParty) {
-        payment = await recordPayment(visitedParty)
-      }
-
+      // Orders and payments are already written — each was its own deliberate
+      // action, in front of the shopkeeper. Punch-out only closes the visit,
+      // which is why retrying a failed one cannot double-book anything.
       await updateDoc(doc(db, 'outlet_visits', visit.id), {
         stock: stockLines,
         competitors,
-        orderPlaced,
-        ...(allocationId ? { allocationId } : {}),
-        ...(payment ? {
-          paymentCollected: payment.amount,
-          paymentMethod: payMethod,
-          paymentTransactionId: payment.id,
-        } : {}),
         ...extra,
         remarksCategory: category,
         ...(reason ? { remarksReason: reason } : {}),
@@ -374,43 +380,71 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
     } finally { setBusy(false) }
   }
 
-  async function bookOrder(v: OutletVisit): Promise<string> {
-    const party = parties.find(p => p.id === v.partyId)!
-    const product = products.find(p => p.id === orderProductId)!
-    const qty = orderPackets
-    const source = orderSource
+  /**
+   * Place the order now, not at punch-out.
+   *
+   * A rep tells a shopkeeper "booked" while they are standing in front of
+   * them; that should be true when they say it. Holding it in component state
+   * until the visit closes also meant losing it to a dead battery — nothing
+   * rehydrates this form when an interrupted visit is resumed — and meant a
+   * punch-out that failed halfway booked the order a second time on the retry.
+   */
+  async function placeOrder() {
+    if (!visit || !visitedParty || !orderProduct || orderProblem) return
+    setPlacingOrder(true); setError(null)
+    try {
+      const id = await bookAllocation({
+        party: visitedParty,
+        product: orderProduct,
+        packets: orderPackets,
+        supplier: orderSource,
+        pricePerPacket: parseFloat(orderPrice) || orderProduct.defaultPricePerUnit,
+        paymentType: orderPayment,
+        plannedDate: orderDate,
+        creditDueDate: orderDate,
+        notes: 'Booked during an outlet visit',
+        by: appUser,
+        packetsPerCarton: orderProduct.unitsPerCarton || 1,
+      })
 
-    /**
-     * Stock moving from a distributor to their own retailer is not the
-     * company's sale, so the company does not price it, does not put it on
-     * anybody's credit and does not schedule it — the same shape the revisit
-     * order flow has always written. Ocealgo's own supply is priced, dated and
-     * booked to cash or credit, and locks company stock at creation.
-     */
-    const planned = source ? localDateStr() : orderDate
-    const price = source ? 0 : (parseFloat(orderPrice) || product.defaultPricePerUnit)
+      const ids = [...(visit.allocationIds ?? (visit.allocationId ? [visit.allocationId] : [])), id]
+      await updateDoc(doc(db, 'outlet_visits', visit.id!), {
+        orderPlaced: true,
+        allocationIds: ids,
+        // Kept in step for anything still reading the single field.
+        allocationId: ids[0],
+      })
 
-    const ref = await addDoc(collection(db, 'allocations_v2'), {
-      fromType: source ? 'distributor' : 'company',
-      fromId: source?.id ?? 'company',
-      fromName: source?.name ?? 'Ocealgo',
-      partyId: party.id!, partyName: party.name, partyType: party.type,
-      productId: product.id!, productName: product.name,
-      packets: qty, cartons: Math.floor(qty / (product.unitsPerCarton || 1)),
-      pricePerPacket: price, totalAmount: qty * price,
-      paymentType: source ? 'cash' : orderPayment,
-      plannedDate: planned,
-      status: 'pending', notes: 'Booked during outlet visit',
-      createdBy: appUser.uid, createdByName: appUser.name,
-      createdAt: Date.now(), month: planned.slice(0, 7),
-      lockedAtCreation: !source,
-    })
-    await updateDoc(doc(db, 'parties', party.id!), { status: 'active' })
-    return ref.id
+      // Ready for the next one — a shop orders more than one thing.
+      setOrderProductId(''); setOrderQty(''); setOrderPrice('')
+    } catch (e: any) {
+      console.error('[OutletVisit] could not place the order', e)
+      setError(e?.message || 'Could not place the order.')
+    } finally { setPlacingOrder(false) }
+  }
+
+  /** Remove one placed here, while it is still only pending. */
+  async function removeOrder(a: UnifiedAllocation) {
+    if (!visit) return
+    setRemovingOrder(a.id!); setError(null)
+    try {
+      await cancelAllocation({
+        id: a.id!, productId: a.productId, packets: a.packets,
+        fromType: a.fromType, lockedAtCreation: a.lockedAtCreation,
+      })
+      const ids = (visit.allocationIds ?? []).filter(x => x !== a.id)
+      await updateDoc(doc(db, 'outlet_visits', visit.id!), {
+        allocationIds: ids,
+        orderPlaced: ids.length > 0,
+      })
+    } catch (e: any) {
+      console.error('[OutletVisit] could not remove the order', e)
+      setError(e?.message || 'Could not remove the order.')
+    } finally { setRemovingOrder(null) }
   }
 
   function resetForm() {
-    setStock({}); setCompetitors([]); setOrderPlaced(false)
+    setStock({}); setCompetitors([]); setOrderOpen(false)
     setOrderProductId(''); setOrderQty(''); setExtra({})
     setOrderSourceId(''); setOrderUnit('packets'); setOrderPrice('')
     setOrderPayment('credit'); setOrderDate(localDateStr())
@@ -650,13 +684,44 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
         {/* Order */}
         <div>
           <div style={{ marginBottom: 10 }}><Eyebrow>Did they order?</Eyebrow></div>
-          <ToggleRow label="Book an order" value={orderPlaced} onChange={on => {
-            setOrderPlaced(on)
-            // Start on the shop's own distributor when it has one. Usually
-            // right, always visible, and always changeable.
-            if (on && !orderSourceId) setOrderSourceId(visitedParty?.underDistributorId ?? '')
-          }} />
-          {orderPlaced && (
+
+          {/* Booked, and it says so, because it is already true — each of
+              these exists in allocations before the rep leaves the shop. */}
+          {placedHere.length > 0 && (
+            <div style={{ marginBottom: 14, borderBottom: `0.5px solid ${t.border}` }}>
+              {placedHere.map(a => (
+                <div key={a.id} style={{ display: 'flex', alignItems: 'baseline', gap: 12,
+                                         borderTop: `0.5px solid ${t.border}`, padding: '11px 0' }}>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 14, color: t.text }}>
+                    {a.packets} {a.productName}
+                    <span style={{ display: 'block', fontSize: 12, color: t.text3, marginTop: 2 }}>
+                      from {a.fromName}
+                      {a.fromType === 'company'
+                        ? ` · ₹${a.totalAmount.toLocaleString('en-IN')} on ${a.paymentType}`
+                        : ' · they supply it'}
+                    </span>
+                  </span>
+                  <button className="oc-action" onClick={() => removeOrder(a)}
+                    disabled={removingOrder === a.id}
+                    style={{ background: 'none', border: 'none', padding: 0, fontSize: 13,
+                             color: t.text2, cursor: 'pointer', flexShrink: 0 }}>
+                    {removingOrder === a.id ? 'Removing…' : 'Remove'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <ToggleRow
+            label={placedHere.length > 0 ? 'Book another order' : 'Book an order'}
+            value={orderOpen}
+            onChange={on => {
+              setOrderOpen(on)
+              // Start on the shop's own distributor when it has one. Usually
+              // right, always visible, and always changeable.
+              if (on && !orderSourceId) setOrderSourceId(visitedParty?.underDistributorId ?? '')
+            }} />
+          {orderOpen && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
 
               {/* Who is supplying it. The question that was never asked. */}
@@ -725,6 +790,17 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
                   )}
                 </>
               )}
+
+              <div>
+                <PrimaryButton onClick={placeOrder}
+                  disabled={!orderProduct || !!orderProblem || isNaN(orderPackets) || orderPackets <= 0 || placingOrder}
+                  style={{ width: '100%' }}>
+                  {placingOrder ? 'Placing…' : 'Place this order'}
+                </PrimaryButton>
+                {orderProblem && !placingOrder && (
+                  <div style={{ fontSize: 13, color: t.warn, marginTop: 8 }}>{orderProblem}</div>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -762,6 +838,13 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
               </div>
             </div>
 
+            {visit.paymentCollected !== undefined && (
+              <div style={{ fontSize: 13, color: t.text, marginTop: 12 }}>
+                ₹{visit.paymentCollected.toLocaleString('en-IN')} recorded on this visit, waiting
+                on an admin to confirm it reached the company.
+              </div>
+            )}
+
             <div style={{ marginTop: 12 }}>
               <ToggleRow label="Collected a payment" value={collecting} onChange={setCollecting} />
             </div>
@@ -791,6 +874,14 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
                       An admin confirms it reached the company. Until then it is your word for it.
                     </div>
                   </div>
+                )}
+                <PrimaryButton onClick={recordPayment}
+                  disabled={!payValue || !!payProblem || collectingBusy}
+                  style={{ width: '100%' }}>
+                  {collectingBusy ? 'Recording…' : 'Record this payment'}
+                </PrimaryButton>
+                {payProblem && !collectingBusy && (
+                  <div style={{ fontSize: 13, color: t.warn }}>{payProblem}</div>
                 )}
               </div>
             )}
