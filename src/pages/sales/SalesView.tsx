@@ -42,6 +42,10 @@ export default function SalesView({ name }: Props) {
   const [visitLogLoaded, setVisitLogLoaded] = useState(false)
   const [monthlyVisitLogCount, setMonthlyVisitLogCount] = useState(0)
   const [monthlyRevisitLogCount, setMonthlyRevisitLogCount] = useState(0)
+  const [outletVisitsToday, setOutletVisitsToday] = useState(0)
+  const [outletVisitsLoaded, setOutletVisitsLoaded] = useState(false)
+  const [holidaysLoaded, setHolidaysLoaded] = useState(false)
+  const [leaveLoaded, setLeaveLoaded] = useState(false)
   const [revisitLogsToday, setRevisitLogsToday] = useState(0)
   const [ordersToday, setOrdersToday] = useState(0)
   const [highlightAllocationId, setHighlightAllocationId] = useState<string | undefined>()
@@ -54,7 +58,12 @@ export default function SalesView({ name }: Props) {
   const [holidays, setHolidays] = useState<Holiday[]>([])
   const { modal: leaveModal, showConfirm: showLeaveConfirm } = useConfirm()
   // Spec §2.3 — the outlet list stays locked until the day is punched in.
-  const { session: dutySession, isOnDuty, isDayClosed } = useDutySession(appUser?.uid)
+  //
+  // `loading` is not decoration. Until the listener answers, "no session" and
+  // "we have not looked yet" are the same value, and everything below — the
+  // line at the top of the screen, which row is offered, and which of the two
+  // duty forms opens — would otherwise treat the second as the first.
+  const { session: dutySession, loading: dutyLoading, isOnDuty, isDayClosed } = useDutySession(appUser?.uid)
 
   useEffect(() => {
     return onSnapshot(collection(db, 'parties'), snap => {
@@ -103,9 +112,26 @@ export default function SalesView({ name }: Props) {
     })
   }, [appUser])
 
+  // Today's shop visits. This is the collection the field app actually writes —
+  // `visit_logs` below is the older screen, and an officer working the outlet
+  // flow never creates one.
+  useEffect(() => {
+    if (!appUser) return
+    const q = query(
+      collection(db, 'outlet_visits'),
+      where('uid', '==', appUser.uid),
+      where('date', '==', todayStr()),
+    )
+    return onSnapshot(q, snap => {
+      setOutletVisitsToday(snap.docs.filter(d => d.data().status === 'closed').length)
+      setOutletVisitsLoaded(true)
+    })
+  }, [appUser])
+
   useEffect(() => {
     return onSnapshot(collection(db, 'holidays'), snap => {
       setHolidays(snap.docs.map(d => ({ id: d.id, ...d.data() } as Holiday)))
+      setHolidaysLoaded(true)
     })
   }, [])
 
@@ -118,6 +144,7 @@ export default function SalesView({ name }: Props) {
       const today = todayStr()
       const rec = records.find(l => l.date === today && l.status !== 'removed' && l.status !== 'rejected')
       setTodayLeave(rec ?? null)
+      setLeaveLoaded(true)
     })
   }, [appUser])
 
@@ -133,15 +160,33 @@ export default function SalesView({ name }: Props) {
     return () => clearInterval(id)
   }, [pastReminderHour])
 
-  // Auto-log "no entry" after noon if no visit log for today (skip if on full day leave)
+  /**
+   * A day with nothing on it is written down as one, so a blank in a report
+   * reads as "nothing happened" rather than "nobody knows".
+   *
+   * This is the one thing on the officer's screen that records something about
+   * their day without being asked to, so every reason not to write has to have
+   * actually been heard before it does. Four separate listeners hold those
+   * reasons, and this used to fire the moment the visit-log one came back —
+   * whichever of the others had not landed yet simply counted as "no reason
+   * not to". `holidays` was not even in the dependency list, so the holiday
+   * check ran against whatever array the closure was built with, which is the
+   * empty one. The result was "did nothing today" filed against public
+   * holidays, approved leave, and days spent out visiting shops, with nothing
+   * in the app to take it back.
+   */
   const noEntryCreated = React.useRef(false)
   useEffect(() => {
-    if (!appUser || !visitLogLoaded || todayVisitLog !== null) return
-    if (noEntryCreated.current) return
+    if (!appUser || noEntryCreated.current) return
+    // Nothing is decided until everything that could say "do not" has spoken.
+    if (!visitLogLoaded || !outletVisitsLoaded || !leaveLoaded || !holidaysLoaded || dutyLoading) return
+    if (todayVisitLog !== null) return
+    if (new Date().getHours() < 12) return
     if (todayLeave?.leaveType === 'full_day' && (todayLeave.status === 'active' || todayLeave.status === 'pending_approval')) return
     if (holidays.some(h => h.date === todayStr())) return
-    const now = new Date()
-    if (now.getHours() < 12) return
+    // A day that was punched in, or that has a shop visit on it, is a day that
+    // happened. Whatever else it is, it is not "no entry".
+    if (dutySession || outletVisitsToday > 0) return
     noEntryCreated.current = true
     addDoc(collection(db, 'visit_logs'), {
       salesPersonId: appUser.uid,
@@ -154,7 +199,8 @@ export default function SalesView({ name }: Props) {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     })
-  }, [appUser, visitLogLoaded, todayVisitLog, todayLeave])
+  }, [appUser, visitLogLoaded, outletVisitsLoaded, leaveLoaded, holidaysLoaded, dutyLoading,
+      todayVisitLog, todayLeave, holidays, dutySession, outletVisitsToday])
 
   const handleUnmarkLeave = async () => {
     if (!todayLeave?.id) return
@@ -173,8 +219,22 @@ export default function SalesView({ name }: Props) {
   }
 
   // Route to sub-screens — hooks are above so this is safe
-  if (screen === 'duty' && appUser) return <DutyScreen appUser={appUser} session={dutySession} onBack={() => setScreen('home')} />
-  if (screen === 'outlet' && appUser && dutySession) return <OutletVisitScreen appUser={appUser} session={dutySession} onBack={() => setScreen('home')} />
+  //
+  // The duty screen reads the session it is handed once and becomes either the
+  // opening form or the closing one on the strength of it, so it must not be
+  // handed a session that has merely not arrived yet.
+  if (screen === 'duty' && appUser) return dutyLoading
+    ? (
+      <div style={{ minHeight: '100vh', background: t.bg, padding: '30px 20px',
+                    fontSize: 14, color: t.text3 }}>
+        Checking where your day stands…
+      </div>
+    )
+    : <DutyScreen appUser={appUser} session={dutySession} onBack={() => setScreen('home')} />
+  // `isOnDuty`, not "a session exists". A closed day still has one, and this is
+  // the gate that is supposed to stop visits being filed against a day that is
+  // already finished — including one that closes while this screen is open.
+  if (screen === 'outlet' && appUser && dutySession && isOnDuty) return <OutletVisitScreen appUser={appUser} session={dutySession} onBack={() => setScreen('home')} />
   if (screen === 'visits')      return <VisitLogger onBack={() => { setVisitInitialDate(undefined); setScreen('home') }} initialDate={visitInitialDate} onViewAllocation={(id) => { setHighlightAllocationId(id); setScreen('allocations') }} onViewPayment={(partyId, paymentId) => { setDeepLinkPaymentPartyId(partyId); setDeepLinkPaymentId(paymentId); setCreditReturnScreen('visits'); setScreen('credits') }} />
   if (screen === 'parties')     return <PartyManager onBack={() => setScreen('home')} />
   if (screen === 'stock')       return <StockManager onBack={() => setScreen('home')} />
@@ -197,10 +257,16 @@ export default function SalesView({ name }: Props) {
   const isTodayHoliday = holidays.some(h => h.date === todayStr())
   const isOnFullLeave = isTodayHoliday || !!(todayLeave && todayLeave.leaveType === 'full_day' && todayLeave.status === 'active')
   const pendingLeavesCount = allLeaveRecords.filter(l => l.status === 'pending_approval').length
-  const visitsToday = todayVisitLog?.totalVisited ?? 0
+  // Both flows count. The outlet screen is what an officer uses now and it
+  // writes `outlet_visits`; `visit_logs` is the older screen, still reachable
+  // from the expense sheet. Reading only the second showed a rep who had been
+  // round six shops that they had logged nothing all day.
+  const visitsToday = Math.max(todayVisitLog?.totalVisited ?? 0, outletVisitsToday)
 
   // One sentence saying what today looks like from the rep's side.
-  const attention = isTodayHoliday
+  const attention = dutyLoading
+    ? 'Checking where your day stands…'
+    : isTodayHoliday
     ? 'Today is a public holiday. Nothing is expected from you.'
     : isOnFullLeave
       ? 'You are on full day leave today. Visit logging is paused.'
@@ -290,19 +356,25 @@ export default function SalesView({ name }: Props) {
         <div>
           <div style={{ marginBottom: 12 }}><Eyebrow>Today</Eyebrow></div>
           <RowGroup>
-            {/* Duty is the gate. Everything in the field hangs off this session. */}
+            {/* Duty is the gate. Everything in the field hangs off this session.
+                Until the listener has answered, this row does not claim to know
+                which of the three states it is in — offering "Start the day" to
+                somebody already punched in is how they end up on the wrong form
+                with the wrong button under their thumb. */}
             <ListRow
-              title={isDayClosed ? 'Day finished' : isOnDuty ? 'End the day' : 'Start the day'}
-              desc={isDayClosed
-                ? dutySession?.autoClosed
-                  ? 'Closed automatically — no closing reading was given'
-                  : `${dutySession?.claimedDistanceKm ?? 0} km recorded`
-                : isOnDuty
-                  ? `Started at ${new Date(dutySession!.startAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} · closing reading and photo`
-                  : 'Meter reading, photo and location'}
-              value={isOnDuty ? `${dutySession?.startOdometerKm} km` : undefined}
-              warn={!isOnDuty && !isDayClosed && !isOnFullLeave}
-              disabled={isOnFullLeave}
+              title={dutyLoading ? 'Your day' : isDayClosed ? 'Day finished' : isOnDuty ? 'End the day' : 'Start the day'}
+              desc={dutyLoading
+                ? 'Checking today’s record…'
+                : isDayClosed
+                  ? dutySession?.autoClosed
+                    ? 'Closed automatically — no closing reading was given'
+                    : `${dutySession?.claimedDistanceKm ?? 0} km recorded`
+                  : isOnDuty
+                    ? `Started at ${new Date(dutySession!.startAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} · closing reading and photo`
+                    : 'Meter reading, photo and location'}
+              value={!dutyLoading && isOnDuty ? `${dutySession?.startOdometerKm} km` : undefined}
+              warn={!dutyLoading && !isOnDuty && !isDayClosed && !isOnFullLeave}
+              disabled={isOnFullLeave || dutyLoading}
               onClick={() => setScreen('duty')}
             />
             <ListRow
@@ -311,13 +383,15 @@ export default function SalesView({ name }: Props) {
                 ? 'Paused — today is a public holiday'
                 : isOnFullLeave
                   ? 'Paused — you are on full day leave'
-                  : isDayClosed
-                    ? 'Locked — you have punched out for the day'
-                    : !isOnDuty
-                      ? 'Locked until you start the day'
-                      : 'Record shop visits and what came of them'}
-              value={isOnFullLeave || !isOnDuty ? undefined : `${visitsToday} today`}
-              disabled={isOnFullLeave || !isOnDuty}
+                  : dutyLoading
+                    ? 'Checking today’s record…'
+                    : isDayClosed
+                      ? 'Locked — you have punched out for the day'
+                      : !isOnDuty
+                        ? 'Locked until you start the day'
+                        : 'Record shop visits and what came of them'}
+              value={isOnFullLeave || dutyLoading || !isOnDuty ? undefined : `${visitsToday} today`}
+              disabled={isOnFullLeave || dutyLoading || !isOnDuty}
               onClick={() => setScreen('outlet')}
             />
             <ListRow

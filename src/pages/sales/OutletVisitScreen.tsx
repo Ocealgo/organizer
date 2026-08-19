@@ -3,7 +3,7 @@ import { collection, addDoc, query, where, updateDoc, doc } from 'firebase/fires
 import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
-  AppUser, DutySession, OutletVisit, Party, Product, GeoPoint,
+  AppUser, DutySession, OutletVisit, Party, Product, GeoPoint, LocationIssue,
   OutletType, OUTLET_TYPE_LABEL,
   VisitOutcomeCategory, VISIT_OUTCOME_LABEL, VISIT_OUTCOME_REASONS,
   NO_ORDER_CATEGORIES, MIN_REMARKS_LENGTH, validateVisitForPunchOut,
@@ -13,7 +13,7 @@ import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
 import QuickAddParty from '../../components/QuickAddParty'
 import { PageHeader, Eyebrow, GhostButton, PrimaryButton, EmptyState, inputStyle } from '../../components/ui'
-import { getFixOrNull, checkGeofence, distanceM, DEFAULT_GEOFENCE_RADIUS_M } from '../../device/location'
+import { getFixOrReason, checkGeofence, distanceM, DEFAULT_GEOFENCE_RADIUS_M } from '../../device/location'
 import { localDateStr } from '../../utils/date'
 
 interface Props {
@@ -44,6 +44,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
   // punch-in
   const [search, setSearch] = useState('')
   const [fix, setFix] = useState<GeoPoint | null>(null)
+  const [fixIssue, setFixIssue] = useState<LocationIssue | null>(null)
   const [fixError, setFixError] = useState<string | null>(null)
   const [locating, setLocating] = useState(false)
   const [pending, setPending] = useState<Party | null>(null)
@@ -98,9 +99,18 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
 
   async function locate() {
     setLocating(true); setFixError(null)
-    const f = await getFixOrNull({ capturedBy: appUser.uid })
+    const { fix: f, issue } = await getFixOrReason({ capturedBy: appUser.uid })
     setFix(f)
-    if (!f) setFixError('No location available — visits will be recorded without one.')
+    setFixIssue(issue)
+    // Denial is the one the officer can do something about, so it is the one
+    // that gets told apart from "the sky is not co-operating".
+    if (!f) setFixError(issue === 'denied'
+      ? 'Location is switched off for Ocealgo. Visits will be recorded without one, and will say so. Turn it on in your phone’s Settings → Apps → Ocealgo → Permissions → Location.'
+      : issue === 'timeout'
+        ? 'No location came back in time — visits will be recorded without one.'
+        : issue === 'inaccurate'
+          ? 'The position was too vague to keep — visits will be recorded without one.'
+          : 'No location available — visits will be recorded without one.')
     setLocating(false)
   }
 
@@ -125,7 +135,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
         partyName: party.name,
         outletType: party.outletType ?? 'general',
         punchInAt: Date.now(),
-        ...(fix ? { punchInLocation: fix } : {}),
+        ...(fix ? { punchInLocation: fix } : fixIssue ? { punchInLocationIssue: fixIssue } : {}),
         ...(geo && geo.distanceM !== null
           ? { distanceFromOutletM: geo.distanceM, withinGeofence: geo.within }
           : {}),
@@ -176,7 +186,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
     if (!visit?.id || punchOutBlocker) return
     setBusy(true); setError(null)
     try {
-      const outFix = await getFixOrNull({ capturedBy: appUser.uid })
+      const { fix: outFix, issue: outIssue } = await getFixOrReason({ capturedBy: appUser.uid })
 
       const stockLines: OutletStockLine[] = Object.entries(stock)
         .filter(([, v]) => v !== '' && !isNaN(parseInt(v)))
@@ -202,7 +212,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
         ...(reason ? { remarksReason: reason } : {}),
         remarksText: remarks.trim(),
         punchOutAt: Date.now(),
-        ...(outFix ? { punchOutLocation: outFix } : {}),
+        ...(outFix ? { punchOutLocation: outFix } : outIssue ? { punchOutLocationIssue: outIssue } : {}),
         durationMinutes: Math.max(1, Math.round((Date.now() - visit.punchInAt) / 60000)),
         status: 'closed',
       })

@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, ReactNode } from 'react'
 import { collection, query, where } from 'firebase/firestore'
 import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
-  AppUser, DutySession, OutletVisit,
+  AppUser, DutySession, GeoPoint, LocationIssue, LOCATION_ISSUE_LABEL, OutletVisit,
   OUTLET_TYPE_LABEL, ODOMETER_STATUS_LABEL, VISIT_OUTCOME_LABEL,
 } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
@@ -239,12 +239,15 @@ export default function FieldReport({ onBack }: Props) {
                       {/* The day itself */}
                       <div style={{ marginBottom: 14 }}>
                         <div style={{ marginBottom: 8 }}><Eyebrow>The day</Eyebrow></div>
-                        <Detail label="Punched in" value={hhmm(s.startAt)} loc={s.startLocation} />
+                        <Detail label="Punched in" value={hhmm(s.startAt)}
+                          loc={s.startLocation} locIssue={s.startLocationIssue} locExpected />
                         <Detail label="Punched out"
                           value={s.autoClosed ? 'Never — closed automatically'
                             : s.endAt ? hhmm(s.endAt) : 'Still out'}
                           warn={s.autoClosed}
-                          loc={s.autoClosed ? undefined : s.endLocation} />
+                          loc={s.autoClosed ? undefined : s.endLocation}
+                          locIssue={s.autoClosed ? undefined : s.endLocationIssue}
+                          locExpected={!s.autoClosed && !!s.endAt} />
                         {meterIssue ? (
                           <Detail label="Meter"
                             value={`${ODOMETER_STATUS_LABEL[s.odometerStatus!]}${s.odometerIssueNote ? ` — ${s.odometerIssueNote}` : ''}`} warn />
@@ -290,8 +293,37 @@ export default function FieldReport({ onBack }: Props) {
                               </div>
                               <div style={{ fontSize: 12, color: t.text3, marginTop: 3 }}>
                                 {OUTLET_TYPE_LABEL[v.outletType]}
-                                {v.distanceFromOutletM !== undefined && ` · ${v.distanceFromOutletM} m from the shop`}
+                                {v.distanceFromOutletM !== undefined && (
+                                  // Coloured only when it is outside the geofence. The
+                                  // number is on every line; the point of the colour is
+                                  // that a manager scanning forty visits sees the one
+                                  // logged from the next town without reading any of them.
+                                  <span style={{ color: v.withinGeofence === false ? t.warn : undefined }}>
+                                    {` · ${v.distanceFromOutletM} m from the shop`}
+                                  </span>
+                                )}
                                 {v.orderPlaced && ' · order booked'}
+                              </div>
+
+                              {/* Where the officer actually stood, at each end of the
+                                  visit. Both fixes have been recorded since the outlet
+                                  screen was written; until now nothing displayed them,
+                                  so the only thing anybody could see about a visit's
+                                  position was how far it was from the shop — which says
+                                  nothing about where they were instead. */}
+                              <div style={{ fontSize: 12, color: t.text3, marginTop: 4 }}>
+                                Where they stood:{' '}
+                                {v.punchInLocation
+                                  ? <MapLink loc={v.punchInLocation}>arriving</MapLink>
+                                  : <>arriving <NoFix issue={v.punchInLocationIssue} /></>}
+                                {' · '}
+                                {v.punchOutLocation
+                                  ? <MapLink loc={v.punchOutLocation}>leaving</MapLink>
+                                  : v.status === 'abandoned'
+                                    ? 'never left'
+                                    : v.status === 'open'
+                                      ? 'still inside'
+                                      : <>leaving <NoFix issue={v.punchOutLocationIssue} /></>}
                               </div>
 
                               {v.remarksCategory && (
@@ -337,8 +369,55 @@ export default function FieldReport({ onBack }: Props) {
   )
 }
 
-function Detail({ label, value, loc, warn }: {
-  label: string; value: string; loc?: { lat: number; lng: number }; warn?: boolean
+/**
+ * A fix, as somewhere you can go and look.
+ *
+ * A latitude and a longitude on a screen tell a manager nothing. The whole
+ * reason for recording where somebody was standing is being able to put it
+ * against the street, so a fix is always a link out to a map and never a pair
+ * of numbers. How good the fix was travels with it in the tooltip, because
+ * "12 m" and "900 m" are very different claims about the same dot.
+ */
+function MapLink({ loc, children }: { loc: GeoPoint; children: ReactNode }) {
+  const { t } = useTheme()
+  return (
+    <a href={`https://www.google.com/maps?q=${loc.lat},${loc.lng}`}
+      target="_blank" rel="noopener noreferrer"
+      title={typeof loc.accuracy === 'number'
+        ? `Accurate to about ${Math.round(loc.accuracy)} m`
+        : 'Accuracy not recorded'}
+      style={{ color: t.accent, textDecoration: 'underline', textUnderlineOffset: 3 }}>
+      {children}
+    </a>
+  )
+}
+
+/**
+ * Why a fix is missing, when one is.
+ *
+ * `denied` is the only one of the four that is somebody's decision rather than
+ * the world's, and the only one anybody can act on, so it is the only one that
+ * gets the colour. The rest are stated and left alone — a rep who spent the
+ * morning inside a concrete market has done nothing that needs answering for.
+ */
+function NoFix({ issue }: { issue?: LocationIssue }) {
+  const { t } = useTheme()
+  return (
+    <span style={{ color: issue === 'denied' ? t.warn : t.text3 }}>
+      {issue ? LOCATION_ISSUE_LABEL[issue] : 'no location'}
+    </span>
+  )
+}
+
+/**
+ * `locExpected` says a fix should have been taken here, so its absence is
+ * reported rather than left blank. A blank reads as "the screen does not show
+ * this"; what a manager needs to know is "the device did not supply it, and
+ * here is why" — which is a fact about the day, and sometimes about the person.
+ */
+function Detail({ label, value, loc, locIssue, locExpected, warn }: {
+  label: string; value: string
+  loc?: GeoPoint; locIssue?: LocationIssue; locExpected?: boolean; warn?: boolean
 }) {
   const { t } = useTheme()
   return (
@@ -346,13 +425,11 @@ function Detail({ label, value, loc, warn }: {
       <span style={{ fontSize: 13, color: t.text3 }}>{label}</span>
       <span style={{ fontSize: 13, color: warn ? t.warn : t.text, textAlign: 'right' }}>
         {value}
-        {loc && (
-          <a href={`https://www.google.com/maps?q=${loc.lat},${loc.lng}`}
-            target="_blank" rel="noopener noreferrer"
-            style={{ color: t.accent, marginLeft: 8, textDecoration: 'underline', textUnderlineOffset: 3 }}>
-            map
-          </a>
-        )}
+        {loc ? (
+          <span style={{ marginLeft: 8 }}><MapLink loc={loc}>map</MapLink></span>
+        ) : locExpected || locIssue ? (
+          <span style={{ marginLeft: 8 }}><NoFix issue={locIssue} /></span>
+        ) : null}
       </span>
     </div>
   )

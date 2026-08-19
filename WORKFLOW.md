@@ -355,10 +355,23 @@ An auto-closed day records:
 - a `duty_auto_closed` alert to `admin_group`, so a forgotten day is seen rather than silently
   reading as a day with no distance
 
-**The odometer chain.** `lastClosingOdometer()` falls back to `startOdometerKm` when there is no
-closing reading. Without that fallback the "not lower than your last closing reading" floor silently
-disappears after an auto-close, which would make forgetting to punch out the way to reset your own
-meter baseline.
+**The odometer chain.** `lastDutyDay()` reads the previous session once and answers both of the
+questions a punch-in has about the past. Its `closingKm` falls back to `startOdometerKm` when there
+is no closing reading — without that fallback the "not lower than your last closing reading" floor
+silently disappears after an auto-close, which would make forgetting to punch out the way to reset
+your own meter baseline.
+
+**Carrying the meter answer forward.** The same lookup returns the last day's `odometerStatus` and
+`odometerIssueNote`, and punch-in starts on them when the last answer was *not* `recorded`. A rep
+with a working meter sees no change; a rep who has no vehicle stops retyping the same sentence every
+morning. It is shown, not hidden — the chooser carries "Carried over from your last day. Change it
+if today is different." — and the first tap or keystroke wins over a lookup that lands late. Each
+day's document still stores its own status and note, so the record stays self-explaining and
+[firestore.rules](firestore.rules) is untouched.
+
+Why it matters beyond convenience: that note is the only thing standing in for the readings and the
+photos on a no-meter day. A required sentence asked ~250 times a year about a fact that has not
+changed becomes "aaaaa", and the evidence the rule exists to produce is worth nothing.
 
 Auto-closed days are labelled as such in the sales home, the duty summary and the admin Field Report
 ("never ended" / "Not ended"), so they never read as a real day that happened to cover no ground.

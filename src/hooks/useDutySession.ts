@@ -4,7 +4,7 @@ import {
 } from 'firebase/firestore'
 import { onSnapshot } from '../data/live'
 import { db } from '../firebase'
-import { DutySession } from '../types'
+import { DutySession, OdometerStatus } from '../types'
 import { localDateStr } from '../utils/date'
 import { AUTO_CLOSE_HOUR, cancelEndOfDayReminder } from '../device/notify'
 
@@ -57,18 +57,41 @@ export function useDutySession(uid?: string, date?: string) {
   }
 }
 
+/** What the officer's last working day left behind for this one to start from. */
+export interface LastDutyDay {
+  /**
+   * The floor for today's opening reading, so it cannot be lower than the last
+   * one evidenced (spec §6, `day_start_km`).
+   *
+   * Falls back to the opening reading when there is no closing one. A day that
+   * was auto-closed never recorded a finish, and without the fallback the floor
+   * silently disappears for the next punch-in — which would make forgetting to
+   * punch out the way to reset your own meter baseline. The opening reading is
+   * the last figure the officer actually evidenced, so it is the honest floor.
+   */
+  closingKm: number | null
+  /** How they travelled last time. */
+  odometerStatus: OdometerStatus | null
+  /** What they said about it, in their own words. */
+  odometerIssueNote: string | null
+}
+
 /**
- * The last closing odometer reading, used to stop today's start reading being
- * lower than yesterday's finish (spec §6, `day_start_km`).
- * Needs the composite index in firestore.indexes.json.
+ * The last working day, read once.
  *
- * Falls back to the opening reading when there is no closing one. A day that
- * was auto-closed never recorded a finish, and without the fallback the floor
- * silently disappears for the next punch-in — which would make forgetting to
- * punch out the way to reset your own meter baseline. The opening reading is
- * the last figure the officer actually evidenced, so it is the honest floor.
+ * One document answers both of the questions a punch-in has about the past, so
+ * it is fetched once rather than twice. Needs the composite index in
+ * firestore.indexes.json.
+ *
+ * The meter status and its note come back because somebody who does not have a
+ * vehicle should not have to say so again every morning for a year. A required
+ * sentence asked two hundred and fifty times about a fact that has not changed
+ * becomes "aaaaa" — and that sentence is the only thing standing in for the
+ * readings and the photos when whoever reads the day later asks why there are
+ * none. Making it easy to repeat honestly is what keeps it worth reading.
  */
-export async function lastClosingOdometer(uid: string, beforeDate: string): Promise<number | null> {
+export async function lastDutyDay(uid: string, beforeDate: string): Promise<LastDutyDay> {
+  const nothing: LastDutyDay = { closingKm: null, odometerStatus: null, odometerIssueNote: null }
   try {
     const snap = await getDocs(query(
       collection(db, 'duty_sessions'),
@@ -78,11 +101,16 @@ export async function lastClosingOdometer(uid: string, beforeDate: string): Prom
       limit(1),
     ))
     const prev = snap.docs[0]?.data() as DutySession | undefined
-    return prev?.endOdometerKm ?? prev?.startOdometerKm ?? null
+    if (!prev) return nothing
+    return {
+      closingKm: prev.endOdometerKm ?? prev.startOdometerKm ?? null,
+      odometerStatus: prev.odometerStatus ?? null,
+      odometerIssueNote: prev.odometerIssueNote || null,
+    }
   } catch (e) {
     // A missing index or a denied read must not block someone starting work.
-    console.error('[lastClosingOdometer] lookup failed', e)
-    return null
+    console.error('[lastDutyDay] lookup failed', e)
+    return nothing
   }
 }
 
@@ -90,7 +118,12 @@ export async function lastClosingOdometer(uid: string, beforeDate: string): Prom
 function isStale(session: DutySession, now = new Date()): boolean {
   const today = localDateStr(now)
   if (session.date < today) return true
-  return session.date === today && now.getHours() >= AUTO_CLOSE_HOUR
+  if (now.getHours() < AUTO_CLOSE_HOUR) return false
+  // A day punched in *after* the sweep hour has not been left open — it has
+  // just started. Closing it on the next app open would end somebody's day for
+  // them minutes after they began it, and file an alert saying they forgot to.
+  // Only a session that was already open when the hour passed counts.
+  return new Date(session.startAt).getHours() < AUTO_CLOSE_HOUR
 }
 
 /**

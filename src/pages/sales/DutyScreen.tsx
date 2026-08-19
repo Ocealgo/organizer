@@ -1,16 +1,17 @@
 import { useState, useEffect, useRef } from 'react'
-import { collection, doc, setDoc, updateDoc } from 'firebase/firestore'
+import { collection, doc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore'
 import { db } from '../../firebase'
 import {
-  AppUser, DutySession, GeoPoint,
+  AppUser, DutySession, GeoPoint, LocationIssue,
   OdometerStatus, ODOMETER_STATUS_LABEL,
 } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
+import { useConfirm } from '../../hooks/useConfirm'
 import { PageHeader, Eyebrow, GhostButton, PrimaryButton, inputStyle } from '../../components/ui'
-import { getFixOrNull } from '../../device/location'
+import { getFixOrReason } from '../../device/location'
 import { capture, upload, CapturedPhoto } from '../../device/photo'
 import { batteryPercent } from '../../device/battery'
-import { lastClosingOdometer } from '../../hooks/useDutySession'
+import { lastDutyDay } from '../../hooks/useDutySession'
 import { scheduleEndOfDayReminder, cancelEndOfDayReminder } from '../../device/notify'
 import { localDateStr } from '../../utils/date'
 
@@ -24,14 +25,39 @@ type Mode = 'punch_in' | 'punch_out' | 'done'
 
 const MIN_NOTE = 5
 
+const modeFor = (s: DutySession | null): Mode =>
+  !s ? 'punch_in' : s.status === 'active' ? 'punch_out' : 'done'
+
 export default function DutyScreen({ appUser, session, onBack }: Props) {
   const { t } = useTheme()
+  const { modal: confirmModal, showConfirm } = useConfirm()
 
-  const mode: Mode = !session ? 'punch_in' : session.status === 'active' ? 'punch_out' : 'done'
+  /**
+   * What this screen was opened to do, decided once and then left alone.
+   *
+   * `session` arrives from a live listener, so deriving the mode on every
+   * render — which is what this used to do — lets the screen change what its
+   * button does while somebody is filling the form in. It is not theoretical:
+   * the home screen offers "Start the day" before the listener has answered,
+   * so an officer who is already punched in taps it, gets the opening form,
+   * and a moment later the same form and the same button in the same place
+   * quietly become the closing ones. Ending a day cannot be undone and claims
+   * a distance. Nobody should do it by pressing a button they read as "start".
+   *
+   * So the mode is latched, and a session that disagrees with it is reported
+   * rather than applied. Nothing here writes on the strength of the latch —
+   * `submit` re-checks against the server before it creates anything.
+   */
+  const [mode] = useState<Mode>(() => modeFor(session))
   const isIn = mode === 'punch_in'
+
+  /** Our own write coming back through the listener is not the day moving on. */
+  const selfWrite = useRef(false)
+  const diverged = modeFor(session) !== mode && !selfWrite.current
 
   // Location is captured in the background and never blocks anything.
   const [fix, setFix] = useState<GeoPoint | null>(null)
+  const [locIssue, setLocIssue] = useState<LocationIssue | null>(null)
   const [locating, setLocating] = useState(true)
 
   // Odometer
@@ -45,6 +71,19 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
   const [meterUnreadable, setMeterUnreadable] = useState(false)
 
   const [prevClosing, setPrevClosing] = useState<number | null>(null)
+  /** Set when the meter answer below was brought forward from the last day. */
+  const [carriedOver, setCarriedOver] = useState<OdometerStatus | null>(null)
+  /**
+   * Whether the officer has said anything about the meter themselves yet.
+   *
+   * The lookup that carries the last day's answer forward is asynchronous, so
+   * it can land after somebody has already tapped. Answering the question and
+   * then having the answer overwritten a second later by a stale one is the
+   * same class of thing as the screen changing its own mind, so it does not
+   * happen: once they touch it, it is theirs.
+   */
+  const meterTouched = useRef(false)
+
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
@@ -54,14 +93,31 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
 
   useEffect(() => {
     if (!isIn) return
-    lastClosingOdometer(appUser.uid, localDateStr()).then(setPrevClosing)
+    let alive = true
+    void lastDutyDay(appUser.uid, localDateStr()).then(prev => {
+      if (!alive) return
+      setPrevClosing(prev.closingKm)
+
+      // Only a *missing* meter is carried forward. "I can read my meter" is
+      // already the default, so a rep with a working one sees no change at
+      // all — and the one person this is for stops retyping the same sentence
+      // every morning.
+      if (!prev.odometerStatus || prev.odometerStatus === 'recorded') return
+      if (meterTouched.current) return
+      setOdoStatus(prev.odometerStatus)
+      if (prev.odometerIssueNote) setNote(prev.odometerIssueNote)
+      setCarriedOver(prev.odometerStatus)
+    })
+    return () => { alive = false }
   }, [isIn, appUser.uid])
 
   useEffect(() => () => { if (objectUrl.current) URL.revokeObjectURL(objectUrl.current) }, [])
 
   async function locate() {
     setLocating(true)
-    setFix(await getFixOrNull({ capturedBy: appUser.uid }))
+    const attempt = await getFixOrReason({ capturedBy: appUser.uid })
+    setFix(attempt.fix)
+    setLocIssue(attempt.issue)
     setLocating(false)
   }
 
@@ -131,13 +187,57 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
 
   // ── submit ────────────────────────────────────────────────────────────────
   async function submit() {
-    if (!ready) return
+    if (!ready || diverged) return
+
+    // Ending the day is the one thing in the field app that cannot be undone —
+    // no more visits, no more expenses against it, and the distance is claimed
+    // as it stands. Starting one is asked for again if it goes wrong; this is
+    // not, so it is worth one deliberate tap.
+    if (!isIn) {
+      const ok = await showConfirm(
+        'End your day?',
+        distance !== null
+          ? `${distance} km will be claimed for today. Nothing more can be logged once the day is closed.`
+          : 'Nothing more can be logged once the day is closed, and no distance will be claimed.',
+        'End the day',
+      )
+      if (!ok) return
+    }
+
     setSaving(true)
     setSaveError(null)
     try {
       const battery = await batteryPercent()
 
       if (isIn) {
+        // Ask the server, not the listener, whether today already exists.
+        //
+        // The listener is the thing that may not have answered yet, so it
+        // cannot be the thing that decides this. Without the check a slow
+        // first load lets an officer open a second session on top of the one
+        // they are already working — invisibly, since the screen that reads
+        // these takes the first document it is given and there is no second
+        // one in sight.
+        let already: DutySession | null = null
+        try {
+          const snap = await getDocs(query(
+            collection(db, 'duty_sessions'),
+            where('uid', '==', appUser.uid),
+            where('date', '==', localDateStr()),
+          ))
+          const found = snap.docs[0]
+          already = found ? ({ id: found.id, ...found.data() } as DutySession) : null
+        } catch (e) {
+          // A check that cannot be made must not stop somebody starting work.
+          console.error('[DutyScreen] could not check for an existing day', e)
+        }
+        if (already) {
+          setSaveError(already.status === 'active'
+            ? 'Your day is already started. Go back — the app will offer you the closing reading instead.'
+            : 'Today is already recorded as finished. Your next day starts with a fresh punch-in tomorrow.')
+          return
+        }
+
         // Mint the id first so any photo is filed under the session it belongs to.
         const sessionRef = doc(collection(db, 'duty_sessions'))
         const photoPath = needsReading && photo
@@ -149,7 +249,7 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
           name: appUser.name,
           date: localDateStr(),
           startAt: Date.now(),
-          ...(fix ? { startLocation: fix } : {}),
+          ...(fix ? { startLocation: fix } : locIssue ? { startLocationIssue: locIssue } : {}),
           odometerStatus: odoStatus,
           ...(needsReading ? { startOdometerKm: km } : {}),
           ...(photoPath ? { startOdometerPhoto: photoPath } : {}),
@@ -158,6 +258,7 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
           status: 'active',
           createdAt: Date.now(),
         }
+        selfWrite.current = true
         await setDoc(sessionRef, payload)
         // Only once the day exists. Scheduling before the write would leave a
         // reminder for a day that failed to start.
@@ -167,9 +268,10 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
           ? await upload(photo, { uid: appUser.uid, sessionId: session.id, kind: 'odometer_end' })
           : undefined
 
+        selfWrite.current = true
         await updateDoc(doc(db, 'duty_sessions', session.id), {
           endAt: Date.now(),
-          ...(fix ? { endLocation: fix } : {}),
+          ...(fix ? { endLocation: fix } : locIssue ? { endLocationIssue: locIssue } : {}),
           ...(needsReading ? { endOdometerKm: km } : {}),
           ...(photoPath ? { endOdometerPhoto: photoPath } : {}),
           ...(meterUnreadable ? { endOdometerIssueNote: note.trim() } : {}),
@@ -181,6 +283,9 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
       }
       onBack()
     } catch (e: any) {
+      // Nothing landed, so the screen goes back to being the form it was —
+      // including its right to notice that the day has moved on underneath it.
+      selfWrite.current = false
       console.error('[DutyScreen] submit failed', e)
       setSaveError(
         e?.code === 'permission-denied'
@@ -190,6 +295,32 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
     } finally {
       setSaving(false)
     }
+  }
+
+  // ── the day moved while this screen was open ──────────────────────────────
+  // Said out loud rather than absorbed. Whatever was typed here is dropped,
+  // which is the point: it was typed about a different day to the one on
+  // record, and the app has no business guessing which of the two was meant.
+  if (diverged) {
+    const now = modeFor(session)
+    const [title, body] = now === 'punch_out'
+      ? ['Your day is already started',
+         'A punch-in for today came through while this screen was open — a moment ago, or from another device. Nothing you entered here was saved. Go back and the app will offer you the closing reading instead.']
+      : now === 'done'
+        ? ['Your day is already finished',
+           'Today was closed while this screen was open. Nothing you entered here was saved, and nothing more can be logged today.']
+        : ['This day is no longer on record',
+           'The session this screen was showing has gone. Nothing you entered here was saved. Go back and start again.']
+
+    return (
+      <div style={{ minHeight: '100vh', background: t.bg }}>
+        <PageHeader eyebrow="Duty" title={title} onBack={onBack} />
+        <div style={{ padding: '24px 20px', maxWidth: 560 }}>
+          <div style={{ fontSize: 14, color: t.text3, lineHeight: 1.6, marginBottom: 22 }}>{body}</div>
+          <GhostButton onClick={onBack}>Back to today</GhostButton>
+        </div>
+      </div>
+    )
   }
 
   // ── day already finished ──────────────────────────────────────────────────
@@ -253,10 +384,30 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
               </div>
             </div>
           ) : (
+            /* Told plainly, and before the fact rather than after it. A declined
+               permission reaches the report as a declined permission, not as bad
+               signal, so the officer hears that from the app first — along with
+               the one thing they can actually do about it. Nothing is blocked
+               either way. */
             <div>
               <div style={{ fontSize: 14, color: t.text3, marginBottom: 10, lineHeight: 1.6 }}>
-                No location available. That is fine — you can carry on, and the day
-                will simply be recorded without one.
+                {locIssue === 'denied' ? (
+                  <>
+                    Location is switched off for Ocealgo, so your day will be recorded
+                    without one — and it will say the permission was declined rather
+                    than that the signal was poor.
+                    <div style={{ marginTop: 8 }}>
+                      To turn it back on: your phone’s Settings → Apps → Ocealgo →
+                      Permissions → Location.
+                    </div>
+                  </>
+                ) : locIssue === 'timeout' ? (
+                  'No location came back in time. Step into the open and try again, or carry on — the day will simply be recorded without one.'
+                ) : locIssue === 'inaccurate' ? (
+                  'The position was too vague to keep. Try again in the open, or carry on without one.'
+                ) : (
+                  'No location available. That is fine — you can carry on, and the day will simply be recorded without one.'
+                )}
               </div>
               <GhostButton onClick={locate}>Try again</GhostButton>
             </div>
@@ -269,7 +420,8 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
             <div style={{ marginBottom: 10 }}><Eyebrow>Your vehicle meter</Eyebrow></div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {(Object.keys(ODOMETER_STATUS_LABEL) as OdometerStatus[]).map(s => (
-                <button key={s} className="oc-action" onClick={() => setOdoStatus(s)}
+                <button key={s} className="oc-action"
+                  onClick={() => { meterTouched.current = true; setOdoStatus(s) }}
                   style={{
                     background: 'none',
                     border: `0.5px solid ${odoStatus === s ? t.text2 : t.border}`,
@@ -281,6 +433,14 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
                 </button>
               ))}
             </div>
+            {/* Said out loud. The app has answered a question on their behalf,
+                and the one thing that makes that acceptable is that they can
+                see it has, and that changing it is one tap. */}
+            {carriedOver === odoStatus && (
+              <div style={{ fontSize: 13, color: t.text3, marginTop: 8, lineHeight: 1.6 }}>
+                Carried over from your last day. Change it if today is different.
+              </div>
+            )}
           </div>
         )}
 
@@ -346,7 +506,8 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
             <div style={{ marginBottom: 10 }}>
               <Eyebrow>{isIn ? 'Tell us why' : 'What happened to the meter?'}</Eyebrow>
             </div>
-            <textarea rows={2} value={note} onChange={e => setNote(e.target.value)}
+            <textarea rows={2} value={note}
+              onChange={e => { meterTouched.current = true; setNote(e.target.value) }}
               placeholder={odoStatus === 'no_vehicle' && isIn
                 ? 'How are you travelling today?'
                 : 'A short note about the meter'}
@@ -375,6 +536,7 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
           {saveError && <div style={{ fontSize: 13, color: t.warn, marginTop: 10 }}>{saveError}</div>}
         </div>
       </div>
+      {confirmModal}
     </div>
   )
 }

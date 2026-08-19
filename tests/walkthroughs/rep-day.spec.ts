@@ -192,6 +192,9 @@ test('06 ending your day', async ({ page, signIn, say, beat, stubCamera }) => {
   await beat(1200)
 
   await page.getByRole('button', { name: 'End the day' }).click()
+  await beat(900)
+  await say('It asks once, because closing the day cannot be undone.', 2800)
+  await page.getByRole('button', { name: 'End the day' }).last().click()
   await beat(1600)
   await say('Done — 63 km recorded. If you forget this, the day claims no distance at all, so make it a habit.', 4200)
 })

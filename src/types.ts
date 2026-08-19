@@ -88,6 +88,29 @@ export interface GeoPoint {
   isMock?: boolean
 }
 
+/**
+ * Why a position was not recorded.
+ *
+ * A missing location is not one fact, it is four, and they ask for different
+ * responses. `denied` is a decision a person made and can unmake. The other
+ * three are the world being unhelpful — a basement, a dead chip, a market with
+ * no sky. Stored apart because otherwise every one of them arrives at a report
+ * as the same blank, and a rep who switched location off looks exactly like a
+ * rep who spent the day indoors.
+ *
+ * Recorded, never enforced. Nothing in the app refuses to work over any of
+ * these; they only make the gap legible.
+ */
+export type LocationIssue = 'denied' | 'unavailable' | 'timeout' | 'inaccurate'
+
+/** Short enough to sit at the end of a line in a report. */
+export const LOCATION_ISSUE_LABEL: Record<LocationIssue, string> = {
+  denied: 'permission off',
+  unavailable: 'no position',
+  timeout: 'timed out',
+  inaccurate: 'too vague',
+}
+
 export interface Party {
   id?: string; name: string; type: PartyType; category: PartyCategory
   phone: string; address: string; place: string
@@ -692,6 +715,8 @@ export interface DutySession {
   // omitted when it cannot — it is evidence, never a gate.
   startAt: number
   startLocation?: GeoPoint
+  /** Why there is no `startLocation`. Only ever set when there is none. */
+  startLocationIssue?: LocationIssue
   startOdometerKm?: number
   startOdometerPhoto?: string     // Storage path
   startBatteryPct?: number
@@ -704,6 +729,8 @@ export interface DutySession {
   // Punch-out
   endAt?: number
   endLocation?: GeoPoint
+  /** Why there is no `endLocation`. Only ever set when there is none. */
+  endLocationIssue?: LocationIssue
   endOdometerKm?: number
   endOdometerPhoto?: string
   endBatteryPct?: number
@@ -887,6 +914,8 @@ export interface OutletVisit {
   // Punch-in. Location is captured for the record; it never blocks a visit.
   punchInAt: number
   punchInLocation?: GeoPoint
+  /** Why there is no `punchInLocation`. Only ever set when there is none. */
+  punchInLocationIssue?: LocationIssue
   /** Metres from the outlet's registered coordinates, when both are known. */
   distanceFromOutletM?: number
   /** Informational only — reported, not enforced. */
@@ -917,6 +946,8 @@ export interface OutletVisit {
   // Punch-out
   punchOutAt?: number
   punchOutLocation?: GeoPoint
+  /** Why there is no `punchOutLocation`. Only ever set when there is none. */
+  punchOutLocationIssue?: LocationIssue
   durationMinutes?: number
 
   /** Set when the visit was swept up with an abandoned duty session. */

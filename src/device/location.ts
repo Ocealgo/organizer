@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core'
 import { Geolocation } from '@capacitor/geolocation'
-import { GeoPoint } from '../types'
+import { GeoPoint, LocationIssue } from '../types'
 
 /**
  * Position fixes for punch-in, punch-out and geofencing.
@@ -30,7 +30,7 @@ export const DEFAULT_GEOFENCE_RADIUS_M = 130
 export class LocationError extends Error {
   constructor(
     message: string,
-    readonly kind: 'denied' | 'unavailable' | 'timeout' | 'inaccurate',
+    readonly kind: LocationIssue,
     readonly accuracy?: number,
   ) {
     super(message)
@@ -97,21 +97,38 @@ export async function getFix(opts?: {
   }
 }
 
+/** A fix, or the reason there isn't one. Exactly one of the two is set. */
+export interface LocationAttempt {
+  fix: GeoPoint | null
+  issue: LocationIssue | null
+}
+
 /**
- * Best-effort fix. Never throws and never blocks — returns null when the device
- * cannot supply a position. This is the one to use for punching in and out,
- * where a missing location should be recorded as missing rather than stopping
- * someone from working.
+ * Best-effort fix that says why it failed. Never throws and never blocks.
+ *
+ * This is the one to use for punching in and out, where a missing location is
+ * recorded as missing rather than stopping someone from working.
+ *
+ * It replaced a version that returned the fix or `null`, which meant a declined
+ * permission, a dead GPS chip, a timeout and a hopelessly vague reading all
+ * reached the record as the same blank — `LocationError.kind` was worked out
+ * carefully and then thrown away at every call site. A rep who had switched
+ * location off was therefore indistinguishable, on every screen and in every
+ * report, from a rep who spent the morning inside a concrete market. The first
+ * is a conversation with a person and the second is a conversation with a
+ * phone, so the two are kept apart.
  */
-export async function getFixOrNull(opts?: {
+export async function getFixOrReason(opts?: {
   timeoutMs?: number
   capturedBy?: string
-}): Promise<GeoPoint | null> {
+}): Promise<LocationAttempt> {
   try {
-    return await getFix(opts)
+    return { fix: await getFix(opts), issue: null }
   } catch (e) {
     console.warn('[location] no fix available', e)
-    return null
+    // Anything that is not a LocationError got past getFix's own translation,
+    // so the device is the honest thing to blame rather than the person.
+    return { fix: null, issue: e instanceof LocationError ? e.kind : 'unavailable' }
   }
 }
 
