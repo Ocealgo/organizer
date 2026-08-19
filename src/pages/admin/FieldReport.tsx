@@ -304,7 +304,7 @@ export default function FieldReport({ onBack }: Props) {
                                   // that a manager scanning forty visits sees the one
                                   // logged from the next town without reading any of them.
                                   <span style={{ color: v.withinGeofence === false ? t.warn : undefined }}>
-                                    {` · ${v.distanceFromOutletM} m from the shop`}
+                                    {` · ${v.distanceFromOutletM} m from the shop's registered position`}
                                   </span>
                                 )}
                                 {v.orderPlaced && ' · order booked'}
@@ -317,7 +317,7 @@ export default function FieldReport({ onBack }: Props) {
                                   position was how far it was from the shop — which says
                                   nothing about where they were instead. */}
                               <div style={{ fontSize: 12, color: t.text3, marginTop: 4 }}>
-                                Where they stood:{' '}
+                                Where the rep stood:{' '}
                                 {v.punchInLocation
                                   ? <MapLink loc={v.punchInLocation}>arriving</MapLink>
                                   : <>arriving <NoFix issue={v.punchInLocationIssue} /></>}

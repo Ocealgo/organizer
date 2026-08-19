@@ -72,6 +72,8 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
   // visit form
   const [stock, setStock] = useState<Record<string, string>>({})
   const [competitors, setCompetitors] = useState<CompetitorObservation[]>([])
+  const [pinning, setPinning] = useState(false)
+  const [pinNote, setPinNote] = useState<string | null>(null)
   const [orderOpen, setOrderOpen] = useState(false)
   const [placingOrder, setPlacingOrder] = useState(false)
   const [removingOrder, setRemovingOrder] = useState<string | null>(null)
@@ -204,14 +206,18 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
       }
       await addDoc(collection(db, 'outlet_visits'), payload)
       setPending(null)
-      // An outlet with no registered position gets one from the first visit —
-      // but only from a fix sharp enough to define one. A vague fix is still
-      // kept against the visit, where "somewhere in this circle" is useful;
-      // what it must not become is the point every later visit at this shop is
-      // measured against for the rest of the shop's life.
-      if (fix && !party.coordinates && accurateEnoughForPin(fix)) {
-        await setPartyPin(party, fix, 'first_visit', appUser)
-      }
+      // Punching in no longer registers where the shop is.
+      //
+      // These are two different facts that happened to be recorded by the same
+      // reading. Where the rep was standing is evidence about the visit; where
+      // the shop is, is a permanent property of the shop and the geofence every
+      // later visit gets measured against. Taking the second silently from the
+      // first meant a rep who punched in from the pavement opposite, or from a
+      // bike still at the junction, defined the shop from there for good.
+      //
+      // The rep at the door is still the best source for it — so it is offered
+      // inside the visit as something they do, rather than something that
+      // happens to them. See the "Where the shop is" block below.
     } catch (e: any) {
       console.error('[OutletVisit] punch-in failed', e)
       setError(e?.message || 'Could not start the visit.')
@@ -252,6 +258,41 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
   const orderTotal = orderProduct && !isNaN(orderPackets) && orderPackets > 0 && !orderSource
     ? orderPackets * (parseFloat(orderPrice) || orderProduct.defaultPricePerUnit)
     : 0
+
+  // ── where the shop is, as opposed to where the rep is ─────────────────────
+  /**
+   * Registering the shop's own position, from the one place anybody can see
+   * whether it is right: standing at its door.
+   *
+   * Deliberately an action rather than a side effect of punching in. Punch-in
+   * records where the rep was, which is evidence about this visit; this records
+   * where the shop is, which is permanent and is the line every later visit is
+   * measured against. A fix good enough to prove somebody was in the area is
+   * not necessarily good enough to define a shop, so this one is held to the
+   * tighter standard and says so when it cannot meet it.
+   */
+  async function setShopPinFromHere() {
+    if (!visitedParty) return
+    setPinning(true); setPinNote(null)
+    try {
+      const { fix: here, issue } = await getFixOrReason({ capturedBy: appUser.uid })
+      if (!here) {
+        setPinNote(issue === 'denied'
+          ? 'Location is switched off for Ocealgo, so it cannot be read from here.'
+          : 'No location available right now. Try again in the open.')
+        return
+      }
+      if (!accurateEnoughForPin(here)) {
+        setPinNote(`Only accurate to about ${Math.round(here.accuracy)} m — too vague to pin a shop by. Try again in the open, or set it from the Network screen.`)
+        return
+      }
+      await setPartyPin(visitedParty, here, 'standing_here', appUser)
+      setPinNote('Registered from where you are standing.')
+    } catch (e: any) {
+      console.error('[OutletVisit] could not set the shop position', e)
+      setPinNote(e?.message || 'Could not save the position.')
+    } finally { setPinning(false) }
+  }
 
   // ── money ─────────────────────────────────────────────────────────────────
   /**
@@ -623,12 +664,13 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
         {/* Confirmation — states the distance for the record, blocks nothing */}
         {pending && (() => {
           const geo = fix ? checkGeofence(fix, pending.coordinates ?? null) : null
+          // Says where *you* are. Punching in records that and nothing else —
+          // registering where the shop is, is its own act, offered inside the
+          // visit once you are actually at the door.
           const note = !fix
             ? 'No location right now, so this visit will be recorded without one.'
             : geo!.distanceM === null
-              ? accurateEnoughForPin(fix)
-                ? 'This outlet has no position on file yet. Punching in will set it from where you are standing.'
-                : `This outlet has no position on file yet, and your location is only accurate to about ${Math.round(fix.accuracy)} m — too vague to register the shop by. The visit is recorded either way.`
+              ? 'This outlet has no position on file yet, so there is nothing to measure you against. You can register one from inside the visit.'
               : `You are about ${geo!.distanceM} m from where this outlet is registered.`
           return (
             <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex',
@@ -694,6 +736,31 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
                 </div>
               ))}
             </div>
+          )}
+        </div>
+
+        {/* ── Where the shop is ───────────────────────────────────────────────
+            Kept apart from where the rep is, in words as well as in data. The
+            visit already carries the second — this is the first, and the only
+            person who can tell whether it is right is the one at the door. */}
+        <div>
+          <div style={{ marginBottom: 10 }}><Eyebrow>Where the shop is</Eyebrow></div>
+          <div style={{ fontSize: 13, color: t.text3, lineHeight: 1.6 }}>
+            {!visitedParty?.coordinates
+              ? 'No position on file for this outlet, so visits here record no distance. If you are at the door, put it on the map.'
+              : visit.distanceFromOutletM !== undefined
+                ? `Registered about ${visit.distanceFromOutletM} m from where you punched in.`
+                : 'Registered, but your location was not read at punch-in, so there is nothing to compare it against.'}
+          </div>
+          <div className="oc-wrap" style={{ gap: 10, marginTop: 10 }}>
+            <GhostButton onClick={setShopPinFromHere} disabled={pinning}>
+              {pinning ? 'Reading your location…'
+                : visitedParty?.coordinates ? 'Not right? Set it from here'
+                : 'Set the shop’s position from here'}
+            </GhostButton>
+          </div>
+          {pinNote && (
+            <div style={{ fontSize: 13, color: t.text3, marginTop: 8, lineHeight: 1.6 }}>{pinNote}</div>
           )}
         </div>
 
