@@ -3,7 +3,7 @@ import { collection, addDoc, query, where, updateDoc, doc } from 'firebase/fires
 import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
-  AppUser, DutySession, OutletVisit, Party, Product, GeoPoint, LocationIssue,
+  AppUser, DutySession, OutletVisit, Party, Product, GeoPoint, LocationIssue, PaymentType,
   OutletType, OUTLET_TYPE_LABEL,
   VisitOutcomeCategory, VISIT_OUTCOME_LABEL, VISIT_OUTCOME_REASONS,
   NO_ORDER_CATEGORIES, SUGGESTED_REMARKS_LENGTH, validateVisitForPunchOut,
@@ -11,8 +11,9 @@ import {
 } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
+import DateInput from '../../components/DateInput'
 import QuickAddParty from '../../components/QuickAddParty'
-import { PageHeader, Eyebrow, GhostButton, PrimaryButton, EmptyState, inputStyle } from '../../components/ui'
+import { PageHeader, Eyebrow, ChipGroup, GhostButton, PrimaryButton, EmptyState, inputStyle } from '../../components/ui'
 import { getFixOrReason, checkGeofence, distanceM, DEFAULT_GEOFENCE_RADIUS_M } from '../../device/location'
 import { setPartyPin, accurateEnoughForPin } from '../../data/partyPin'
 import { localDateStr } from '../../utils/date'
@@ -62,6 +63,21 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
   const [orderPlaced, setOrderPlaced] = useState(false)
   const [orderProductId, setOrderProductId] = useState('')
   const [orderQty, setOrderQty] = useState('')
+  /**
+   * Who is supplying this order — '' meaning Ocealgo itself.
+   *
+   * It used to be worked out silently from the retailer's linked distributor
+   * and never shown, so a shop with no distributor on file booked against the
+   * company whether or not that was true, a shop served by a second
+   * distributor booked against the wrong one, and the rep standing in the
+   * shop had no way to say otherwise. It defaults to the link, because that is
+   * usually right, and it is a question rather than an assumption.
+   */
+  const [orderSourceId, setOrderSourceId] = useState('')
+  const [orderUnit, setOrderUnit] = useState<'packets' | 'cartons'>('packets')
+  const [orderPrice, setOrderPrice] = useState('')
+  const [orderPayment, setOrderPayment] = useState<PaymentType>('credit')
+  const [orderDate, setOrderDate] = useState(localDateStr())
   const [extra, setExtra] = useState<Record<string, any>>({})
   const [category, setCategory] = useState<VisitOutcomeCategory | ''>('')
   const [reason, setReason] = useState('')
@@ -171,6 +187,32 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
   }
   const remarksProblem = validateVisitForPunchOut(draft)
 
+  // ── the order, if there is one ────────────────────────────────────────────
+  const visitedParty = visit ? parties.find(p => p.id === visit.partyId) ?? null : null
+  /** Everyone who could supply this shop — never the shop itself. */
+  const suppliers = parties.filter(p => p.type === 'distributor' && p.id !== visit?.partyId)
+  const orderSource = orderSourceId ? suppliers.find(p => p.id === orderSourceId) ?? null : null
+  const orderProduct = products.find(p => p.id === orderProductId) ?? null
+
+  const rawQty = parseInt(orderQty)
+  const orderPackets = !isNaN(rawQty) && orderProduct
+    ? (orderUnit === 'cartons' ? rawQty * (orderProduct.unitsPerCarton || 1) : rawQty)
+    : NaN
+
+  /**
+   * An order half filled in must not be silently dropped on punch-out.
+   *
+   * The switch used to be the only thing consulted — the write was guarded on
+   * `orderPlaced && orderProductId && qty > 0`, so a rep who flipped it on and
+   * then missed the quantity punched out with `orderPlaced: true` recorded
+   * against the visit and no order booked anywhere. It now blocks the
+   * punch-out and says which part is missing.
+   */
+  const orderProblem = !orderPlaced ? null
+    : !orderProductId ? 'Choose which product they ordered.'
+    : isNaN(orderPackets) || orderPackets <= 0 ? 'Enter how much they ordered.'
+    : null
+
   const missingCategoryField = visit
     ? requiredFor(visit.outletType).find(k =>
         extra[k] === undefined || extra[k] === '' || extra[k] === null)
@@ -183,9 +225,8 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
     contactPersonName: 'Enter the contact person',
   }
 
-  const punchOutBlocker = missingCategoryField
-    ? FIELD_LABEL[missingCategoryField]
-    : remarksProblem
+  const punchOutBlocker = orderProblem
+    ?? (missingCategoryField ? FIELD_LABEL[missingCategoryField] : remarksProblem)
 
   async function punchOut() {
     if (!visit?.id || punchOutBlocker) return
@@ -203,7 +244,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
 
       // Book the order first — if this fails the visit stays open and retryable.
       let allocationId: string | undefined
-      if (orderPlaced && orderProductId && parseInt(orderQty) > 0) {
+      if (orderPlaced) {
         allocationId = await bookOrder(visit)
       }
 
@@ -231,23 +272,33 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
   async function bookOrder(v: OutletVisit): Promise<string> {
     const party = parties.find(p => p.id === v.partyId)!
     const product = products.find(p => p.id === orderProductId)!
-    const qty = parseInt(orderQty)
-    const underDist = (party as any).underDistributorId as string | undefined
-    const price = underDist ? 0 : product.defaultPricePerUnit
-    const planned = localDateStr()
+    const qty = orderPackets
+    const source = orderSource
+
+    /**
+     * Stock moving from a distributor to their own retailer is not the
+     * company's sale, so the company does not price it, does not put it on
+     * anybody's credit and does not schedule it — the same shape the revisit
+     * order flow has always written. Ocealgo's own supply is priced, dated and
+     * booked to cash or credit, and locks company stock at creation.
+     */
+    const planned = source ? localDateStr() : orderDate
+    const price = source ? 0 : (parseFloat(orderPrice) || product.defaultPricePerUnit)
+
     const ref = await addDoc(collection(db, 'allocations_v2'), {
-      fromType: underDist ? 'distributor' : 'company',
-      fromId: underDist ?? 'company',
-      fromName: underDist ? ((party as any).underDistributorName ?? '') : 'Ocealgo',
+      fromType: source ? 'distributor' : 'company',
+      fromId: source?.id ?? 'company',
+      fromName: source?.name ?? 'Ocealgo',
       partyId: party.id!, partyName: party.name, partyType: party.type,
       productId: product.id!, productName: product.name,
       packets: qty, cartons: Math.floor(qty / (product.unitsPerCarton || 1)),
       pricePerPacket: price, totalAmount: qty * price,
-      paymentType: 'credit', plannedDate: planned,
-      status: 'pending', notes: `Booked during outlet visit`,
+      paymentType: source ? 'cash' : orderPayment,
+      plannedDate: planned,
+      status: 'pending', notes: 'Booked during outlet visit',
       createdBy: appUser.uid, createdByName: appUser.name,
       createdAt: Date.now(), month: planned.slice(0, 7),
-      lockedAtCreation: !underDist,
+      lockedAtCreation: !source,
     })
     await updateDoc(doc(db, 'parties', party.id!), { status: 'active' })
     return ref.id
@@ -256,6 +307,8 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
   function resetForm() {
     setStock({}); setCompetitors([]); setOrderPlaced(false)
     setOrderProductId(''); setOrderQty(''); setExtra({})
+    setOrderSourceId(''); setOrderUnit('packets'); setOrderPrice('')
+    setOrderPayment('credit'); setOrderDate(localDateStr())
     setCategory(''); setReason(''); setRemarks('')
   }
 
@@ -489,13 +542,81 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
         {/* Order */}
         <div>
           <div style={{ marginBottom: 10 }}><Eyebrow>Did they order?</Eyebrow></div>
-          <ToggleRow label="Book an order" value={orderPlaced} onChange={setOrderPlaced} />
+          <ToggleRow label="Book an order" value={orderPlaced} onChange={on => {
+            setOrderPlaced(on)
+            // Start on the shop's own distributor when it has one. Usually
+            // right, always visible, and always changeable.
+            if (on && !orderSourceId) setOrderSourceId(visitedParty?.underDistributorId ?? '')
+          }} />
           {orderPlaced && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+
+              {/* Who is supplying it. The question that was never asked. */}
+              <CustomSelect value={orderSourceId} onChange={setOrderSourceId}
+                placeholder="Supplied by"
+                options={[
+                  { value: '', label: 'Ocealgo — direct from the company' },
+                  ...suppliers.map(d => ({
+                    value: d.id!,
+                    label: d.id === visitedParty?.underDistributorId
+                      ? `${d.name} — their distributor`
+                      : d.name,
+                  })),
+                ]} />
+
               <CustomSelect value={orderProductId} onChange={setOrderProductId} placeholder="Which product"
                 options={products.map(p => ({ value: p.id!, label: p.name }))} />
-              <input type="number" inputMode="numeric" value={orderQty} placeholder="Quantity"
-                onChange={e => setOrderQty(e.target.value)} style={inputStyle(t)} />
+
+              <div className="oc-wrap" style={{ gap: 10 }}>
+                <input type="number" inputMode="numeric" value={orderQty} placeholder="Quantity"
+                  onChange={e => setOrderQty(e.target.value)}
+                  style={{ ...inputStyle(t), flex: '1 1 120px', width: 'auto' }} />
+                <ChipGroup value={orderUnit} onChange={setOrderUnit}
+                  options={[
+                    { id: 'packets' as const, label: orderProduct?.unitLabel ?? 'Packets' },
+                    { id: 'cartons' as const, label: 'Cartons' },
+                  ]} />
+              </div>
+              {orderUnit === 'cartons' && orderProduct && !isNaN(orderPackets) && (
+                <div style={{ fontSize: 12, color: t.text3 }}>
+                  That is {orderPackets} {orderProduct.unitLabel}.
+                </div>
+              )}
+
+              {/* Price, payment and date are the company's terms. A movement
+                  from a distributor to their own retailer is not the company's
+                  sale, so none of the three is asked — the same shape the
+                  revisit order flow has always written. */}
+              {orderSource ? (
+                <div style={{ fontSize: 12, color: t.text3, lineHeight: 1.6 }}>
+                  {orderSource.name} supplies this one, so Ocealgo does not price it or
+                  put it on anyone’s credit. It is raised against them to fulfil.
+                </div>
+              ) : (
+                <>
+                  <input type="number" inputMode="decimal" value={orderPrice}
+                    onChange={e => setOrderPrice(e.target.value)}
+                    placeholder={orderProduct
+                      ? `Price per ${orderProduct.unitLabel.replace(/s$/, '')} — ₹${orderProduct.defaultPricePerUnit} if left blank`
+                      : 'Price per unit'}
+                    style={inputStyle(t)} />
+                  <ChipGroup value={orderPayment} onChange={setOrderPayment}
+                    options={[
+                      { id: 'cash' as const, label: 'Cash' },
+                      { id: 'credit' as const, label: 'Credit' },
+                    ]} />
+                  <DateInput type="date" value={orderDate} onChange={setOrderDate}
+                    min={localDateStr()} />
+                  {orderProduct && !isNaN(orderPackets) && orderPackets > 0 && (
+                    <div style={{ fontSize: 12, color: t.text3 }}>
+                      {orderPackets} × ₹{parseFloat(orderPrice) || orderProduct.defaultPricePerUnit}
+                      {' = ₹'}
+                      {(orderPackets * (parseFloat(orderPrice) || orderProduct.defaultPricePerUnit)).toLocaleString('en-IN')}
+                      {' on '}{orderPayment}.
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
         </div>
