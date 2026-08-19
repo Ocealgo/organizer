@@ -75,6 +75,8 @@ export default function PartyManager({ onBack }: Props) {
   const [showMap, setShowMap] = useState(false)
   const [locating, setLocating] = useState(false)
   const [pinNote, setPinNote] = useState<string | null>(null)
+  /** Set when Save was pressed and something above it was not filled in. */
+  const [blocked, setBlocked] = useState(false)
   const [focusParent, setFocusParent] = useState(false)
   const [showEmail, setShowEmail] = useState(false)
   const [showAllocation, setShowAllocation] = useState(false)
@@ -187,7 +189,7 @@ export default function PartyManager({ onBack }: Props) {
   }
 
   const resetForm = () => {
-    setForm(emptyForm); setEditingId(null); setErrors({})
+    setForm(emptyForm); setEditingId(null); setErrors({}); setBlocked(false)
     setPinDraft(null); setShowMap(false); setPinNote(null)
     setFocusParent(false); setShowEmail(false); setShowAllocation(false)
   }
@@ -226,7 +228,12 @@ export default function PartyManager({ onBack }: Props) {
   }
 
   const handleSave = async () => {
-    if (!validate()) return
+    // Named at the button. Every error is drawn beside its own field, and with
+    // the map open those fields are several screens up — so a Save that failed
+    // validation produced no visible response at all, which reads as a button
+    // that does not work rather than a form that is not finished.
+    if (!validate()) { setBlocked(true); return }
+    setBlocked(false)
     setSaving(true)
     try {
       const packets = toPackets(form.quantity)
@@ -777,12 +784,21 @@ export default function PartyManager({ onBack }: Props) {
               )}
 
               {showMap && (
-                <LazyMap
-                  value={pinDraft ? { ...pinDraft, accuracy: 0, capturedAt: 0 } : null}
-                  onChange={(lat, lng) => { setPinDraft({ lat, lng }); setPinNote(null) }}
-                  search
-                  height={300}
-                />
+                <div>
+                  <LazyMap
+                    value={pinDraft ? { ...pinDraft, accuracy: 0, capturedAt: 0 } : null}
+                    onChange={(lat, lng) => { setPinDraft({ lat, lng }); setPinNote(null) }}
+                    search
+                    height={280}
+                  />
+                  {/* Its own way out. A map fills a phone screen and eats the
+                      swipe that would carry you down to Save. */}
+                  <div style={{ marginTop: 12 }}>
+                    <GhostButton onClick={() => setShowMap(false)}>
+                      {pinChanged ? 'Use this position' : 'Done with the map'}
+                    </GhostButton>
+                  </div>
+                </div>
               )}
 
               {/* Every position this shop has had. A movable pin is a movable
@@ -871,6 +887,12 @@ export default function PartyManager({ onBack }: Props) {
                   )}
                 </div>
               )
+            )}
+
+            {blocked && Object.keys(errors).length > 0 && (
+              <div style={{ fontSize: 13, color: t.warn, lineHeight: 1.6 }}>
+                {Object.values(errors).join(' ')}
+              </div>
             )}
 
             <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>

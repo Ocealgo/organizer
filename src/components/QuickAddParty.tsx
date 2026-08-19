@@ -69,8 +69,18 @@ export default function QuickAddParty({ parties, coordinates, onCancel, onCreate
   const [pin, setPin] = useState<{ lat: number; lng: number } | null>(
     coordinates ? { lat: coordinates.lat, lng: coordinates.lng } : null)
   const [adjusting, setAdjusting] = useState(false)
-  const moved = !!(coordinates && pin &&
-    (pin.lat !== coordinates.lat || pin.lng !== coordinates.lng))
+  /**
+   * Whether the pin was put there by hand rather than measured.
+   *
+   * Tracked outright instead of inferred by comparing the pin against the
+   * fix — that comparison said "not moved" whenever there was no fix to
+   * compare against, so a pin placed on the map by somebody whose GPS had
+   * failed was quietly thrown away at save. Which is the one case where
+   * placing it by hand was the only option they had.
+   */
+  const [placedByHand, setPlacedByHand] = useState(false)
+  /** Set when Save was pressed and something above it was not filled in. */
+  const [blocked, setBlocked] = useState(false)
 
   const distributors = parties.filter(p => p.type === 'distributor')
 
@@ -99,7 +109,13 @@ export default function QuickAddParty({ parties, coordinates, onCancel, onCreate
   }
 
   const save = async () => {
-    if (!appUser || !validate()) return
+    if (!appUser) return
+    // Say so at the button. The errors themselves sit beside their own fields,
+    // which on a phone with the map open are several screens above this — so
+    // pressing Save and having nothing whatsoever happen was the whole of the
+    // feedback, and it reads exactly like a broken button.
+    if (!validate()) { setBlocked(true); return }
+    setBlocked(false)
     setSaving(true); setFailed(null)
     try {
       const parent = distributors.find(d => d.id === underDistributorId)
@@ -116,8 +132,7 @@ export default function QuickAddParty({ parties, coordinates, onCancel, onCreate
        * waits for a better one rather than being anchored to a guess.
        */
       const pinPoint: GeoPoint | null =
-        !pin ? null
-        : moved
+        placedByHand && pin
           ? { lat: pin.lat, lng: pin.lng, accuracy: 0, capturedAt: Date.now(), capturedBy: appUser.uid }
           : coordinates && accurateEnoughForPin(coordinates) ? coordinates
           : null
@@ -127,7 +142,7 @@ export default function QuickAddParty({ parties, coordinates, onCancel, onCreate
         by: appUser.uid,
         byName: appUser.name,
         to: pinPoint,
-        how: moved ? 'map' : 'created',
+        how: placedByHand ? 'map' : 'created',
       } : null
 
       const data = {
@@ -252,26 +267,26 @@ export default function QuickAddParty({ parties, coordinates, onCancel, onCreate
           be permanent: a fix that landed across the road. */}
       <div>
         <div style={{ fontSize: 13, fontWeight: 400, color: t.text3, lineHeight: 1.6 }}>
-          {!coordinates
-            ? 'No location available. The outlet is saved without a position — the first visit that gets a good fix will register one.'
-            : !accurateEnoughForPin(coordinates)
-              ? `Your location is only accurate to about ${Math.round(coordinates.accuracy)} m, which is too vague to register the shop by. Place it on the map, or leave it and a later visit will set it.`
-              : moved
-                ? 'This outlet will be registered where you have put the pin.'
+          {placedByHand
+            ? 'This outlet will be registered where you have put the pin.'
+            : !coordinates
+              ? 'No location available. Place it on the map, or save it without one — the first visit that gets a good fix will register the position.'
+              : !accurateEnoughForPin(coordinates)
+                ? `Your location is only accurate to about ${Math.round(coordinates.accuracy)} m, which is too vague to register the shop by. Place it on the map, or leave it and a later visit will set it.`
                 : 'This outlet will be registered at where you are standing now.'}
         </div>
 
-        <div style={{ marginTop: 10 }}>
+        <div className="oc-wrap" style={{ marginTop: 10, gap: 10 }}>
           <GhostButton onClick={() => setAdjusting(!adjusting)}>
-            {adjusting ? 'Hide the map' : pin ? 'Not quite right? Move it' : 'Place it on the map'}
+            {adjusting ? 'Done with the map' : pin ? 'Not quite right? Move it' : 'Place it on the map'}
           </GhostButton>
-          {moved && (
-            <span style={{ marginLeft: 10 }}>
-              <GhostButton onClick={() => setPin(coordinates
-                ? { lat: coordinates.lat, lng: coordinates.lng } : null)}>
-                Back to where I am
-              </GhostButton>
-            </span>
+          {placedByHand && (
+            <GhostButton onClick={() => {
+              setPlacedByHand(false)
+              setPin(coordinates ? { lat: coordinates.lat, lng: coordinates.lng } : null)
+            }}>
+              {coordinates ? 'Back to where I am' : 'Clear the pin'}
+            </GhostButton>
           )}
         </div>
 
@@ -280,14 +295,28 @@ export default function QuickAddParty({ parties, coordinates, onCancel, onCreate
             <LazyMap
               value={pin ? { lat: pin.lat, lng: pin.lng, accuracy: 0, capturedAt: 0 } : null}
               near={coordinates}
-              onChange={(lat, lng) => setPin({ lat, lng })}
+              onChange={(lat, lng) => { setPin({ lat, lng }); setPlacedByHand(true) }}
               search
-              height={260}
+              height={240}
             />
+            {/* A way out that is not a scroll. The map fills most of a phone
+                screen and swallows the swipe that would otherwise carry you
+                down to Save, so the map offers its own exit rather than
+                leaving you to fight it for the gesture. */}
+            <div style={{ marginTop: 12 }}>
+              <GhostButton onClick={() => setAdjusting(false)}>
+                {placedByHand ? 'Use this position' : 'Done with the map'}
+              </GhostButton>
+            </div>
           </div>
         )}
       </div>
 
+      {blocked && Object.keys(errors).length > 0 && (
+        <div style={{ fontSize: 13, color: t.warn, lineHeight: 1.6 }}>
+          {Object.values(errors).join(' ')}
+        </div>
+      )}
       {failed && <div style={{ fontSize: 13, color: t.warn }}>{failed}</div>}
 
       <div className="oc-wrap" style={{ gap: 10, marginTop: 4 }}>
