@@ -351,7 +351,7 @@ An auto-closed day records:
 - `status: 'closed'`, `autoClosed: true`, `autoClosedAt`, and an `endAt`
 - **no** `endOdometerKm` and **no** `claimedDistanceKm` — no reading was taken, so none is invented
 - any outlet visit still open is set to `status: 'abandoned'` (not `closed` — it never collected its
-  compulsory outcome and remarks), and is excluded from the visit count in Sales Reports
+  required outcome), and is excluded from the visit count in Sales Reports
 - a `duty_auto_closed` alert to `admin_group`, so a forgotten day is seen rather than silently
   reading as a day with no distance
 

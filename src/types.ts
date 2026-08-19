@@ -923,8 +923,17 @@ export const NO_ORDER_CATEGORIES: VisitOutcomeCategory[] = [
   'no_order_operational',
 ]
 
-/** Spec §5.2 — free-text remarks must reach this length before punch-out. */
-export const MIN_REMARKS_LENGTH = 15
+/**
+ * How long a remark should be to be worth reading. A hint, not a gate.
+ *
+ * It used to be a gate: no punch-out until fifteen characters had been typed,
+ * at every shop, twenty-odd times a day. A required free-text box asked that
+ * often fills with "ok ok ok ok ok" — and a report full of those is worse than
+ * one with gaps in it, because a gap is honest about being a gap. The outcome
+ * dropdown is still required; it is one tap, and it is the structured field
+ * every report actually counts.
+ */
+export const SUGGESTED_REMARKS_LENGTH = 15
 
 // ── OUTLET VISIT (spec §3) ───────────────────────────────────────────────────
 export type OutletPhotoKind =
@@ -1011,7 +1020,8 @@ export interface OutletVisit {
   counterPresence?: boolean       // pharmacy
   customerFeedback?: string       // cosmetics
 
-  // Compulsory remarks (spec §5)
+  // Visit outcome (spec §5). The category is required at punch-out; the
+  // free text is not — see SUGGESTED_REMARKS_LENGTH for why it stopped being.
   remarksCategory?: VisitOutcomeCategory
   remarksReason?: string
   remarksText?: string
@@ -1038,8 +1048,7 @@ export function validateVisitForPunchOut(v: Partial<OutletVisit>): string | null
   if (!v.remarksCategory) return 'Select a visit outcome category.'
   if (NO_ORDER_CATEGORIES.includes(v.remarksCategory) && !v.remarksReason)
     return 'Select the specific no-order reason.'
-  if ((v.remarksText ?? '').trim().length < MIN_REMARKS_LENGTH)
-    return `Remarks must be at least ${MIN_REMARKS_LENGTH} characters describing the conversation.`
+  // Free-text remarks are not required. See SUGGESTED_REMARKS_LENGTH.
   return null
 }
 

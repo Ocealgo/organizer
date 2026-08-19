@@ -124,7 +124,15 @@ test.describe('the duty gate', () => {
 })
 
 test.describe('an outlet visit', () => {
-  test('a visit cannot be closed without an outcome and real remarks', async ({ page, loginAs, stubCamera }) => {
+  /**
+   * The outcome is required; the remarks are not.
+   *
+   * Remarks used to be gated on fifteen characters and are not any more — a
+   * required free-text box asked at twenty shops a day fills with "ok ok ok",
+   * and a report full of those is worse than one with gaps, because a gap is
+   * at least honest about being a gap. The one-tap structured field stayed.
+   */
+  test('a visit needs an outcome, and closes without remarks', async ({ page, loginAs, stubCamera }) => {
     await loginAs('rep2')
     await startDay(page, stubCamera)
 
@@ -135,19 +143,20 @@ test.describe('an outlet visit', () => {
     await page.getByRole('button', { name: 'Punch in' }).click()
     await expect(page.getByRole('heading', { name: 'Anand Stores' })).toBeVisible()
 
-    // Nothing filled in — the punch-out must refuse and say why.
+    // Nothing filled in — the punch-out must still refuse and say why.
     const punchOut = page.getByRole('button', { name: /Punch out of this outlet/ })
     await expect(punchOut).toBeDisabled()
 
-    await page.getByPlaceholder(/At least 15 characters/).fill('Too short')
+    // Remarks alone are not enough: the outcome is what reports count.
+    await page.getByPlaceholder(/optional/).fill('Had a chat')
     await expect(punchOut).toBeDisabled()
 
     // CustomSelect is a div, not a <select> — its placeholder is rendered text.
     await page.getByText('Select the outcome').click()
     await page.getByText('Order booked', { exact: true }).click()
-    await page.getByPlaceholder(/At least 15 characters/)
-      .fill('Owner reordered the 72s pack and asked about the new mini pack.')
 
+    // And the outcome alone is enough — remarks cleared, still closeable.
+    await page.getByPlaceholder(/optional/).fill('')
     await expect(punchOut).toBeEnabled()
     await punchOut.click()
 

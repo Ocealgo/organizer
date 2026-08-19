@@ -6,7 +6,7 @@ import {
   AppUser, DutySession, OutletVisit, Party, Product, GeoPoint, LocationIssue,
   OutletType, OUTLET_TYPE_LABEL,
   VisitOutcomeCategory, VISIT_OUTCOME_LABEL, VISIT_OUTCOME_REASONS,
-  NO_ORDER_CATEGORIES, MIN_REMARKS_LENGTH, validateVisitForPunchOut,
+  NO_ORDER_CATEGORIES, SUGGESTED_REMARKS_LENGTH, validateVisitForPunchOut,
   CompetitorObservation, OutletStockLine,
 } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
@@ -500,14 +500,14 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
           )}
         </div>
 
-        {/* Compulsory remarks */}
+        {/* The outcome, and anything worth adding to it */}
         <div>
-          <div style={{ marginBottom: 10 }}><Eyebrow>Visit outcome — required</Eyebrow></div>
+          <div style={{ marginBottom: 10 }}><Eyebrow>Visit outcome</Eyebrow></div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <CustomSelect
               value={category}
               onChange={v => { setCategory(v as VisitOutcomeCategory); setReason('') }}
-              placeholder="Select the outcome"
+              placeholder="Select the outcome — required"
               options={(Object.keys(VISIT_OUTCOME_LABEL) as VisitOutcomeCategory[])
                 .map(k => ({ value: k, label: VISIT_OUTCOME_LABEL[k] }))}
             />
@@ -516,12 +516,17 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
                 placeholder={needsReason ? 'Select the reason — required' : 'Select the reason (optional)'}
                 options={reasons.map(r => ({ value: r, label: r }))} />
             )}
+            {/* Asked for, never demanded. The prompt says what makes a remark
+                worth writing rather than counting characters at somebody who
+                has twenty more shops to get round today. */}
             <textarea rows={3} value={remarks} onChange={e => setRemarks(e.target.value)}
-              placeholder="What was said? At least 15 characters."
+              placeholder="Anything worth remembering about this visit? (optional)"
               style={{ ...inputStyle(t), resize: 'none', lineHeight: 1.6 }} />
-            <div style={{ fontSize: 12, color: remarks.trim().length >= MIN_REMARKS_LENGTH ? t.text3 : t.warn }}>
-              {remarks.trim().length} of {MIN_REMARKS_LENGTH} characters
-            </div>
+            {remarks.trim().length > 0 && remarks.trim().length < SUGGESTED_REMARKS_LENGTH && (
+              <div style={{ fontSize: 12, color: t.text3 }}>
+                A few more words will make more sense to whoever reads this later.
+              </div>
+            )}
           </div>
         </div>
 

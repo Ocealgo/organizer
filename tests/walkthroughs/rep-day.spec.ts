@@ -98,10 +98,10 @@ test('03 visiting an outlet', async ({ page, signIn, say, beat, stubCamera }) =>
   await page.getByText('Order booked', { exact: true }).click()
   await beat(700)
 
-  await page.getByPlaceholder(/At least 15 characters/).click()
-  await page.getByPlaceholder(/At least 15 characters/)
+  await page.getByPlaceholder(/optional/).click()
+  await page.getByPlaceholder(/optional/)
     .type('Owner reordered the 72s pack and asked about the mini pack.', { delay: 22 })
-  await say('Write what was actually said. Fifteen characters is the minimum, not the target.', 3400)
+  await say('Remarks are optional — but this is the part your manager reads, so write it when there is something to say.', 3800)
 
   await page.mouse.wheel(0, 320)
   await beat()
