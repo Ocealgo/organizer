@@ -3,14 +3,17 @@ import { collection, addDoc, deleteDoc, doc, updateDoc, deleteField } from 'fire
 import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
-  Party, PartyType, PartyCategory, Dispatch, UnifiedAllocation, Product,
-  OutletType, OUTLET_TYPE_LABEL,
+  Party, PartyType, PartyCategory, Dispatch, UnifiedAllocation, Product, GeoPoint,
+  OutletType, OUTLET_TYPE_LABEL, PIN_SOURCE_LABEL, PIN_MOVE_ALERT_M,
 } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { can } from '../../auth/permissions'
 import { useTheme } from '../../context/ThemeContext'
 import { useStockConfig, toDisplay } from '../../hooks/useFirebase'
+import { setPartyPin, accurateEnoughForPin } from '../../data/partyPin'
+import { getFixOrReason, distanceM } from '../../device/location'
 import CustomSelect from '../../components/CustomSelect'
+import LazyMap from '../../components/LazyMap'
 import AllocationManager from './AllocationManager'
 import CSVImporter from './CSVImporter'
 import { useConfirm } from '../../hooks/useConfirm'
@@ -63,6 +66,15 @@ export default function PartyManager({ onBack }: Props) {
   const [unit, setUnit] = useState<'packets' | 'cartons'>('packets')
   const [form, setForm] = useState(emptyForm)
   const [editingId, setEditingId] = useState<string | null>(null)
+  /**
+   * The pin as the form currently proposes it, applied on save like every
+   * other field. Kept out of `form` because it is not a string and, unlike the
+   * rest, moving it has to be written down rather than just written.
+   */
+  const [pinDraft, setPinDraft] = useState<{ lat: number; lng: number } | null>(null)
+  const [showMap, setShowMap] = useState(false)
+  const [locating, setLocating] = useState(false)
+  const [pinNote, setPinNote] = useState<string | null>(null)
   const [focusParent, setFocusParent] = useState(false)
   const [showEmail, setShowEmail] = useState(false)
   const [showAllocation, setShowAllocation] = useState(false)
@@ -160,6 +172,9 @@ export default function PartyManager({ onBack }: Props) {
     })
     setUnit('packets')
     setEditingId(p.id!)
+    setPinDraft(p.coordinates ? { lat: p.coordinates.lat, lng: p.coordinates.lng } : null)
+    setShowMap(false)
+    setPinNote(null)
     setFocusParent(false)
     setShowEmail(!!p.email)
     setShowAllocation(packets > 0)
@@ -173,7 +188,41 @@ export default function PartyManager({ onBack }: Props) {
 
   const resetForm = () => {
     setForm(emptyForm); setEditingId(null); setErrors({})
+    setPinDraft(null); setShowMap(false); setPinNote(null)
     setFocusParent(false); setShowEmail(false); setShowAllocation(false)
+  }
+
+  /** The party being edited, when one is — the source for the pin's history. */
+  const editingParty = editingId ? parties.find(p => p.id === editingId) ?? null : null
+  const savedPin = editingParty?.coordinates ?? null
+  const pinMovedM = savedPin && pinDraft ? Math.round(distanceM(savedPin, pinDraft)) : null
+  const pinChanged = !!pinDraft && (!savedPin || (pinMovedM ?? 0) > 0)
+
+  /**
+   * "It is here, not there" — for whoever is actually standing at the shop.
+   *
+   * The best correction to a pin comes from somebody at the door with a good
+   * fix, not from an office reading an address. A vague fix is refused for
+   * this the same way it is refused on a first visit: it may prove a visit
+   * happened, but it may not decide where a shop is.
+   */
+  async function pinFromHere() {
+    if (!appUser) return
+    setLocating(true); setPinNote(null)
+    const { fix, issue } = await getFixOrReason({ capturedBy: appUser.uid })
+    setLocating(false)
+    if (!fix) {
+      setPinNote(issue === 'denied'
+        ? 'Location is switched off for Ocealgo, so it cannot be read from here.'
+        : 'No location available right now. Place the pin on the map instead.')
+      return
+    }
+    if (!accurateEnoughForPin(fix)) {
+      setPinNote(`Your location is only accurate to about ${Math.round(fix.accuracy)} m — too vague to register a shop by. Place the pin on the map instead.`)
+      return
+    }
+    setPinDraft({ lat: fix.lat, lng: fix.lng })
+    setPinNote(`Taken from where you are standing, accurate to about ${Math.round(fix.accuracy)} m.`)
   }
 
   const handleSave = async () => {
@@ -206,14 +255,38 @@ export default function PartyManager({ onBack }: Props) {
         }
       }
 
+      // A pin placed here is placed by somebody who may be nowhere near the
+      // shop, so it carries no accuracy figure — `how: 'map'` is the honest
+      // description of what it is, and the history says who did it.
+      const placedPin: GeoPoint | null = pinDraft
+        ? { lat: pinDraft.lat, lng: pinDraft.lng, accuracy: 0,
+            capturedAt: Date.now(), capturedBy: appUser!.uid }
+        : null
+
       if (editingId) {
         await updateDoc(doc(db, 'parties', editingId), data)
+        // Separately, and only when it actually moved. Moving a shop's pin is
+        // moving its geofence, so it goes through the one path that records
+        // the move rather than being folded into a field update.
+        if (placedPin && pinChanged && editingParty) {
+          await setPartyPin(editingParty, placedPin, 'map', appUser!)
+        }
         setEditingId(null)
       } else {
         data.addedBy = appUser!.uid
         data.addedByName = appUser!.name
         data.createdAt = Date.now()
         data.status = 'prospect'
+        if (placedPin) {
+          data.coordinates = placedPin
+          data.coordinatesSetBy = appUser!.uid
+          data.coordinatesSetByName = appUser!.name
+          data.coordinatesSetAt = placedPin.capturedAt
+          data.coordinatesHistory = [{
+            at: placedPin.capturedAt, by: appUser!.uid, byName: appUser!.name,
+            to: placedPin, how: 'map',
+          }]
+        }
         await addDoc(collection(db, 'parties'), data)
         if (appUser?.role === 'offline_sales' || appUser?.role === 'online_sales') {
           await addDoc(collection(db, 'alerts'), {
@@ -393,6 +466,19 @@ export default function PartyManager({ onBack }: Props) {
                             {(p.district || p.state || p.pincode) &&
                               subLine([p.district, p.state, p.pincode].filter(Boolean).join(', '))}
                             {p.underDistributorName && subLine(`Under ${p.underDistributorName}`)}
+                            {/* Answering "where is this shop?" without making
+                                anyone open the edit form to find out — and
+                                saying plainly when nobody knows, since that is
+                                why its visits carry no distance. */}
+                            <div style={{ fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 3 }}>
+                              {p.coordinates ? (
+                                <a href={`https://www.google.com/maps?q=${p.coordinates.lat},${p.coordinates.lng}`}
+                                  target="_blank" rel="noopener noreferrer"
+                                  style={{ color: t.accent, textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                                  On the map
+                                </a>
+                              ) : 'No position set — visits here record no distance'}
+                            </div>
                           </div>
                           <div style={{ fontSize: 14, fontWeight: 400, color: t.text2, whiteSpace: 'nowrap', flexShrink: 0 }}>
                             {toDisplay(allocatedPkts, config.packetsPerCarton)}
@@ -630,6 +716,94 @@ export default function PartyManager({ onBack }: Props) {
                 onChange={e => setForm({ ...form, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
                 placeholder="6-digit pincode" style={inputStyle(t)} />
             </Field>
+
+            {/* ── Where the shop is ───────────────────────────────────────────
+                The pin is the geofence every visit to this shop is measured
+                against, so this is not a decorative field. It was previously
+                set once by whichever rep happened to punch in first and could
+                never be corrected by anybody — a fix that landed across the
+                road branded honest visits as out-of-range for good. */}
+            <div style={{ borderTop: `0.5px solid ${t.border}`, paddingTop: 20,
+                          display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 400, color: t.text }}>Position on the map</div>
+
+              <div style={{ fontSize: 13, fontWeight: 400, color: t.text3, lineHeight: 1.6 }}>
+                {!pinDraft
+                  ? 'Not set. Visits to this outlet are recorded without a distance until it is.'
+                  : !savedPin
+                    ? 'A new position will be registered when you save.'
+                    : pinMovedM === 0
+                      ? `${savedPin.lat.toFixed(5)}, ${savedPin.lng.toFixed(5)}`
+                      : `Moving it ${pinMovedM} m from where it is now.`}
+                {savedPin && editingParty?.coordinatesSetByName && pinMovedM === 0 && (
+                  <div style={{ marginTop: 3 }}>
+                    Set by {editingParty.coordinatesSetByName}
+                    {editingParty.coordinatesSetAt
+                      ? ` on ${new Date(editingParty.coordinatesSetAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+                    {editingParty.coordinatesHistory?.length
+                      ? ` — ${PIN_SOURCE_LABEL[editingParty.coordinatesHistory[editingParty.coordinatesHistory.length - 1].how]}`
+                      : ''}.
+                  </div>
+                )}
+              </div>
+
+              {pinMovedM !== null && pinMovedM > PIN_MOVE_ALERT_M && (
+                <Note tone="warn">
+                  That is further than any visit could have been judged against. Saving it
+                  will tell the admin team, because a shop that moves this far is a
+                  different place rather than a corrected one.
+                </Note>
+              )}
+
+              <div className="oc-wrap" style={{ gap: 10 }}>
+                <GhostButton onClick={() => setShowMap(!showMap)}>
+                  {showMap ? 'Hide the map' : pinDraft ? 'Move it on the map' : 'Place it on the map'}
+                </GhostButton>
+                <GhostButton onClick={pinFromHere} disabled={locating}>
+                  {locating ? 'Reading your location…' : 'Set from where I am standing'}
+                </GhostButton>
+                {pinChanged && (
+                  <GhostButton onClick={() => {
+                    setPinDraft(savedPin ? { lat: savedPin.lat, lng: savedPin.lng } : null)
+                    setPinNote(null)
+                  }}>
+                    Undo
+                  </GhostButton>
+                )}
+              </div>
+
+              {pinNote && (
+                <div style={{ fontSize: 13, color: t.text3, lineHeight: 1.6 }}>{pinNote}</div>
+              )}
+
+              {showMap && (
+                <LazyMap
+                  value={pinDraft ? { ...pinDraft, accuracy: 0, capturedAt: 0 } : null}
+                  onChange={(lat, lng) => { setPinDraft({ lat, lng }); setPinNote(null) }}
+                  search
+                  height={300}
+                />
+              )}
+
+              {/* Every position this shop has had. A movable pin is a movable
+                  geofence; showing the moves is what keeps moving one honest. */}
+              {(editingParty?.coordinatesHistory?.length ?? 0) > 1 && (
+                <div>
+                  <div style={{ fontSize: 12, color: t.text3, marginBottom: 6 }}>History</div>
+                  <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+                    {[...editingParty!.coordinatesHistory!].reverse().map((h, i) => (
+                      <div key={i} style={{ borderTop: `0.5px solid ${t.border}`, padding: '8px 0',
+                                            fontSize: 12, color: t.text3, lineHeight: 1.6 }}>
+                        {new Date(h.at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        {' · '}{h.byName}
+                        {' · '}{h.movedM !== undefined ? `moved it ${h.movedM} m` : PIN_SOURCE_LABEL[h.how]}
+                        {h.movedM !== undefined && ` (${PIN_SOURCE_LABEL[h.how]})`}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Optional allocation — hidden for retailers under a distributor */}
             {!(form.type === 'retailer' && form.underDistributorId) && (

@@ -14,6 +14,7 @@ import CustomSelect from '../../components/CustomSelect'
 import QuickAddParty from '../../components/QuickAddParty'
 import { PageHeader, Eyebrow, GhostButton, PrimaryButton, EmptyState, inputStyle } from '../../components/ui'
 import { getFixOrReason, checkGeofence, distanceM, DEFAULT_GEOFENCE_RADIUS_M } from '../../device/location'
+import { setPartyPin, accurateEnoughForPin } from '../../data/partyPin'
 import { localDateStr } from '../../utils/date'
 
 interface Props {
@@ -148,9 +149,13 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
       }
       await addDoc(collection(db, 'outlet_visits'), payload)
       setPending(null)
-      // An outlet with no registered position gets one from the first visit.
-      if (fix && !party.coordinates) {
-        await updateDoc(doc(db, 'parties', party.id!), { coordinates: fix })
+      // An outlet with no registered position gets one from the first visit —
+      // but only from a fix sharp enough to define one. A vague fix is still
+      // kept against the visit, where "somewhere in this circle" is useful;
+      // what it must not become is the point every later visit at this shop is
+      // measured against for the rest of the shop's life.
+      if (fix && !party.coordinates && accurateEnoughForPin(fix)) {
+        await setPartyPin(party, fix, 'first_visit', appUser)
       }
     } catch (e: any) {
       console.error('[OutletVisit] punch-in failed', e)
@@ -364,7 +369,9 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
           const note = !fix
             ? 'No location right now, so this visit will be recorded without one.'
             : geo!.distanceM === null
-              ? 'This outlet has no position on file yet. Punching in will set it from where you are standing.'
+              ? accurateEnoughForPin(fix)
+                ? 'This outlet has no position on file yet. Punching in will set it from where you are standing.'
+                : `This outlet has no position on file yet, and your location is only accurate to about ${Math.round(fix.accuracy)} m — too vague to register the shop by. The visit is recorded either way.`
               : `You are about ${geo!.distanceM} m from where this outlet is registered.`
           return (
             <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex',

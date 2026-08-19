@@ -4,10 +4,12 @@ import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import {
-  Party, PartyType, PartyCategory, GeoPoint,
+  Party, PartyType, PartyCategory, GeoPoint, PinChange,
   OutletType, OUTLET_TYPE_LABEL,
 } from '../types'
+import { accurateEnoughForPin } from '../data/partyPin'
 import CustomSelect from './CustomSelect'
+import LazyMap from './LazyMap'
 import { Field, ChipGroup, Note, GhostButton, PrimaryButton, inputStyle } from './ui'
 
 /**
@@ -56,6 +58,20 @@ export default function QuickAddParty({ parties, coordinates, onCancel, onCreate
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState<string | null>(null)
 
+  /**
+   * Where this shop will be registered.
+   *
+   * Starts at the rep's own position, because they are standing in the shop
+   * and that is almost always right. The map is folded away rather than
+   * absent: the common case stays a one-tap save, and the case where the fix
+   * landed across the road does not need an admin and a week.
+   */
+  const [pin, setPin] = useState<{ lat: number; lng: number } | null>(
+    coordinates ? { lat: coordinates.lat, lng: coordinates.lng } : null)
+  const [adjusting, setAdjusting] = useState(false)
+  const moved = !!(coordinates && pin &&
+    (pin.lat !== coordinates.lat || pin.lng !== coordinates.lng))
+
   const distributors = parties.filter(p => p.type === 'distributor')
 
   const changeType = (ty: PartyType) => {
@@ -87,6 +103,33 @@ export default function QuickAddParty({ parties, coordinates, onCancel, onCreate
     setSaving(true); setFailed(null)
     try {
       const parent = distributors.find(d => d.id === underDistributorId)
+
+      /**
+       * The position this shop is born with, if it gets one.
+       *
+       * Three cases, and they are not the same claim. An untouched fix is a
+       * measurement and carries its own accuracy. A fix the rep dragged is a
+       * deliberate placement by somebody who can see the shop, so it is
+       * recorded as placed rather than measured — `how` says which, and no
+       * accuracy figure is invented for it. And a fix too vague to define a
+       * shop registers nothing at all: the outlet is still saved, it simply
+       * waits for a better one rather than being anchored to a guess.
+       */
+      const pinPoint: GeoPoint | null =
+        !pin ? null
+        : moved
+          ? { lat: pin.lat, lng: pin.lng, accuracy: 0, capturedAt: Date.now(), capturedBy: appUser.uid }
+          : coordinates && accurateEnoughForPin(coordinates) ? coordinates
+          : null
+
+      const pinChange: PinChange | null = pinPoint ? {
+        at: Date.now(),
+        by: appUser.uid,
+        byName: appUser.name,
+        to: pinPoint,
+        how: moved ? 'map' : 'created',
+      } : null
+
       const data = {
         name: name.trim(),
         type,
@@ -106,7 +149,13 @@ export default function QuickAddParty({ parties, coordinates, onCancel, onCreate
           ? { underDistributorId: parent.id!, underDistributorName: parent.name }
           : {}),
         // Registering the position now saves the next rep a geofence miss.
-        ...(coordinates ? { coordinates } : {}),
+        ...(pinPoint && pinChange ? {
+          coordinates: pinPoint,
+          coordinatesSetBy: appUser.uid,
+          coordinatesSetByName: appUser.name,
+          coordinatesSetAt: pinChange.at,
+          coordinatesHistory: [pinChange],
+        } : {}),
         addedBy: appUser.uid,
         addedByName: appUser.name,
         createdAt: Date.now(),
@@ -197,10 +246,46 @@ export default function QuickAddParty({ parties, coordinates, onCancel, onCreate
           placeholder="12/A, MG Road" style={inputStyle(t)} />
       </Field>
 
-      <div style={{ fontSize: 13, fontWeight: 400, color: t.text3, lineHeight: 1.6 }}>
-        {coordinates
-          ? 'This outlet will be registered at where you are standing now.'
-          : 'No location available, so the outlet is saved without a position.'}
+      {/* Where the shop goes on the map. Folded away by default — a rep who
+          walked in the door is already in the right place, and the common
+          case must stay a one-tap save. It opens for the case that used to
+          be permanent: a fix that landed across the road. */}
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 400, color: t.text3, lineHeight: 1.6 }}>
+          {!coordinates
+            ? 'No location available. The outlet is saved without a position — the first visit that gets a good fix will register one.'
+            : !accurateEnoughForPin(coordinates)
+              ? `Your location is only accurate to about ${Math.round(coordinates.accuracy)} m, which is too vague to register the shop by. Place it on the map, or leave it and a later visit will set it.`
+              : moved
+                ? 'This outlet will be registered where you have put the pin.'
+                : 'This outlet will be registered at where you are standing now.'}
+        </div>
+
+        <div style={{ marginTop: 10 }}>
+          <GhostButton onClick={() => setAdjusting(!adjusting)}>
+            {adjusting ? 'Hide the map' : pin ? 'Not quite right? Move it' : 'Place it on the map'}
+          </GhostButton>
+          {moved && (
+            <span style={{ marginLeft: 10 }}>
+              <GhostButton onClick={() => setPin(coordinates
+                ? { lat: coordinates.lat, lng: coordinates.lng } : null)}>
+                Back to where I am
+              </GhostButton>
+            </span>
+          )}
+        </div>
+
+        {adjusting && (
+          <div style={{ marginTop: 12 }}>
+            <LazyMap
+              value={pin ? { lat: pin.lat, lng: pin.lng, accuracy: 0, capturedAt: 0 } : null}
+              near={coordinates}
+              onChange={(lat, lng) => setPin({ lat, lng })}
+              search
+              height={260}
+            />
+          </div>
+        )}
       </div>
 
       {failed && <div style={{ fontSize: 13, color: t.warn }}>{failed}</div>}

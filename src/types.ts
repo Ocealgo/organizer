@@ -126,12 +126,85 @@ export interface Party {
 
   // ── Sales Officer spec additions ──
   outletType?: OutletType
-  /** Registered shop position. Captured on first visit, correctable by admin. */
+  /**
+   * Registered shop position — and therefore its geofence, which is what
+   * `distanceFromOutletM` on every visit is measured against.
+   *
+   * Anyone standing at the shop may correct it, because they are the best
+   * source of truth about where it is and an office cannot be. Nothing is
+   * blocked; everything is written down. See `coordinatesHistory`.
+   */
   coordinates?: GeoPoint
+  /** Who put the current pin where it is, so it is never anonymous. */
+  coordinatesSetBy?: string
+  coordinatesSetByName?: string
+  coordinatesSetAt?: number
+  /**
+   * Every position this shop has ever had, newest last.
+   *
+   * A movable pin is a movable geofence: somebody who can drag it can quietly
+   * relocate a shop to the spot they habitually punch in from, and every visit
+   * after that reads as bang on the doorstep. Making the move visible is what
+   * keeps it honest — the same trade the app makes everywhere else with
+   * location. Capped at MAX_PIN_HISTORY so one shop cannot grow without bound.
+   */
+  coordinatesHistory?: PinChange[]
   contactPersonName?: string       // hospitals / institutional
   contactPersonRole?: string
   creditLimit?: number             // distributors — checked before order booking
 }
+
+/** How a shop's position came to be where it is. */
+export type PinSource =
+  | 'created'        // stamped when the outlet was added in the field
+  | 'first_visit'    // registered by the first punch-in at a shop with no pin
+  | 'standing_here'  // somebody at the shop said "it is here, not there"
+  | 'map'            // placed or moved on a map, by someone who may be elsewhere
+
+export const PIN_SOURCE_LABEL: Record<PinSource, string> = {
+  created: 'registered when the outlet was added',
+  first_visit: 'registered on the first visit',
+  standing_here: 'set from where the person was standing',
+  map: 'placed on the map',
+}
+
+/** One move of a shop's pin. */
+export interface PinChange {
+  at: number
+  by: string
+  byName: string
+  /** Where it was. Absent for the first position a shop ever had. */
+  from?: GeoPoint
+  to: GeoPoint
+  /** How far it moved, in metres. Absent for a first registration. */
+  movedM?: number
+  how: PinSource
+}
+
+/**
+ * A move further than this raises an alert to the admin group.
+ *
+ * Set above the geofence radius on purpose. Nudging a pin across the road is
+ * ordinary correction and should not cry wolf; moving a shop further than a
+ * visit could ever have been judged against is a different act, and somebody
+ * should see it happen rather than find it later.
+ */
+export const PIN_MOVE_ALERT_M = 150
+
+/** Keeps one much-corrected shop from growing a document without end. */
+export const MAX_PIN_HISTORY = 20
+
+/**
+ * A fix vaguer than this may be recorded as evidence of a visit, but must not
+ * be allowed to *define* where a shop is.
+ *
+ * These are different jobs. "The rep was somewhere in this 800 m circle" is
+ * still worth keeping about a visit. Writing the centre of that circle down as
+ * the shop's position is a guess that every later visit is then measured
+ * against — and until now nothing checked, so a single bad fix could brand
+ * honest visits as out-of-geofence forever.
+ */
+export const MAX_PIN_ACCURACY_M = 100
 
 // ── STOCK CONFIG ──────────────────────────────────────────────────────────────
 export interface ProductStock {
