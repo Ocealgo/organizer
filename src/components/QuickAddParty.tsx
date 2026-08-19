@@ -180,7 +180,8 @@ export default function QuickAddParty({ parties, coordinates, onCancel, onCreate
       await addDoc(collection(db, 'alerts'), {
         type: 'new_party',
         message: `${appUser.name} added ${type}: ${data.name} during a field visit`,
-        relatedId: ref.id, read: false, createdAt: Date.now(),
+        relatedId: ref.id, toRole: 'admin_group',
+        read: false, createdAt: Date.now(),
       })
 
       onCreated({ id: ref.id, ...data } as Party)

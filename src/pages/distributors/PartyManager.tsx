@@ -299,7 +299,8 @@ export default function PartyManager({ onBack }: Props) {
           await addDoc(collection(db, 'alerts'), {
             type: 'new_party',
             message: `${appUser.name} added ${form.type}: ${form.name.trim()} — needs ${toDisplay(packets, config.packetsPerCarton)}`,
-            relatedId: form.name, read: false, createdAt: Date.now(),
+            relatedId: form.name, toRole: 'admin_group',
+            read: false, createdAt: Date.now(),
           })
         }
       }

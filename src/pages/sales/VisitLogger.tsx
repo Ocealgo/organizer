@@ -836,7 +836,8 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
       await addDoc(collection(db, "alerts"), {
         type: "visit_log_submitted",
  message:` ${appUser!.name} submitted visit log · ${visits.length} visit${visits.length !== 1 ?"s" :""} · ${interested} interested`,
-        relatedId: todayLog.id, read: false, createdAt: Date.now(),
+        relatedId: todayLog.id, toRole: 'admin_group',
+        read: false, createdAt: Date.now(),
       });
     }
     onBack();

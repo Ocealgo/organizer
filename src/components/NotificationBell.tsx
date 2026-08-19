@@ -22,9 +22,18 @@ export default function NotificationBell() {
       const all = snap.docs
         .map(d => ({ id: d.id, ...d.data() } as Alert))
         .filter(a => {
+          // Addressed to one person: only that person, whoever they are.
           if (a.toUid) return a.toUid === appUser?.uid
-          if (a.toRole === 'admin_group') return isAdmin
-          return true
+          // Genuinely for all hands. Nothing writes one yet; the door exists so
+          // that the day something does, it does not need this rule changed.
+          if (a.toRole === 'everyone') return true
+          // Everything else is company business — approvals, new accounts,
+          // allocations, credit, forgotten days. This used to fall through to
+          // "show it to everybody", so a rep saw every party anyone added and
+          // every order raised anywhere in the company. An alert nobody
+          // addressed is now management's, which means a forgotten tag hides
+          // something rather than broadcasting it.
+          return isAdmin
         })
         .sort((a, b) => b.createdAt - a.createdAt)
         .slice(0, 20)

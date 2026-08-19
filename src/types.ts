@@ -434,10 +434,30 @@ export interface ExpenseEntry {
 
 // ── ALERT ─────────────────────────────────────────────────────────────────────
 export interface Alert {
-  id?: string; type: 'new_party' | 'credit_settlement' | 'low_stock' | 'stock_dispatched' | 'new_allocation' | 'visit_log_submitted' | 'leave_requested' | 'leave_approved' | 'visit_share_requested' | 'expense_submitted' | 'duty_auto_closed'
+  id?: string
+  type:
+    | 'new_party' | 'credit_settlement' | 'low_stock' | 'stock_dispatched'
+    | 'new_allocation' | 'visit_log_submitted' | 'leave_requested'
+    | 'leave_approved' | 'visit_share_requested' | 'expense_submitted'
+    | 'duty_auto_closed' | 'party_pin_moved' | 'credit_limit_exceeded'
   message: string; relatedId: string; read: boolean; createdAt: number
-  toUid?: string        // only that user sees it
-  toRole?: 'admin_group' // only admin/super_admin see it
+
+  /**
+   * Who this is for.
+   *
+   * `toUid` is one person and is how anything about *your* record reaches you
+   * — your leave approved, your week cleared, a partner asking to share a
+   * visit. Everything else is company business and goes to management.
+   *
+   * An alert carrying neither is not a broadcast. The bell used to treat it as
+   * one, so every rep saw every party anybody added, every allocation raised
+   * anywhere, and every visit log submitted by anyone. Untagged now means
+   * management only — a forgotten tag hides something from people rather than
+   * showing it to everyone, which is the direction a mistake should fail in.
+   * `everyone` exists for the day something genuinely is for all hands.
+   */
+  toUid?: string
+  toRole?: 'admin_group' | 'everyone'
 }
 
 // ── ALLOCATION ────────────────────────────────────────────────────────────────

@@ -99,7 +99,8 @@ export async function bookAllocation(args: BookOrderArgs): Promise<string> {
   await addDoc(collection(db, 'alerts'), {
     type: 'new_allocation',
     message: `New allocation: ${packets} ${product.unitLabel} of ${product.name} to ${party.name}, from ${fromCompany ? 'Ocealgo' : supplier!.name}`,
-    relatedId: ref.id, read: false, createdAt: Date.now(),
+    relatedId: ref.id, toRole: 'admin_group',
+    read: false, createdAt: Date.now(),
   })
 
   // Its own alert, because it is its own event. Somebody in the office should
