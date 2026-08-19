@@ -4,7 +4,7 @@ import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
   AppUser, DutySession, OutletVisit, Party, Product, GeoPoint, LocationIssue,
-  PaymentType, PaymentMethod, UnifiedAllocation,
+  PaymentType, PaymentMethod, UnifiedAllocation, PaymentTransaction,
   OutletType, OUTLET_TYPE_LABEL, OUTLET_STOCK_LABEL,
   VisitOutcomeCategory, VISIT_OUTCOME_LABEL, VISIT_OUTCOME_REASONS,
   NO_ORDER_CATEGORIES, SUGGESTED_REMARKS_LENGTH, validateVisitForPunchOut,
@@ -89,6 +89,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
 
   // money
   const [allocations, setAllocations] = useState<UnifiedAllocation[]>([])
+  const [payments, setPayments] = useState<PaymentTransaction[]>([])
   const [collecting, setCollecting] = useState(false)
   const [collectingBusy, setCollectingBusy] = useState(false)
   const [payAmount, setPayAmount] = useState('')
@@ -130,6 +131,14 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
     const q = query(collection(db, 'allocations_v2'), where('partyId', '==', visit.partyId))
     return onSnapshot(q, snap =>
       setAllocations(snap.docs.map(d => ({ id: d.id, ...d.data() } as UnifiedAllocation))))
+  }, [visit?.partyId])
+
+  // And what has already been taken off them — including by somebody else.
+  useEffect(() => {
+    if (!visit?.partyId) return
+    const q = query(collection(db, 'payment_transactions'), where('partyId', '==', visit.partyId))
+    return onSnapshot(q, snap =>
+      setPayments(snap.docs.map(d => ({ id: d.id, ...d.data() } as PaymentTransaction))))
   }, [visit?.partyId])
 
   useEffect(() => { if (!visit) void locate() }, [visit])
@@ -255,10 +264,20 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
   const creditLimit = visitedParty?.creditLimit
   const headroom = creditLimit !== undefined ? creditLimit - outstanding : null
 
+  /** What has been taken off this shop lately, newest first. */
+  const recentPayments = payments
+    .filter(p => p.status !== 'rejected')
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, 5)
+
   const payValue = parseFloat(payAmount)
   const payProblem = !payAmount.trim() ? null
     : isNaN(payValue) || payValue <= 0 ? 'Enter how much you collected.'
     : null
+
+  const PAY_METHOD_LABEL: Record<PaymentMethod, string> = {
+    cash: 'Cash', upi: 'UPI', cheque: 'Cheque', bank_transfer: 'Bank transfer',
+  }
 
   /**
    * Apply a collection the way the revisit flow already does — oldest bill
@@ -838,16 +857,53 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
               </div>
             </div>
 
-            {visit.paymentCollected !== undefined && (
-              <div style={{ fontSize: 13, color: t.text, marginTop: 12 }}>
-                ₹{visit.paymentCollected.toLocaleString('en-IN')} recorded on this visit, waiting
-                on an admin to confirm it reached the company.
+            {/* What has already been taken off them, including by somebody
+                else on another day — so nobody asks twice for the same money,
+                and a rep can answer "I paid your colleague last week". */}
+            {recentPayments.length > 0 && (
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 12, color: t.text3, marginBottom: 6 }}>Collected lately</div>
+                <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+                  {recentPayments.map(p => (
+                    <div key={p.id} style={{ display: 'flex', alignItems: 'baseline', gap: 12,
+                                             borderTop: `0.5px solid ${t.border}`, padding: '9px 0' }}>
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: t.text }}>
+                        ₹{p.amount.toLocaleString('en-IN')}
+                        <span style={{ color: t.text3 }}>
+                          {' · '}{PAY_METHOD_LABEL[p.paymentMethod]}
+                          {p.id === visit.paymentTransactionId ? ' · taken on this visit' : ''}
+                        </span>
+                        <span style={{ display: 'block', fontSize: 12, color: t.text3, marginTop: 2 }}>
+                          {p.collectedByName ?? 'Someone'} on{' '}
+                          {new Date(p.createdAt).toLocaleDateString('en-IN',
+                            { day: 'numeric', month: 'short' })}
+                        </span>
+                      </span>
+                      <span style={{ fontSize: 12, whiteSpace: 'nowrap', flexShrink: 0,
+                                     color: p.confirmedAt || p.status === 'approved' ? t.text3 : t.warn }}>
+                        {p.confirmedAt || p.status === 'approved' ? 'Confirmed' : 'Not confirmed yet'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
             <div style={{ marginTop: 12 }}>
               <ToggleRow label="Collected a payment" value={collecting} onChange={setCollecting} />
             </div>
+
+            {/* Taking money against no bill is a real thing — an advance, or
+                cash for an order booked minutes ago that is not dispatched
+                yet. Hiding the option would leave a rep holding the company's
+                money with no way to declare it, which is the worse failure. */}
+            {collecting && outstanding === 0 && (
+              <div style={{ fontSize: 12, color: t.text3, marginTop: 10, lineHeight: 1.6 }}>
+                Nothing is owed right now, so this is recorded as an advance. It is not
+                applied to any bill — including an order booked here today, which is not
+                dispatched yet — so somebody will settle it against one later.
+              </div>
+            )}
 
             {collecting && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
