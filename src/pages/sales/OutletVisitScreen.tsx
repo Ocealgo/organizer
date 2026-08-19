@@ -11,6 +11,7 @@ import {
   CompetitorObservation, OutletStockLine,
 } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
+import { useConfirm } from '../../hooks/useConfirm'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
 import QuickAddParty from '../../components/QuickAddParty'
@@ -26,10 +27,18 @@ interface Props {
   onBack: () => void
 }
 
-/** Which extra fields each channel makes mandatory (spec §3.2). */
+/**
+ * Which extra fields each channel makes mandatory (spec §3.2).
+ *
+ * `distributor` used to demand a "Credit limit checked" tick. Nothing ever
+ * read it — it recorded that somebody said they looked, never what they saw,
+ * and it was standing in for a credit position the app could not show at the
+ * time. The visit now shows the real figures, captures them onto the record,
+ * and warns at the moment an order actually crosses the limit, so the tick has
+ * nothing left to do except get flipped without being read.
+ */
 function requiredFor(outletType: OutletType): string[] {
   switch (outletType) {
-    case 'distributor': return ['creditLimitChecked']
     case 'pharmacy': return ['counterPresence']
     case 'cosmetics': return ['customerFeedback']
     case 'hospital': return ['contactPersonName']
@@ -39,6 +48,7 @@ function requiredFor(outletType: OutletType): string[] {
 
 export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
   const { t } = useTheme()
+  const { modal: confirmModal, showConfirm } = useConfirm()
 
   const [parties, setParties] = useState<Party[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -239,6 +249,10 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
     : isNaN(orderPackets) || orderPackets <= 0 ? 'Enter how much they ordered.'
     : null
 
+  const orderTotal = orderProduct && !isNaN(orderPackets) && orderPackets > 0 && !orderSource
+    ? orderPackets * (parseFloat(orderPrice) || orderProduct.defaultPricePerUnit)
+    : 0
+
   // ── money ─────────────────────────────────────────────────────────────────
   /**
    * Who actually owes Ocealgo money.
@@ -269,6 +283,16 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
     .filter(p => p.status !== 'rejected')
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, 5)
+
+  /**
+   * Would this order take them past what they are allowed to owe?
+   *
+   * Only Ocealgo's own credit counts. A cash order is settled on the spot, and
+   * a distributor supplying their own retailer is not the company's exposure.
+   */
+  const wouldOwe = outstanding + orderTotal
+  const overLimit = creditLimit !== undefined && !orderSource
+    && orderPayment === 'credit' && orderTotal > 0 && wouldOwe > creditLimit
 
   const payValue = parseFloat(payAmount)
   const payProblem = !payAmount.trim() ? null
@@ -350,7 +374,6 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
     : undefined
 
   const FIELD_LABEL: Record<string, string> = {
-    creditLimitChecked: 'Confirm you checked their credit limit',
     counterPresence: 'Record whether our wipes are on the counter',
     customerFeedback: 'Enter the customer feedback',
     contactPersonName: 'Enter the contact person',
@@ -383,6 +406,12 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
       await updateDoc(doc(db, 'outlet_visits', visit.id), {
         stock: stockLines,
         competitors,
+        // The credit position as it stood, captured rather than attested. Only
+        // for the people who can owe the company anything.
+        ...(isDirectCustomer ? {
+          creditOutstandingAtVisit: outstanding,
+          ...(creditLimit !== undefined ? { creditLimitAtVisit: creditLimit } : {}),
+        } : {}),
         ...extra,
         remarksCategory: category,
         ...(reason ? { remarksReason: reason } : {}),
@@ -410,6 +439,21 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
    */
   async function placeOrder() {
     if (!visit || !visitedParty || !orderProduct || orderProblem) return
+
+    // Told before, not refused. The rep is standing in the shop and cannot
+    // wait on the office to raise a number; refusing would cost the sale
+    // without collecting a rupee of the debt. So it is a deliberate act.
+    if (overLimit) {
+      const ok = await showConfirm(
+        'This goes past their credit limit',
+        `${visitedParty.name} owes ₹${outstanding.toLocaleString('en-IN')} and this adds ₹${orderTotal.toLocaleString('en-IN')}, ` +
+        `taking them to ₹${wouldOwe.toLocaleString('en-IN')} against a limit of ₹${creditLimit!.toLocaleString('en-IN')}.\n\n` +
+        'You can book it. The admin team is told, and the order carries the fact.',
+        'Book it anyway',
+      )
+      if (!ok) return
+    }
+
     setPlacingOrder(true); setError(null)
     try {
       const id = await bookAllocation({
@@ -424,6 +468,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
         notes: 'Booked during an outlet visit',
         by: appUser,
         packetsPerCarton: orderProduct.unitsPerCarton || 1,
+        overCreditLimit: overLimit,
       })
 
       const ids = [...(visit.allocationIds ?? (visit.allocationId ? [visit.allocationId] : [])), id]
@@ -676,10 +721,6 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
         {requiredFor(visit.outletType).length > 0 && (
           <div>
             <div style={{ marginBottom: 10 }}><Eyebrow>Required for this channel</Eyebrow></div>
-            {visit.outletType === 'distributor' && (
-              <ToggleRow label="Credit limit checked" value={!!extra.creditLimitChecked}
-                onChange={v => setExtra({ ...extra, creditLimitChecked: v })} />
-            )}
             {visit.outletType === 'pharmacy' && (
               <ToggleRow label="Our wipes are on the counter" value={!!extra.counterPresence}
                 onChange={v => setExtra({ ...extra, counterPresence: v })} />
@@ -808,6 +849,14 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
                     </div>
                   )}
                 </>
+              )}
+
+              {overLimit && (
+                <div style={{ fontSize: 12, color: t.warn, lineHeight: 1.6 }}>
+                  This takes them to ₹{wouldOwe.toLocaleString('en-IN')} owed against a
+                  ₹{creditLimit!.toLocaleString('en-IN')} limit. You can still book it — the
+                  admin team is told, and the order carries the fact.
+                </div>
               )}
 
               <div>
@@ -985,6 +1034,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
           {error && <div style={{ fontSize: 13, color: t.warn, marginTop: 10 }}>{error}</div>}
         </div>
       </div>
+      {confirmModal}
     </div>
   )
 }

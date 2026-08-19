@@ -527,6 +527,17 @@ export interface UnifiedAllocation {
   lockedAtCreation?: boolean   // true if company stock was locked at creation
   creditDueDate?: string       // YYYY-MM-DD — for credit allocs; auto-escalates to overdue when passed
   paidAmount?: number          // running total of payments applied to this alloc
+
+  /**
+   * Raised knowing it put the party past their credit limit.
+   *
+   * Recorded, not prevented. A distributor carrying a balance still trades,
+   * and a rep standing in front of one cannot wait on the office to raise a
+   * number — refusing the order would cost the sale rather than collect the
+   * debt. So it goes through, the rep is told what they are doing before they
+   * do it, an admin is told after, and the allocation carries the fact.
+   */
+  overCreditLimit?: boolean
 }
 
 // ── PRODUCTS ──────────────────────────────────────────────────────────────────
@@ -1047,9 +1058,29 @@ export interface OutletVisit {
   // Category-specific mandatory fields (spec §3.2)
   contactPersonName?: string      // hospital
   sampleLogNote?: string          // hospital
-  creditLimitChecked?: boolean    // distributor
   counterPresence?: boolean       // pharmacy
   customerFeedback?: string       // cosmetics
+
+  /**
+   * @deprecated A rep ticking "I checked their credit limit".
+   *
+   * Nothing ever read it. It was a proxy for "the rep should know the credit
+   * position", written when the app could not show them one — so it recorded
+   * that somebody said they looked, and never what they saw. The visit now
+   * shows the real figures and captures them below, which is the thing the
+   * tick was standing in for. Kept only so old visits still parse.
+   */
+  creditLimitChecked?: boolean
+
+  /**
+   * The credit position as it actually stood when this visit closed.
+   *
+   * Numbers, not an assertion, and taken with no taps at all. They survive the
+   * limit being changed afterwards, which is exactly when somebody wants to
+   * know what it was on the day.
+   */
+  creditLimitAtVisit?: number
+  creditOutstandingAtVisit?: number
 
   // Visit outcome (spec §5). The category is required at punch-out; the
   // free text is not — see SUGGESTED_REMARKS_LENGTH for why it stopped being.
