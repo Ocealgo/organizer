@@ -35,6 +35,36 @@ const GEOCODE_URL = import.meta.env.VITE_GEOCODE_URL
 /** Kochi. Only ever used when there is nothing at all to centre on. */
 const FALLBACK: [number, number] = [9.9312, 76.2673]
 
+/**
+ * The pin, drawn rather than fetched.
+ *
+ * Leaflet's default marker is a PNG whose URL it works out by guessing a path
+ * relative to its own stylesheet. Under a bundler that stylesheet is hashed
+ * into /assets/ and the guess misses, so the marker renders as a broken image
+ * — which is exactly what it did.
+ *
+ * The usual remedy is to import the three PNGs and hand Leaflet their hashed
+ * URLs. Drawing it instead removes the class of problem rather than patching
+ * this instance of it: no asset resolution to get wrong, no extra request on a
+ * connection that may not have one to spare, and the pin can be the app's own
+ * accent instead of Leaflet blue in a design that uses colour only to mean
+ * something.
+ */
+function pinIcon(color: string) {
+  return L.divIcon({
+    // Leaflet's own divIcon class draws a white box with a border behind this.
+    className: '',
+    html:
+      `<svg width="26" height="34" viewBox="0 0 26 34" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">` +
+      `<path d="M13 0C5.8 0 0 5.8 0 13c0 9.8 13 21 13 21s13-11.2 13-21C26 5.8 20.2 0 13 0z" fill="${color}"/>` +
+      `<circle cx="13" cy="13" r="4.5" fill="#fff"/>` +
+      `</svg>`,
+    iconSize: [26, 34],
+    // The tip of the pin is the position, not the middle of the artwork.
+    iconAnchor: [13, 34],
+  })
+}
+
 interface Props {
   /** Where the pin starts. Null centres on `near`, or on the fallback. */
   value: GeoPoint | null
@@ -95,15 +125,20 @@ export default function MapPicker({ value, near, onChange, search = false, heigh
       return
     }
     const at: [number, number] = [value.lat, value.lng]
-    if (marker.current) marker.current.setLatLng(at)
-    else marker.current = L.marker(at, { draggable: true })
-      .on('dragend', ev => {
-        const p = (ev.target as L.Marker).getLatLng()
-        onChange(p.lat, p.lng)
-      })
-      .addTo(m)
+    if (marker.current) {
+      marker.current.setLatLng(at)
+      // Follows the theme if it is switched while the map is open.
+      marker.current.setIcon(pinIcon(t.accent))
+    } else {
+      marker.current = L.marker(at, { draggable: true, icon: pinIcon(t.accent) })
+        .on('dragend', ev => {
+          const p = (ev.target as L.Marker).getLatLng()
+          onChange(p.lat, p.lng)
+        })
+        .addTo(m)
+    }
     if (!m.getBounds().contains(at)) m.setView(at, Math.max(m.getZoom(), 16))
-  }, [value, onChange])
+  }, [value, onChange, t.accent])
 
   // ── address search ────────────────────────────────────────────────────────
   async function runSearch() {
