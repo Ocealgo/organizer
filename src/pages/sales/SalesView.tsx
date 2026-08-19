@@ -48,6 +48,7 @@ export default function SalesView({ name }: Props) {
   const [leaveLoaded, setLeaveLoaded] = useState(false)
   const [revisitLogsToday, setRevisitLogsToday] = useState(0)
   const [ordersToday, setOrdersToday] = useState(0)
+  const [monthlyOrderCount, setMonthlyOrderCount] = useState(0)
   const [highlightAllocationId, setHighlightAllocationId] = useState<string | undefined>()
   const [allocSalesRepOnly, setAllocSalesRepOnly] = useState(false)
   const [allocReturnScreen, setAllocReturnScreen] = useState<SubScreen>('home')
@@ -108,7 +109,36 @@ export default function SalesView({ name }: Props) {
       const docs = snap.docs.map(d => d.data())
       setMonthlyRevisitLogCount(docs.filter(d => (d.date as string).startsWith(month)).length)
       setRevisitLogsToday(docs.filter(d => d.date === today).length)
-      setOrdersToday(docs.filter(d => d.date === today && (d.actions as any[])?.some((a: any) => a.type === 'new_order')).length)
+    })
+  }, [appUser])
+
+  /**
+   * Orders this rep has raised, counted where orders actually live.
+   *
+   * This used to count `revisit_logs` documents carrying a `new_order` action,
+   * which is the older screen's way of recording one. An order booked in a
+   * shop writes an allocation and never touches `revisit_logs`, so a rep could
+   * book six of them in a morning and watch their own home screen say none.
+   *
+   * Counting the allocations covers every route in — the outlet visit, the
+   * revisit log and the Allocations screen all end up here with the rep as
+   * `createdBy` — and a cancelled one stops counting, which a log entry never
+   * did.
+   */
+  useEffect(() => {
+    if (!appUser) return
+    const q = query(collection(db, 'allocations_v2'), where('createdBy', '==', appUser.uid))
+    return onSnapshot(q, snap => {
+      const today = todayStr()
+      const month = currentMonth()
+      const live = snap.docs
+        .map(d => d.data() as { createdAt?: number; status?: string })
+        .filter(a => a.status !== 'cancelled' && typeof a.createdAt === 'number')
+      // Grouped by the day it was raised, not the day it is planned for — the
+      // question this answers is "what did I do today".
+      const raisedOn = (a: { createdAt?: number }) => localDateStr(new Date(a.createdAt!))
+      setOrdersToday(live.filter(a => raisedOn(a) === today).length)
+      setMonthlyOrderCount(live.filter(a => raisedOn(a).startsWith(month)).length)
     })
   }, [appUser])
 
@@ -347,7 +377,7 @@ export default function SalesView({ name }: Props) {
           <StatCard value={isOnFullLeave ? '—' : visitsToday} label="Visits today"
             context={`${monthlyVisitLogCount} days logged this month`} />
           <StatCard value={isOnFullLeave ? '—' : ordersToday} label="Orders today"
-            context="Placed from a revisit" />
+            context={`${monthlyOrderCount} this month`} />
           <StatCard value={isOnFullLeave ? '—' : revisitLogsToday} label="Logs today"
             context={`${monthlyRevisitLogCount} this month`} />
         </StatGrid>
