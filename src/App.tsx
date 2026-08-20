@@ -116,13 +116,20 @@ function AppContent() {
       />
     );
 
+  // Offered before signing in as well as after. Somebody who has just been
+  // sent the link is looking at this screen, and it is the moment they are
+  // most likely to want it on their home screen — the hint used to live
+  // inside the signed-in shell, so a new person never saw it at all.
   if (!firebaseUser || !appUser)
     return (
-      <LoginPage
-        onSwitch={() => setAuthScreen("signup")}
-        onForgot={() => { setAuthNotice(""); setAuthScreen("forgot"); }}
-        notice={authNotice}
-      />
+      <div style={{ minHeight: "100vh", background: t.bg }}>
+        <div className="oc-page" style={{ paddingTop: 16 }}><InstallHint /></div>
+        <LoginPage
+          onSwitch={() => setAuthScreen("signup")}
+          onForgot={() => { setAuthNotice(""); setAuthScreen("forgot"); }}
+          notice={authNotice}
+        />
+      </div>
     );
 
   const status = appUser.status;
