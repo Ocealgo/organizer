@@ -2,16 +2,37 @@
   <!--
     The source every app icon is generated from.
 
-    Brand green on a full bleed, with the mark kept well inside the middle 60%
-    so an Android maskable crop — which can take a circle out of this — never
-    clips it. The wordmark is unreadable at 48px on a home screen, so this is
-    the letter and the drop rather than the name.
+    The Ocealgo wave, white on the brand green rather than black on white.
+    Three reasons, all about the size this is actually seen at:
+
+      · a thin dark wave on a white tile reads as an empty square at 48px
+      · Android's maskable crop takes a circle out of the tile, so the mark has
+        to sit well inside the middle 80% or it loses its ends
+      · a white tile disappears into a light home screen; the green is the one
+        thing that makes it findable at a glance
+
+    The strokes are heavier than the original artwork on purpose. At 48px the
+    logo's own weight thins out to a hairline and the mark stops reading as
+    anything; this keeps its shape at the size it will actually be seen.
+
+    Traced, not the original file — drop the real artwork in over this and
+    re-run the generator to get it exactly.
   -->
   <rect width="512" height="512" fill="#0d3d2e"/>
-  <g fill="none" stroke="#ffffff" stroke-width="26" stroke-linecap="round">
-    <circle cx="256" cy="262" r="96"/>
+
+  <!-- Two tapered crests, the lower offset right and down, as in the mark.
+       Kept inside the middle 80% so a circular maskable crop keeps both tips. -->
+  <g fill="#ffffff" transform="translate(66 168) scale(2.88)">
+    <path d="M0,33
+             C16,34 30,11 52,6
+             C66,3 84,5 98,14
+             C84,11 68,11 54,15
+             C32,21 16,38 0,33 Z"/>
+    <path transform="translate(34 24)"
+          d="M0,33
+             C16,34 30,11 52,6
+             C66,3 84,5 98,14
+             C84,11 68,11 54,15
+             C32,21 16,38 0,33 Z"/>
   </g>
-  <!-- A drop sitting in the counter of the O: wipes, water, clean. -->
-  <path d="M256 196c26 34 40 56 40 74a40 40 0 0 1-80 0c0-18 14-40 40-74z"
-        fill="#6ee7b7"/>
 </svg>
