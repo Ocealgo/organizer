@@ -4,6 +4,7 @@ import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
   AppUser, DutySession, GeoPoint, LocationIssue, LOCATION_ISSUE_LABEL, OutletVisit,
+  RemoteContact, ORDER_CHANNEL_LABEL, DAY_TYPE_LABEL,
   OUTLET_TYPE_LABEL, ODOMETER_STATUS_LABEL, VISIT_OUTCOME_LABEL,
 } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
@@ -77,6 +78,7 @@ export default function FieldReport({ onBack }: Props) {
   const [users, setUsers] = useState<AppUser[]>([])
   const [sessions, setSessions] = useState<DutySession[]>([])
   const [visits, setVisits] = useState<OutletVisit[]>([])
+  const [contacts, setContacts] = useState<RemoteContact[]>([])
   const [loading, setLoading] = useState(true)
   const [readError, setReadError] = useState<string | null>(null)
 
@@ -103,7 +105,8 @@ export default function FieldReport({ onBack }: Props) {
       )
     const u1 = byDate('duty_sessions', v => setSessions(v as DutySession[]))
     const u2 = byDate('outlet_visits', v => setVisits(v as OutletVisit[]))
-    return () => { u1(); u2() }
+    const u3 = byDate('remote_contacts', v => setContacts(v as RemoteContact[]))
+    return () => { u1(); u2(); u3() }
   }, [range.from, range.to])
 
   const shown = useMemo(() => {
@@ -115,6 +118,9 @@ export default function FieldReport({ onBack }: Props) {
 
   const visitsFor = (sessionId?: string) =>
     visits.filter(v => v.sessionId === sessionId).sort((a, b) => a.punchInAt - b.punchInAt)
+
+  const contactsFor = (sessionId?: string) =>
+    contacts.filter(c => c.sessionId === sessionId).sort((a, b) => a.at - b.at)
 
   // ── headline numbers ──────────────────────────────────────────────────────
   const totals = useMemo(() => {
@@ -207,6 +213,8 @@ export default function FieldReport({ onBack }: Props) {
           <div className="oc-list-flush" style={{ borderBottom: `0.5px solid ${t.border}` }}>
             {shown.map(s => {
               const vs = visitsFor(s.id)
+              const cs = contactsFor(s.id)
+              const isDesk = s.dayType === 'remote'
               const isOpen = open.has(s.id!)
               const meterIssue = (s.odometerStatus ?? 'recorded') !== 'recorded'
               return (
@@ -222,7 +230,13 @@ export default function FieldReport({ onBack }: Props) {
                       <span style={{ display: 'block', fontSize: 13, color: t.text3, marginTop: 3 }}>
                         {s.date} · {hhmm(s.startAt)}
                         {s.autoClosed ? ' · never ended' : s.endAt ? `–${hhmm(s.endAt)}` : ' · still out'}
-                        {' · '}{vs.length} {vs.length === 1 ? 'visit' : 'visits'}
+                        {/* Counted apart, always. A call is cheap to claim and
+                            a visit is not; adding them together would destroy
+                            the only number that says anybody went anywhere. */}
+                        {isDesk
+                          ? ` · at a desk · ${cs.length} ${cs.length === 1 ? 'contact' : 'contacts'}`
+                          : ` · ${vs.length} ${vs.length === 1 ? 'visit' : 'visits'}` +
+                            (cs.length ? ` · ${cs.length} ${cs.length === 1 ? 'contact' : 'contacts'}` : '')}
                       </span>
                     </span>
                     <span style={{ fontSize: 14, whiteSpace: 'nowrap',
@@ -239,6 +253,10 @@ export default function FieldReport({ onBack }: Props) {
                       {/* The day itself */}
                       <div style={{ marginBottom: 14 }}>
                         <div style={{ marginBottom: 8 }}><Eyebrow>The day</Eyebrow></div>
+                        {s.dayType && <Detail label="Day" value={DAY_TYPE_LABEL[s.dayType]} />}
+                        {s.switchedToFieldAt && (
+                          <Detail label="Went out" value={hhmm(s.switchedToFieldAt)} />
+                        )}
                         <Detail label="Punched in" value={hhmm(s.startAt)}
                           loc={s.startLocation} locIssue={s.startLocationIssue} locExpected />
                         <Detail label="Punched out"
@@ -273,10 +291,49 @@ export default function FieldReport({ onBack }: Props) {
                         )}
                       </div>
 
+                      {/* Contacts — shown, and kept out of the visit count.
+                          Nothing evidences a call beyond the rep's word, so it
+                          is context rather than a number to be judged on. */}
+                      {cs.length > 0 && (
+                        <div style={{ marginBottom: 16 }}>
+                          <div style={{ marginBottom: 8 }}><Eyebrow>Calls and messages ({cs.length})</Eyebrow></div>
+                          <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+                            {cs.map(c => (
+                              <div key={c.id} style={{ borderTop: `0.5px solid ${t.border}`, padding: '11px 0' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline' }}>
+                                  <span style={{ fontSize: 14, fontWeight: 500, color: t.text }}>{c.partyName}</span>
+                                  <span style={{ fontSize: 12, color: t.text3, whiteSpace: 'nowrap' }}>{hhmm(c.at)}</span>
+                                </div>
+                                <div style={{ fontSize: 12, color: t.text3, marginTop: 3 }}>
+                                  {ORDER_CHANNEL_LABEL[c.channel]}
+                                  {c.contactPerson ? ` · spoke to ${c.contactPerson}` : ' · nobody named'}
+                                  {c.allocationIds?.length
+                                    ? ` · ${c.allocationIds.length} ${c.allocationIds.length === 1 ? 'order' : 'orders'}`
+                                    : ''}
+                                </div>
+                                <div style={{ fontSize: 13, color: t.text2, marginTop: 4 }}>
+                                  {VISIT_OUTCOME_LABEL[c.outcomeCategory]}
+                                  {c.outcomeReason ? ` — ${c.outcomeReason}` : ''}
+                                </div>
+                                {c.remarks && (
+                                  <div style={{ fontSize: 13, color: t.text, marginTop: 3, lineHeight: 1.6 }}>
+                                    “{c.remarks}”
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Visits */}
                       <div style={{ marginBottom: 8 }}><Eyebrow>Outlets ({vs.length})</Eyebrow></div>
                       {vs.length === 0 ? (
-                        <div style={{ fontSize: 13, color: t.text3 }}>No outlets visited on this day.</div>
+                        <div style={{ fontSize: 13, color: t.text3 }}>
+                          {isDesk
+                            ? 'None — this was a desk day, so no outlets were visited.'
+                            : 'No outlets visited on this day.'}
+                        </div>
                       ) : (
                         <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
                           {vs.map(v => (

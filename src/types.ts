@@ -558,6 +558,33 @@ export interface UnifiedAllocation {
    * do it, an admin is told after, and the allocation carries the fact.
    */
   overCreditLimit?: boolean
+
+  /**
+   * How this order came about.
+   *
+   * An order taken standing in a shop and one taken over the phone from a desk
+   * are the same document and were, until this, indistinguishable — so a rep
+   * who never left home read identically in the order numbers to one who
+   * walked thirty shops, while the visit numbers said the opposite and nothing
+   * reconciled the two.
+   *
+   * Absent on orders raised before this existed. Do not read absence as
+   * `field_visit`; it means nobody was asked.
+   */
+  channel?: OrderChannel
+  /** The conversation this order came out of, when it was not a visit. */
+  remoteContactId?: string
+}
+
+/** Where an order was taken. */
+export type OrderChannel = 'field_visit' | 'phone' | 'whatsapp' | 'email' | 'office'
+
+export const ORDER_CHANNEL_LABEL: Record<OrderChannel, string> = {
+  field_visit: 'In the shop',
+  phone: 'Over the phone',
+  whatsapp: 'On WhatsApp',
+  email: 'By email',
+  office: 'At the office',
 }
 
 // ── PRODUCTS ──────────────────────────────────────────────────────────────────
@@ -819,6 +846,29 @@ export const ODOMETER_STATUS_LABEL: Record<OdometerStatus, string> = {
 }
 
 /**
+ * What kind of working day this is.
+ *
+ * Not every day is spent walking a market. A rep at a desk takes orders over
+ * the phone, and that is real work with real revenue behind it — but the app
+ * had no way to say so, so they punched in for nothing or did not punch in at
+ * all. The second was worse: the day read as absence, and the auto "no entry"
+ * rule filed them at noon as having done nothing while ten orders sat in their
+ * name.
+ *
+ * A remote day is punched in like any other, so it is attended and accounted
+ * for. It asks nothing about a vehicle and does not unlock the outlet list.
+ * Somebody who starts at a desk and goes out later switches — one way, and the
+ * meter is read at the moment they leave rather than at the morning punch-in,
+ * because that is when the journey they can claim actually starts.
+ */
+export type DayType = 'field' | 'remote'
+
+export const DAY_TYPE_LABEL: Record<DayType, string> = {
+  field: 'Out in the field',
+  remote: 'Working from a desk',
+}
+
+/**
  * One working day for one Sales Officer. Opened by the day punch-in and closed
  * by the punch-out. Everything else in the field app hangs off this.
  */
@@ -827,6 +877,11 @@ export interface DutySession {
   uid: string
   name: string
   date: string                    // YYYY-MM-DD, local
+
+  /** Absent on days recorded before this existed — they were all field days. */
+  dayType?: DayType
+  /** When a desk day became a field day. Its meter reading starts here. */
+  switchedToFieldAt?: number
 
   routeId?: string
   routeName?: string
@@ -1119,6 +1174,52 @@ export interface OutletVisit {
   abandonedAt?: number
 
   status: VisitSessionStatus
+  createdAt: number
+}
+
+// ── REMOTE CONTACT ───────────────────────────────────────────────────────────
+/**
+ * A shop reached without going to it.
+ *
+ * Deliberately not an OutletVisit. A visit is a place you stood, evidenced by
+ * a position, a geofence distance and a punch in and out; a contact is a
+ * conversation, evidenced by nothing but the rep's word. Merging them would
+ * destroy the one number that says whether anybody is actually going to shops,
+ * because the cheap thing to fake would be counted alongside the expensive
+ * thing that cannot be.
+ *
+ * So they are counted apart, always, and a contact is never coverage. What it
+ * is good for is the half of the work that vanished entirely before: "called,
+ * they will reorder after Onam" is real pipeline, and it was being lost.
+ *
+ * `contactPerson` is the closest thing to evidence this record can carry, and
+ * the thing that settles an argument later — somebody at the shop is named as
+ * having said it.
+ */
+export interface RemoteContact {
+  id?: string
+  uid: string
+  name: string
+  role: UserRole
+  /** The duty session it belongs to, so a day's work reads as one thing. */
+  sessionId: string
+  date: string                    // YYYY-MM-DD, local
+
+  partyId: string
+  partyName: string
+  channel: Exclude<OrderChannel, 'field_visit'>
+  /** Who at the shop was actually spoken to. */
+  contactPerson?: string
+
+  /** The same outcome vocabulary a visit uses, so reports do not learn two. */
+  outcomeCategory: VisitOutcomeCategory
+  outcomeReason?: string
+  remarks?: string
+
+  /** Any orders raised out of this conversation. */
+  allocationIds?: string[]
+
+  at: number
   createdAt: number
 }
 

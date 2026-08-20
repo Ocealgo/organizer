@@ -120,6 +120,18 @@ service cloud.firestore {
       return !changedKeys().hasAny([field]);
     }
 
+    /**
+     * A field that may be filled in once, and never altered afterwards.
+     *
+     * Either it did not change at all, or it did not exist before and does
+     * now. What it can never be is rewritten — which is the whole point of the
+     * fields this guards, since they are evidence.
+     */
+    function setOnceOnly(field) {
+      return isUnchanged(field)
+        || (!(field in resource.data) && field in request.resource.data);
+    }
+
     // ── USERS ───────────────────────────────────────────────────────────────
     // The single most important block in this file: it is what stops any
     // logged-in employee from making themselves super_admin — and what stops a
@@ -504,13 +516,21 @@ service cloud.firestore {
 
       // The officer may only close their own open session. The start reading,
       // its photo and the start time can never be rewritten.
+      //
+      // "Never rewritten" is not the same as "never written". A day that began
+      // at a desk has no opening reading, because there was no journey to
+      // measure; if the rep goes out at two o'clock the reading is taken then,
+      // and the distance they may claim starts there rather than at a figure
+      // invented for the morning. So each of these may be set once while it is
+      // absent, and never touched once it exists — which is a tighter and
+      // plainer rule than the blanket one it replaces.
       allow update: if approved()
         && resource.data.uid == request.auth.uid
         && resource.data.status == 'active'
         && isUnchanged('uid')
         && isUnchanged('startAt')
-        && isUnchanged('startOdometerKm')
-        && isUnchanged('startOdometerPhoto');
+        && setOnceOnly('startOdometerKm')
+        && setOnceOnly('startOdometerPhoto');
 
       allow update: if isAdmin();
       allow delete: if isAdmin();
@@ -547,6 +567,28 @@ service cloud.firestore {
         && isUnchanged('partyId')
         && isUnchanged('punchInAt')
         && isUnchanged('punchInLocation');
+
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── REMOTE CONTACTS ─────────────────────────────────────────────────────
+    // A shop reached by phone or message rather than by going to it. No
+    // location, no punch in and out, and nothing to evidence it beyond the
+    // rep's own word — which is exactly why it is kept in its own collection
+    // and never counted as a visit.
+    //
+    // Written once and left alone. A conversation does not get amended after
+    // the fact; a second conversation is a second record.
+    match /remote_contacts/{id} {
+      allow read: if isAdmin()
+        || hasPerm('view_reports')
+        || resource.data.uid == request.auth.uid;
+
+      allow create: if approved()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.outcomeCategory is string
+        && request.resource.data.partyId is string;
 
       allow update: if isAdmin();
       allow delete: if isAdmin();

@@ -1,7 +1,7 @@
 import { addDoc, collection, doc, increment, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import {
-  AllocationStatus, AppUser, Party, PaymentType, Product,
+  AllocationStatus, AppUser, OrderChannel, Party, PaymentType, Product,
 } from '../types'
 
 /**
@@ -47,6 +47,8 @@ export interface BookOrderArgs {
    * credit limit and the person raising it has said to go ahead anyway.
    */
   overCreditLimit?: boolean
+  /** Where the order was taken. Defaults to the shop floor. */
+  channel?: OrderChannel
 }
 
 /**
@@ -58,7 +60,7 @@ export interface BookOrderArgs {
 export async function bookAllocation(args: BookOrderArgs): Promise<string> {
   const {
     party, product, packets, supplier, paymentType, plannedDate,
-    creditDueDate, notes, by, packetsPerCarton, overCreditLimit,
+    creditDueDate, notes, by, packetsPerCarton, overCreditLimit, channel,
   } = args
 
   const fromCompany = !supplier
@@ -85,6 +87,10 @@ export async function bookAllocation(args: BookOrderArgs): Promise<string> {
     createdAt: Date.now(), month: planned.slice(0, 7),
     lockedAtCreation: fromCompany,
     ...(overCreditLimit ? { overCreditLimit: true } : {}),
+    // Always written, so absence means "raised before anyone was asked" rather
+    // than "raised in a shop". A report that guesses the difference is worse
+    // than one that admits it does not know.
+    channel: channel ?? 'field_visit',
   })
 
   // Only now, and only for company stock: the flag above is a claim about
