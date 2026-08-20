@@ -47,6 +47,21 @@ function requiredFor(outletType: OutletType): string[] {
   }
 }
 
+const CREDIT_DAYS = 30
+
+/**
+ * When payment falls due on a credit order.
+ *
+ * Not the same date as the delivery, which is what this was wrongly set to —
+ * see the note where it is used. Thirty days from the planned dispatch, which
+ * is the default the Allocations screen has always used.
+ */
+function creditDueFrom(plannedDate: string): string {
+  const d = new Date(plannedDate + 'T00:00:00')
+  d.setDate(d.getDate() + CREDIT_DAYS)
+  return localDateStr(d)
+}
+
 export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
   const { t } = useTheme()
   const { modal: confirmModal, showConfirm } = useConfirm()
@@ -527,7 +542,11 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
         pricePerPacket: parseFloat(orderPrice) || orderProduct.defaultPricePerUnit,
         paymentType: orderPayment,
         plannedDate: orderDate,
-        creditDueDate: orderDate,
+        // Payment falls due thirty days after dispatch, not on the day the
+        // order is raised. This was `orderDate` — the planned delivery — so
+        // every credit order booked in the field was due the moment it
+        // existed and read as overdue before anything had even shipped.
+        creditDueDate: creditDueFrom(orderDate),
         notes: 'Booked during an outlet visit',
         by: appUser,
         packetsPerCarton: orderProduct.unitsPerCarton || 1,
@@ -927,6 +946,12 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
                       {' = ₹'}
                       {(orderPackets * (parseFloat(orderPrice) || orderProduct.defaultPricePerUnit)).toLocaleString('en-IN')}
                       {' on '}{orderPayment}.
+                      {orderPayment === 'credit' && (
+                        <div style={{ marginTop: 3 }}>
+                          Payment due by {creditDueFrom(orderDate)} — {CREDIT_DAYS} days after
+                          dispatch. After that it counts as overdue.
+                        </div>
+                      )}
                     </div>
                   )}
                 </>
