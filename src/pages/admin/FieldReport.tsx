@@ -11,6 +11,8 @@ import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
 import { PageHeader, Eyebrow, StatGrid, StatCard, EmptyState } from '../../components/ui'
+import LazyRouteMap from '../../components/LazyRouteMap'
+import { RouteStop, stopLabel } from '../../components/RouteMap'
 import { urlFor } from '../../device/photo'
 import { localDateStr, localMonthStr } from '../../utils/date'
 
@@ -310,6 +312,79 @@ export default function FieldReport({ onBack }: Props) {
                           </div>
                         )}
                       </div>
+
+                      {/* Where the day went.
+                          Built from positions the app already records — the
+                          opening punch, each shop punched into, the closing
+                          punch — rather than from any kind of tracking. A stop
+                          with no position is left out entirely rather than
+                          guessed at, and the count says how many that was. */}
+                      {(() => {
+                        const stops: RouteStop[] = []
+                        if (s.startLocation) stops.push({
+                          lat: s.startLocation.lat, lng: s.startLocation.lng,
+                          title: 'Started the day', detail: hhmm(s.startAt),
+                        })
+                        vs.forEach(v => {
+                          if (!v.punchInLocation) return
+                          stops.push({
+                            lat: v.punchInLocation.lat, lng: v.punchInLocation.lng,
+                            title: v.partyName,
+                            detail: `${hhmm(v.punchInAt)}${v.distanceFromOutletM !== undefined
+                              ? ` · ${v.distanceFromOutletM} m from the shop` : ''}`,
+                          })
+                        })
+                        if (!s.autoClosed && s.endLocation && s.endAt) stops.push({
+                          lat: s.endLocation.lat, lng: s.endLocation.lng,
+                          title: 'Finished', detail: hhmm(s.endAt),
+                        })
+
+                        const missing = (s.startLocation ? 0 : 1)
+                          + vs.filter(v => !v.punchInLocation).length
+
+                        if (stops.length < 2) return (
+                          <div style={{ marginBottom: 16 }}>
+                            <div style={{ marginBottom: 8 }}><Eyebrow>Where the day went</Eyebrow></div>
+                            <div style={{ fontSize: 13, color: t.text3, lineHeight: 1.6 }}>
+                              Not enough positions to draw. A stop only appears here when a
+                              location was recorded for it, and{' '}
+                              {missing === 0 ? 'there was only one' : `${missing} had none`}.
+                            </div>
+                          </div>
+                        )
+
+                        return (
+                          <div style={{ marginBottom: 16 }}>
+                            <div style={{ marginBottom: 8 }}>
+                              <Eyebrow>Where the day went ({stops.length} stops)</Eyebrow>
+                            </div>
+                            <LazyRouteMap stops={stops} />
+                            <div style={{ marginTop: 10, borderBottom: `0.5px solid ${t.border}` }}>
+                              {stops.map((stop, i) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 10,
+                                                      borderTop: `0.5px solid ${t.border}`, padding: '8px 0' }}>
+                                  <span style={{
+                                    width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+                                    background: t.accent, color: t.bg, fontSize: 11, fontWeight: 600,
+                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                  }}>{stopLabel(i)}</span>
+                                  <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: t.text }}>
+                                    {stop.title}
+                                    {stop.detail && (
+                                      <span style={{ color: t.text3 }}>{' · '}{stop.detail}</span>
+                                    )}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                            <div style={{ fontSize: 12, color: t.text3, marginTop: 8, lineHeight: 1.6 }}>
+                              The line joins the stops in the order they happened. It is not the
+                              road taken — nothing records that.
+                              {missing > 0 && ` ${missing} ${missing === 1 ? 'stop had' : 'stops had'} no location and ${missing === 1 ? 'is' : 'are'} not shown.`}
+                            </div>
+                          </div>
+                        )
+                      })()}
 
                       {/* Contacts — shown, and kept out of the visit count.
                           Nothing evidences a call beyond the rep's word, so it
