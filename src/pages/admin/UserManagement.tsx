@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { collection, doc, updateDoc } from 'firebase/firestore'
+import { collection, doc, updateDoc, query, where } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { onSnapshot } from '../../data/live'
 import { db, functions } from '../../firebase'
@@ -15,6 +15,15 @@ import {
 } from '../../auth/permissions'
 
 interface Props { onBack: () => void }
+
+/** Somebody locked out, waiting for one of us to reset it. */
+interface PasswordRequest {
+  id: string
+  uid: string
+  name: string
+  role: string
+  requestedAt: number
+}
 type Tab = 'pending' | 'active' | 'deactivated'
 
 export default function UserManagement({ onBack }: Props) {
@@ -22,6 +31,7 @@ export default function UserManagement({ onBack }: Props) {
   const { t } = useTheme()
   const { modal, showConfirm, showDanger, showAlert } = useConfirm()
   const [users, setUsers] = useState<AppUser[]>([])
+  const [requests, setRequests] = useState<PasswordRequest[]>([])
   const [tab, setTab] = useState<Tab>('pending')
   const [updating, setUpdating] = useState<string | null>(null)
 
@@ -35,6 +45,24 @@ export default function UserManagement({ onBack }: Props) {
     return onSnapshot(collection(db, 'users'), snap => {
       setUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as AppUser)))
     })
+  }, [])
+
+  /**
+   * People who cannot sign in and have asked for help.
+   *
+   * The queue empties itself: a request is closed by the reset actually
+   * happening, inside the same function that sets the password, so a row here
+   * can never disagree with whether the work was done. Nobody ticks anything
+   * off.
+   */
+  useEffect(() => {
+    return onSnapshot(
+      query(collection(db, 'password_requests'), where('status', '==', 'open')),
+      snap => setRequests(snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as PasswordRequest))
+        .sort((a, b) => a.requestedAt - b.requestedAt)),
+      err => console.error('[UserManagement] password requests listener failed', err),
+    )
   }, [])
 
   const pending     = users.filter(u => u.status === 'pending')
@@ -195,6 +223,32 @@ export default function UserManagement({ onBack }: Props) {
 
   return (
     <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 56 }}>
+      {/* Waiting on somebody here. Above the tabs because it is the only thing
+          on this screen where a person is currently unable to work. */}
+      {requests.length > 0 && (
+        <div style={{ padding: '16px 20px 0' }}>
+          <div style={{ background: t.tint, borderRadius: 6, padding: '13px 15px' }}>
+            <div style={{ fontSize: 14, fontWeight: 500, color: t.warn }}>
+              {requests.length === 1
+                ? 'Somebody cannot sign in'
+                : `${requests.length} people cannot sign in`}
+            </div>
+            {requests.map(r => (
+              <div key={r.id} style={{ fontSize: 13, color: t.text3, marginTop: 4, lineHeight: 1.5 }}>
+                {r.name || 'Somebody'} · {ROLE_LABELS_PLAIN[r.role as keyof typeof ROLE_LABELS_PLAIN] ?? r.role}
+                {' · asked '}
+                {new Date(r.requestedAt).toLocaleString('en-IN',
+                  { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+              </div>
+            ))}
+            <div style={{ fontSize: 12, color: t.text3, marginTop: 8, lineHeight: 1.6 }}>
+              Find them below and reset their password. This clears itself once you do,
+              for everybody who can see it.
+            </div>
+          </div>
+        </div>
+      )}
+
       <PageHeader
         eyebrow={viewerIsAdmin ? 'Admin' : 'Sales manager'}
         title="Team"

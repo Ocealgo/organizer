@@ -552,6 +552,21 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ── PASSWORD RESET REQUESTS ─────────────────────────────────────────────
+    // Raised by somebody who cannot sign in, so it is written by a callable
+    // function with admin credentials and never by a client — there is no
+    // authenticated caller to check, and a public write path into this
+    // collection would be a way to fill somebody's queue with noise.
+    //
+    // Closed the same way: the request is answered by the reset actually
+    // happening, inside the same function, rather than by anybody ticking it
+    // off. A queue that can be marked done without the work being done is
+    // worse than no queue.
+    match /password_requests/{id} {
+      allow read: if isAdmin() || hasPerm('view_users');
+      allow write: if false;
+    }
+
     // ── PUSH TOKENS ─────────────────────────────────────────────────────────
     // One document per device that has agreed to receive notifications, keyed
     // by the token so re-registering the same handset overwrites instead of

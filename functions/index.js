@@ -156,9 +156,23 @@ exports.adminResetPassword = onCall(
       passwordResetAt: FieldValue.serverTimestamp(),
     })
 
+    // The request is answered by the reset actually happening, not by somebody
+    // ticking it off afterwards — anything else lets the queue disagree with
+    // reality. Failure here must not lose the password that was just set.
+    try {
+      await resolveOpenRequests(db, targetUid, {
+        uid: callerUid, name: caller.name ?? '',
+      })
+    } catch (e) {
+      console.error('[reset] could not close the open request', e)
+    }
+
     return { password, name: target.name ?? '' }
   },
 )
+
+const { requestPasswordReset, resolveOpenRequests } = require('./passwordRequests')
+exports.requestPasswordReset = requestPasswordReset
 
 /**
  * Delivering the alerts the app already writes, as push notifications.

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { signOut, updatePassword, sendPasswordResetEmail } from 'firebase/auth'
-import { auth } from '../../firebase'
+import { auth, app } from '../../firebase'
+import { getFunctions, httpsCallable } from 'firebase/functions'
 import { useTheme } from '../../context/ThemeContext'
 import { sendSignInCode, confirmAsExistingUser, phoneAuthMessage } from '../../auth/phoneAuth'
 import { readIdentifier } from '../../auth/resolveLogin'
@@ -29,7 +30,7 @@ import type { ConfirmationResult } from 'firebase/auth'
  */
 interface Props { onDone: (message?: string) => void }
 
-type Step = 'identify' | 'code' | 'password' | 'emailed'
+type Step = 'identify' | 'code' | 'password' | 'emailed' | 'asked'
 
 export default function ForgotPasswordPage({ onDone }: Props) {
   const { t } = useTheme()
@@ -111,6 +112,32 @@ export default function ForgotPasswordPage({ onDone }: Props) {
     }
   }
 
+  /**
+   * The third way back in, for when the other two do not work.
+   *
+   * An SMS that never arrives and an inbox nobody reads leave a rep with no
+   * route at all — which today means ringing somebody and hoping they are
+   * free. This puts the same ask in front of whoever is actually allowed to
+   * answer it, and the reply is identical whether or not the number is on the
+   * system: it has to be, or this becomes a way to find out who works here.
+   */
+  const askForHelp = async () => {
+    setError('')
+    const digits = identifier.replace(/\D/g, '').slice(-10)
+    if (!/^[6-9]\d{9}$/.test(digits)) {
+      return setError('Enter your 10-digit mobile number to ask for help.')
+    }
+    setLoading(true)
+    try {
+      const fn = httpsCallable(getFunctions(app, 'asia-south1'), 'requestPasswordReset')
+      await fn({ phone: digits })
+    } catch {
+      // A failure here must not tell the caller anything either.
+    }
+    setLoading(false)
+    setStep('asked')
+  }
+
   const shell = (children: React.ReactNode) => (
     <div style={{
       minHeight: '100vh', background: t.bg, display: 'flex', flexDirection: 'column',
@@ -185,6 +212,14 @@ export default function ForgotPasswordPage({ onDone }: Props) {
     </>
   )
 
+  if (step === 'asked') return shell(
+    <>
+      {heading('Asked', 'Somebody will sort it out',
+        'If that number is on the system, the people who can reset it have been told. They will give you a temporary password, and you will be asked to choose your own the moment you sign in.')}
+      <GhostButton onClick={() => onDone()}>Back to sign in</GhostButton>
+    </>
+  )
+
   return shell(
     <>
       {heading('Forgotten password', 'Reset it',
@@ -201,6 +236,16 @@ export default function ForgotPasswordPage({ onDone }: Props) {
           {loading ? 'Sending' : 'Continue'}
         </PrimaryButton>
         <GhostButton onClick={() => onDone()}>Back to sign in</GhostButton>
+
+        <div style={{ borderTop: `0.5px solid ${t.border}`, paddingTop: 20 }}>
+          <div style={{ fontSize: 13, color: t.text3, lineHeight: 1.6, marginBottom: 12 }}>
+            No code arriving, and no email you can open? Ask the people who can reset it
+            for you — put your mobile number in above first.
+          </div>
+          <GhostButton onClick={askForHelp} disabled={loading}>
+            {loading ? 'Asking…' : 'Ask for a reset'}
+          </GhostButton>
+        </div>
       </div>
     </>
   )
