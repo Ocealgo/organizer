@@ -14,7 +14,7 @@ overdue the day it was raised.
 | The thing | Where it lives | What it means |
 |---|---|---|
 | **The terms** | `UnifiedAllocation.paymentType` — `'cash'` or `'credit'` | *whether* they pay later. Cash settles on delivery; credit means goods now, money later |
-| **The period** | `UnifiedAllocation.creditDueDate` | *when* that particular bill must be paid. 30 days after dispatch |
+| **The period** | `UnifiedAllocation.creditDueDate` | *when* that particular bill must be paid. 30 days from the *planned* dispatch date, fixed when the order is raised |
 | **The ceiling** | `Party.creditLimit` | the most they may owe **at any one time**, across every unpaid bill |
 | **What is owed now** | derived, nowhere stored | Σ (`totalAmount` − `paidAmount`) over credit bills that have been **dispatched** |
 
@@ -43,7 +43,9 @@ take cash for an order booked twenty minutes ago while Outstanding still reads
 amount is owed and counts toward both Outstanding and the credit limit.
 
 **`overdue` is `creditDueDate` in the past, unpaid.** It drives the warn colour
-in the Credit Book and the collections priority.
+in the Credit Book and the collections priority. Nothing ever *writes* it going
+forward — it is derived at read time, so a bill the whole app calls overdue
+still reads `status: 'sent'` in Firestore. Do not filter a report on it.
 
 **`paid` is when `paidAmount` reaches `totalAmount`.** Partial payments leave it
 `sent` with a reduced balance.
@@ -57,7 +59,9 @@ settles with their distributor. Every calculation filters on
 
 ## The due date
 
-**30 days after the planned dispatch date**, set when the order is raised.
+**30 days after the planned dispatch date**, set when the order is raised — and
+never re-based when the goods actually go. If dispatch slips a fortnight, the
+shop has 16 days to pay rather than 30.
 
 - The Allocations screen offers it as an editable field, defaulting to 30 days.
 - Orders booked in a shop or on a call use the same 30 days, computed from the
@@ -80,8 +84,16 @@ for that is a `creditDays` field on the party record. It is not built.
 
 ## The limit
 
-`Party.creditLimit` is the ceiling on what a party may owe at once. Set by an
-admin; the rules stop anybody else changing it (`isUnchanged('creditLimit')`).
+`Party.creditLimit` is the ceiling on what a party may owe at once. The rules
+reserve it for admins (`isUnchanged('creditLimit')` for everybody else).
+
+**But no screen sets it.** Every reference to `creditLimit` in `src/` is a read.
+There is no field for it in Party manager, none in the CSV importer, none
+anywhere in the admin screens — the permission was written and the form behind
+it never was. Today it can only be set from the Firebase console, so unless
+somebody has done that by hand it is undefined for every party, the check below
+never fires, and `credit_limit_exceeded` never sends. See
+[CREDIT_LIFECYCLE.md](CREDIT_LIFECYCLE.md).
 
 **It is checked, never enforced.** Booking an order that would cross it shows
 the arithmetic before you press:
@@ -194,6 +206,7 @@ being changed afterwards.
 
 ## Known gaps
 
+- **Nothing sets a credit limit.** The check exists; the screen does not.
 - **Advances do not auto-apply** to later bills. Manual reconciliation.
 - **Credit terms are a hard-coded 30 days**, not a per-party field.
 - **Reps write to the financial ledger.** Applying a payment writes `paidAmount`

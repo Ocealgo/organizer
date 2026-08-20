@@ -171,25 +171,15 @@ export function RowGroup({ children, columns = 1 }: { children: ReactNode; colum
   )
 }
 
-export function ListRow({ title, desc, value, warn, onClick, disabled, explain }: {
+export function ListRow({ title, desc, value, warn, onClick, disabled }: {
   title: string
   desc?: string
   value?: ReactNode
   warn?: boolean
   onClick?: () => void
   disabled?: boolean
-  /**
-   * A sentence for somebody who does not already know what this screen is.
-   *
-   * `desc` says what the row does; this says what the words in it mean. Kept
-   * apart because a rep who opens Credit book every day should not read a
-   * definition every time — it is a hover title on a desktop and a tap on the
-   * question mark on a phone, where hovering does not exist.
-   */
-  explain?: string
 }) {
   const { t } = useTheme()
-  const [showExplain, setShowExplain] = useState(false)
   return (
     <button className={disabled ? undefined : 'oc-row'} onClick={disabled ? undefined : onClick}
       disabled={disabled}
@@ -202,23 +192,10 @@ export function ListRow({ title, desc, value, warn, onClick, disabled, explain }
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: 'block', fontSize: 15, fontWeight: 500, color: t.text }}>
           {title}
-          {explain && (
-            <ExplainDot label={title} text={explain} open={showExplain}
-              onToggle={() => setShowExplain(v => !v)} />
-          )}
         </span>
         {desc && (
           <span style={{ display: 'block', fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 3 }}>
             {desc}
-          </span>
-        )}
-        {explain && showExplain && (
-          <span style={{
-            display: 'block', fontSize: 13, fontWeight: 400, color: t.text2,
-            marginTop: 8, lineHeight: 1.6, background: t.tint,
-            borderRadius: 6, padding: '10px 12px',
-          }}>
-            {explain}
           </span>
         )}
       </span>

@@ -13,7 +13,7 @@ import AllocationManager from '../distributors/AllocationManager'
 import VisitLogger from './VisitLogger'
 import ActivityScreen from './ActivityScreen'
 import LeaveHistory from './LeaveHistory'
-import { Party, DailyVisitLog, LeaveRecord, Holiday, CREDIT_MEANING } from '../../types'
+import { Party, DailyVisitLog, LeaveRecord, Holiday } from '../../types'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr, localMonthStr } from '../../utils/date'
 import { Eyebrow, StatGrid, StatCard, RowGroup, ListRow, EmptyState, GhostButton } from '../../components/ui'
@@ -480,7 +480,7 @@ export default function SalesView({ name }: Props) {
               onClick={() => setScreen('allocations')} />
             <ListRow title="Stock" desc="What the company has available"
               value="View only" onClick={() => setScreen('stock')} />
-            <ListRow title="Credit book" desc="Outstanding amounts and settlements" explain={CREDIT_MEANING}
+            <ListRow title="Credit book" desc="Outstanding amounts and settlements"
               value="View only" onClick={() => setScreen('credits')} />
           </RowGroup>
         </div>
