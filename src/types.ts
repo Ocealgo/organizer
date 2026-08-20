@@ -846,42 +846,24 @@ export const ODOMETER_STATUS_LABEL: Record<OdometerStatus, string> = {
 }
 
 /**
- * What kind of working day this is.
- *
- * Not every day is spent walking a market. A rep at a desk takes orders over
- * the phone, and that is real work with real revenue behind it — but the app
- * had no way to say so, so they punched in for nothing or did not punch in at
- * all. The second was worse: the day read as absence, and the auto "no entry"
- * rule filed them at noon as having done nothing while ten orders sat in their
- * name.
- *
- * A remote day is punched in like any other, so it is attended and accounted
- * for. It asks nothing about a vehicle and does not unlock the outlet list.
- * Somebody who starts at a desk and goes out later switches — one way, and the
- * meter is read at the moment they leave rather than at the morning punch-in,
- * because that is when the journey they can claim actually starts.
- */
-export type DayType = 'field' | 'remote'
-
-export const DAY_TYPE_LABEL: Record<DayType, string> = {
-  field: 'Out in the field',
-  remote: 'Working from a desk',
-}
-
-/**
  * One working day for one Sales Officer. Opened by the day punch-in and closed
  * by the punch-out. Everything else in the field app hangs off this.
+ *
+ * There is deliberately no "kind of day" recorded here. One was tried and it
+ * was the wrong shape: asking at punch-in makes a rep forecast their day at
+ * nine in the morning, and needs a second flow for when the forecast turns out
+ * wrong. What a day was is legible afterwards from what is on it — visits,
+ * contacts, distance — and is better derived at read time, which stays true
+ * when a visit turns up late. A stored label would quietly contradict itself.
+ *
+ * A day worked from a desk is a punch-in with no vehicle, no visits and some
+ * contacts. Every part of that is already recorded.
  */
 export interface DutySession {
   id?: string
   uid: string
   name: string
   date: string                    // YYYY-MM-DD, local
-
-  /** Absent on days recorded before this existed — they were all field days. */
-  dayType?: DayType
-  /** When a desk day became a field day. Its meter reading starts here. */
-  switchedToFieldAt?: number
 
   routeId?: string
   routeName?: string

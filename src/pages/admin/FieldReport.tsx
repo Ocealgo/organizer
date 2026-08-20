@@ -4,7 +4,7 @@ import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
   AppUser, DutySession, GeoPoint, LocationIssue, LOCATION_ISSUE_LABEL, OutletVisit,
-  RemoteContact, ORDER_CHANNEL_LABEL, DAY_TYPE_LABEL,
+  RemoteContact, ORDER_CHANNEL_LABEL,
   OUTLET_TYPE_LABEL, ODOMETER_STATUS_LABEL, VISIT_OUTCOME_LABEL,
 } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
@@ -214,7 +214,11 @@ export default function FieldReport({ onBack }: Props) {
             {shown.map(s => {
               const vs = visitsFor(s.id)
               const cs = contactsFor(s.id)
-              const isDesk = s.dayType === 'remote'
+              // Derived, never stored. A day with contacts and no visits was
+              // worked from a desk — and saying so from what is on the record
+              // stays true if a visit turns up late, which a label written at
+              // nine in the morning would not.
+              const isDesk = cs.length > 0 && vs.length === 0
               const isOpen = open.has(s.id!)
               const meterIssue = (s.odometerStatus ?? 'recorded') !== 'recorded'
               return (
@@ -234,7 +238,7 @@ export default function FieldReport({ onBack }: Props) {
                             a visit is not; adding them together would destroy
                             the only number that says anybody went anywhere. */}
                         {isDesk
-                          ? ` · at a desk · ${cs.length} ${cs.length === 1 ? 'contact' : 'contacts'}`
+                          ? ` · from a desk · ${cs.length} ${cs.length === 1 ? 'contact' : 'contacts'}`
                           : ` · ${vs.length} ${vs.length === 1 ? 'visit' : 'visits'}` +
                             (cs.length ? ` · ${cs.length} ${cs.length === 1 ? 'contact' : 'contacts'}` : '')}
                       </span>
@@ -253,10 +257,6 @@ export default function FieldReport({ onBack }: Props) {
                       {/* The day itself */}
                       <div style={{ marginBottom: 14 }}>
                         <div style={{ marginBottom: 8 }}><Eyebrow>The day</Eyebrow></div>
-                        {s.dayType && <Detail label="Day" value={DAY_TYPE_LABEL[s.dayType]} />}
-                        {s.switchedToFieldAt && (
-                          <Detail label="Went out" value={hhmm(s.switchedToFieldAt)} />
-                        )}
                         <Detail label="Punched in" value={hhmm(s.startAt)}
                           loc={s.startLocation} locIssue={s.startLocationIssue} locExpected />
                         <Detail label="Punched out"
@@ -331,7 +331,7 @@ export default function FieldReport({ onBack }: Props) {
                       {vs.length === 0 ? (
                         <div style={{ fontSize: 13, color: t.text3 }}>
                           {isDesk
-                            ? 'None — this was a desk day, so no outlets were visited.'
+                            ? 'None — this day was worked from a desk.'
                             : 'No outlets visited on this day.'}
                         </div>
                       ) : (

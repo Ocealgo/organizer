@@ -66,16 +66,6 @@ export default function SalesView({ name }: Props) {
   // line at the top of the screen, which row is offered, and which of the two
   // duty forms opens — would otherwise treat the second as the first.
   const { session: dutySession, loading: dutyLoading, isOnDuty, isDayClosed } = useDutySession(appUser?.uid)
-  /**
-   * A desk day is a working day, not a field one.
-   *
-   * The outlet list is gated on being out, not merely on being punched in —
-   * otherwise "I am working from the office today" would unlock a list of
-   * shops to punch into from a chair, and every geofence distance on it would
-   * be a lie about where somebody was.
-   */
-  const isRemoteDay = dutySession?.dayType === 'remote'
-  const isInField = isOnDuty && !isRemoteDay
 
   useEffect(() => {
     return onSnapshot(collection(db, 'parties'), snap => {
@@ -289,7 +279,7 @@ export default function SalesView({ name }: Props) {
   // `isOnDuty`, not "a session exists". A closed day still has one, and this is
   // the gate that is supposed to stop visits being filed against a day that is
   // already finished — including one that closes while this screen is open.
-  if (screen === 'outlet' && appUser && dutySession && isInField) return <OutletVisitScreen appUser={appUser} session={dutySession} onBack={() => setScreen('home')} />
+  if (screen === 'outlet' && appUser && dutySession && isOnDuty) return <OutletVisitScreen appUser={appUser} session={dutySession} onBack={() => setScreen('home')} />
   if (screen === 'contact' && appUser && dutySession && isOnDuty) return <RemoteContactScreen appUser={appUser} session={dutySession} onBack={() => setScreen('home')} />
   if (screen === 'visits')      return <VisitLogger onBack={() => { setVisitInitialDate(undefined); setScreen('home') }} initialDate={visitInitialDate} onViewAllocation={(id) => { setHighlightAllocationId(id); setScreen('allocations') }} onViewPayment={(partyId, paymentId) => { setDeepLinkPaymentPartyId(partyId); setDeepLinkPaymentId(paymentId); setCreditReturnScreen('visits'); setScreen('credits') }} />
   if (screen === 'parties')     return <PartyManager onBack={() => setScreen('home')} />
@@ -332,11 +322,9 @@ export default function SalesView({ name }: Props) {
         ? `Your day is finished — ${visitsToday} ${visitsToday === 1 ? 'visit' : 'visits'} logged and ${dutySession?.claimedDistanceKm ?? 0} km travelled.`
         : !isOnDuty
           ? 'You have not started your day yet. Punch in to unlock your outlet list.'
-          : isRemoteDay
-            ? `You are working from a desk today${ordersToday > 0 ? `, with ${ordersToday} ${ordersToday === 1 ? 'order' : 'orders'} placed so far` : ''}. Head out from Your day if that changes.`
-            : visitsToday === 0
-              ? 'Nothing logged yet today. Start with your first shop visit.'
-              : `${visitsToday} ${visitsToday === 1 ? 'visit' : 'visits'} logged today${ordersToday > 0 ? `, and ${ordersToday} ${ordersToday === 1 ? 'order' : 'orders'} placed` : ''}.`
+          : visitsToday === 0
+            ? `Nothing logged yet today${ordersToday > 0 ? `, though ${ordersToday} ${ordersToday === 1 ? 'order' : 'orders'} placed` : ''}.`
+            : `${visitsToday} ${visitsToday === 1 ? 'visit' : 'visits'} logged today${ordersToday > 0 ? `, and ${ordersToday} ${ordersToday === 1 ? 'order' : 'orders'} placed` : ''}.`
 
   return (
     <div style={{ minHeight: '100vh', background: t.bg }}>
@@ -422,19 +410,17 @@ export default function SalesView({ name }: Props) {
                 somebody already punched in is how they end up on the wrong form
                 with the wrong button under their thumb. */}
             <ListRow
-              title={dutyLoading ? 'Your day' : isDayClosed ? 'Day finished' : isOnDuty ? 'Your day' : 'Start the day'}
+              title={dutyLoading ? 'Your day' : isDayClosed ? 'Day finished' : isOnDuty ? 'End the day' : 'Start the day'}
               desc={dutyLoading
                 ? 'Checking today’s record…'
                 : isDayClosed
                   ? dutySession?.autoClosed
                     ? 'Closed automatically — no closing reading was given'
                     : `${dutySession?.claimedDistanceKm ?? 0} km recorded`
-                  : isRemoteDay
-                    ? `At a desk since ${new Date(dutySession!.startAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} · head out, or finish the day`
-                    : isOnDuty
-                      ? `Started at ${new Date(dutySession!.startAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} · closing reading and photo`
-                      : 'Meter reading, photo and location'}
-              value={!dutyLoading && isInField ? `${dutySession?.startOdometerKm} km` : undefined}
+                  : isOnDuty
+                    ? `Started at ${new Date(dutySession!.startAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} · closing reading and photo`
+                    : 'Meter reading, photo and location'}
+              value={!dutyLoading && isOnDuty ? `${dutySession?.startOdometerKm} km` : undefined}
               warn={!dutyLoading && !isOnDuty && !isDayClosed && !isOnFullLeave}
               disabled={isOnFullLeave || dutyLoading}
               onClick={() => setScreen('duty')}
@@ -451,11 +437,9 @@ export default function SalesView({ name }: Props) {
                       ? 'Locked — you have punched out for the day'
                       : !isOnDuty
                         ? 'Locked until you start the day'
-                        : isRemoteDay
-                          ? 'Locked — you are at a desk today. Head out from Your day to unlock it'
-                          : 'Record shop visits and what came of them'}
-              value={isOnFullLeave || dutyLoading || !isInField ? undefined : `${visitsToday} today`}
-              disabled={isOnFullLeave || dutyLoading || !isInField}
+                        : 'Record shop visits and what came of them'}
+              value={isOnFullLeave || dutyLoading || !isOnDuty ? undefined : `${visitsToday} today`}
+              disabled={isOnFullLeave || dutyLoading || !isOnDuty}
               onClick={() => setScreen('outlet')}
             />
             {/* Reaching a shop without going to it. Available on any day — a

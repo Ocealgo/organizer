@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { collection, doc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore'
 import { db } from '../../firebase'
 import {
-  AppUser, DayType, DAY_TYPE_LABEL, DutySession, GeoPoint, LocationIssue,
+  AppUser, DutySession, GeoPoint, LocationIssue,
   OdometerStatus, ODOMETER_STATUS_LABEL,
 } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
@@ -60,17 +60,6 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
   const [locIssue, setLocIssue] = useState<LocationIssue | null>(null)
   const [locating, setLocating] = useState(true)
 
-  /**
-   * Field or desk. Asked first, because it decides whether the rest of this
-   * screen has anything to ask at all — a day at a desk has no vehicle, no
-   * meter and no photo, and pretending otherwise is how you end up with a
-   * hundred "not using a vehicle" notes saying "office".
-   */
-  const [dayType, setDayType] = useState<DayType>('field')
-  const isRemoteDay = isIn ? dayType === 'remote' : session?.dayType === 'remote'
-  /** Open on the form that turns a desk day into a field one. */
-  const [goingOut, setGoingOut] = useState(false)
-
   // Odometer
   const [odoStatus, setOdoStatus] = useState<OdometerStatus>('recorded')
   const [odometer, setOdometer] = useState('')
@@ -103,9 +92,7 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
   useEffect(() => { void locate() }, [])
 
   useEffect(() => {
-    // Also when a desk day goes out — that reading has the same floor as a
-    // morning one, or forgetting to punch out becomes a way to reset it.
-    if (!isIn && !goingOut) return
+    if (!isIn) return
     let alive = true
     void lastDutyDay(appUser.uid, localDateStr()).then(prev => {
       if (!alive) return
@@ -122,7 +109,7 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
       setCarriedOver(prev.odometerStatus)
     })
     return () => { alive = false }
-  }, [isIn, goingOut, appUser.uid])
+  }, [isIn, appUser.uid])
 
   useEffect(() => () => { if (objectUrl.current) URL.revokeObjectURL(objectUrl.current) }, [])
 
@@ -153,12 +140,7 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
     ? odoStatus
     : (session?.odometerStatus ?? 'recorded')
 
-  // A desk day has no journey at either end of it, so neither punch asks —
-  // unless it is becoming a field day, which is the one moment it does.
-  const needsReading = goingOut || (
-    !isRemoteDay
-    && effectiveStatus === 'recorded'
-    && !(!isIn && meterUnreadable))
+  const needsReading = effectiveStatus === 'recorded' && !(!isIn && meterUnreadable)
 
   const km = parseFloat(odometer)
   const kmValid = !isNaN(km) && km >= 0
@@ -166,9 +148,9 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
   const odometerProblem = (() => {
     if (!needsReading || odometer.trim() === '') return null
     if (!kmValid) return 'Enter the reading as a number.'
-    if ((isIn || goingOut) && prevClosing !== null && km < prevClosing)
+    if (isIn && prevClosing !== null && km < prevClosing)
       return `Lower than your last closing reading of ${prevClosing} km.`
-    if (!isIn && !goingOut && session?.startOdometerKm !== undefined && km <= session.startOdometerKm)
+    if (!isIn && session?.startOdometerKm !== undefined && km <= session.startOdometerKm)
       return `Must be more than this morning's ${session.startOdometerKm} km.`
     return null
   })()
@@ -181,9 +163,7 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
    * field to exist whenever a reading does not. Whether somebody must actually
    * type into it depends on what the reading is for.
    */
-  const noMeterReading = isIn
-    ? (isRemoteDay || effectiveStatus !== 'recorded')
-    : (!isIn && meterUnreadable)
+  const noMeterReading = isIn ? effectiveStatus !== 'recorded' : (!isIn && meterUnreadable)
 
   /**
    * An officer explains a missing reading; a manager does not.
@@ -195,9 +175,7 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
    * normal day into an exception report.
    */
   const mustExplainMissingReading = appUser.role !== 'sales_manager'
-  // A desk day explains itself. Asking why there is no meter reading when the
-  // answer is the day type they just chose is asking them to type it twice.
-  const noteNeeded = noMeterReading && mustExplainMissingReading && !isRemoteDay
+  const noteNeeded = noMeterReading && mustExplainMissingReading
   const noteOk = !noteNeeded || note.trim().length >= MIN_NOTE
 
   const ready = !saving && noteOk &&
@@ -271,18 +249,11 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
           name: appUser.name,
           date: localDateStr(),
           startAt: Date.now(),
-          dayType,
           ...(fix ? { startLocation: fix } : locIssue ? { startLocationIssue: locIssue } : {}),
-          // A desk day is a day with no vehicle, and says so in its own words
-          // rather than making the rep write the same sentence every morning.
-          // The rules want an explanation wherever a reading is absent; this
-          // is the honest one.
-          odometerStatus: isRemoteDay ? 'no_vehicle' : odoStatus,
+          odometerStatus: odoStatus,
           ...(needsReading ? { startOdometerKm: km } : {}),
           ...(photoPath ? { startOdometerPhoto: photoPath } : {}),
-          ...(noMeterReading
-            ? { odometerIssueNote: isRemoteDay ? 'Working from a desk today' : note.trim() }
-            : {}),
+          ...(noMeterReading ? { odometerIssueNote: note.trim() } : {}),
           ...(battery !== undefined ? { startBatteryPct: battery } : {}),
           status: 'active',
           createdAt: Date.now(),
@@ -326,108 +297,6 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
     }
   }
 
-  /**
-   * A desk day becoming a field day.
-   *
-   * The meter is read now, not backdated to the morning — the journey they can
-   * claim started when they left, and a figure invented for nine o'clock would
-   * hand them the distance they did not travel. One way only: going out is a
-   * thing that happens, coming back in is a way to stop the meter mid-day.
-   *
-   * `startOdometerKm` and its photo are write-once in firestore.rules, so this
-   * can fill them in on a day that has none and can never touch a day that
-   * does.
-   */
-  async function goToField() {
-    if (!session?.id || !ready) return
-    const ok = await showConfirm(
-      'Going out to the field?',
-      `Your meter reads ${km} km, and that is where today's distance starts counting — not from this morning, because you were not driving then.\n\nYour outlet list unlocks. You cannot switch back.`,
-      'Go out',
-    )
-    if (!ok) return
-
-    setSaving(true)
-    setSaveError(null)
-    try {
-      const photoPath = photo
-        ? await upload(photo, { uid: appUser.uid, sessionId: session.id, kind: 'odometer_start' })
-        : undefined
-      selfWrite.current = true
-      await updateDoc(doc(db, 'duty_sessions', session.id), {
-        dayType: 'field',
-        switchedToFieldAt: Date.now(),
-        odometerStatus: 'recorded',
-        startOdometerKm: km,
-        ...(photoPath ? { startOdometerPhoto: photoPath } : {}),
-      })
-      onBack()
-    } catch (e: any) {
-      selfWrite.current = false
-      console.error('[DutyScreen] could not switch to a field day', e)
-      setSaveError(
-        e?.code === 'permission-denied'
-          ? 'Firestore rejected this. The deployed rules may be older than this build.'
-          : e?.message || 'Could not switch. Please try again.',
-      )
-    } finally { setSaving(false) }
-  }
-
-  // ── going out, part way through a desk day ────────────────────────────────
-  if (mode === 'punch_out' && isRemoteDay && goingOut) {
-    return (
-      <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 56 }}>
-        <PageHeader eyebrow="Duty" title="Going out to the field"
-          subtitle="Your distance starts from this reading, not from this morning."
-          onBack={() => setGoingOut(false)} />
-        <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column',
-                      gap: 26, maxWidth: 560 }}>
-          <div>
-            <div style={{ marginBottom: 10 }}><Eyebrow>Opening reading</Eyebrow></div>
-            <input type="number" inputMode="decimal" value={odometer}
-              onChange={e => setOdometer(e.target.value)}
-              placeholder="Kilometres on the meter" style={inputStyle(t)} />
-            {odometerProblem && (
-              <div style={{ fontSize: 13, color: t.warn, marginTop: 8 }}>{odometerProblem}</div>
-            )}
-            {prevClosing !== null && !odometerProblem && (
-              <div style={{ fontSize: 13, color: t.text3, marginTop: 8 }}>
-                You finished your last day on {prevClosing} km.
-              </div>
-            )}
-          </div>
-
-          <div>
-            <div style={{ marginBottom: 10 }}><Eyebrow>Photo of the meter</Eyebrow></div>
-            {photoUrl ? (
-              <div>
-                <img src={photoUrl} alt="Odometer"
-                  style={{ width: '100%', maxWidth: 300, borderRadius: 6, display: 'block',
-                           border: `0.5px solid ${t.border}` }} />
-                <div style={{ marginTop: 10 }}><GhostButton onClick={takePhoto}>Retake</GhostButton></div>
-              </div>
-            ) : (
-              <GhostButton onClick={takePhoto}>Take the photo</GhostButton>
-            )}
-            {photoError && <div style={{ fontSize: 13, color: t.warn, marginTop: 8 }}>{photoError}</div>}
-          </div>
-
-          <div>
-            <PrimaryButton onClick={goToField} disabled={!ready} style={{ width: '100%' }}>
-              {saving ? 'Switching…' : 'Go out to the field'}
-            </PrimaryButton>
-            {!ready && !saving && (
-              <div style={{ fontSize: 13, color: t.text3, marginTop: 10, lineHeight: 1.6 }}>
-                {!kmValid || odometerProblem ? 'Enter the meter reading.' : 'Take the photo of the meter.'}
-              </div>
-            )}
-            {saveError && <div style={{ fontSize: 13, color: t.warn, marginTop: 10 }}>{saveError}</div>}
-          </div>
-        </div>
-        {confirmModal}
-      </div>
-    )
-  }
 
   // ── the day moved while this screen was open ──────────────────────────────
   // Said out loud rather than absorbed. Whatever was typed here is dropped,
@@ -546,37 +415,8 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
           )}
         </div>
 
-        {/* What kind of day this is. Asked first, because it decides whether
-            anything below it needs asking. */}
+        {/* Meter status — only asked at the start of the day */}
         {isIn && (
-          <div>
-            <div style={{ marginBottom: 10 }}><Eyebrow>Your day</Eyebrow></div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {(['field', 'remote'] as DayType[]).map(d => (
-                <button key={d} className="oc-action" onClick={() => setDayType(d)}
-                  style={{
-                    background: 'none',
-                    border: `0.5px solid ${dayType === d ? t.text2 : t.border}`,
-                    borderRadius: 6, padding: '11px 14px', textAlign: 'left',
-                    fontSize: 14, fontWeight: 400,
-                    color: dayType === d ? t.text : t.text3, cursor: 'pointer',
-                  }}>
-                  {DAY_TYPE_LABEL[d]}
-                </button>
-              ))}
-            </div>
-            {isRemoteDay && (
-              <div style={{ fontSize: 13, color: t.text3, marginTop: 8, lineHeight: 1.6 }}>
-                No meter, no photo. Your outlet list stays locked, and you can log
-                calls and raise orders. If you go out later, you can switch — the
-                meter is read then.
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Meter status — only asked at the start of a day with a journey in it */}
-        {isIn && !isRemoteDay && (
           <div>
             <div style={{ marginBottom: 10 }}><Eyebrow>Your vehicle meter</Eyebrow></div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -679,23 +519,6 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
                 Actually, I can read it
               </button>
             )}
-          </div>
-        )}
-
-        {/* The desk day that turns into a field day. Offered here rather than
-            on the home screen because this is where the day itself lives. */}
-        {!isIn && isRemoteDay && (
-          <div style={{ background: t.tint, borderRadius: 6, padding: '14px 16px' }}>
-            <div style={{ fontSize: 14, fontWeight: 500, color: t.text }}>
-              Heading out after all?
-            </div>
-            <div style={{ fontSize: 13, color: t.text3, marginTop: 3, lineHeight: 1.5 }}>
-              Read your meter now and your outlet list unlocks. Today’s distance counts
-              from that reading, not from this morning.
-            </div>
-            <div style={{ marginTop: 12 }}>
-              <GhostButton onClick={() => setGoingOut(true)}>Go out to the field</GhostButton>
-            </div>
           </div>
         )}
 
