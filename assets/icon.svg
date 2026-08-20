@@ -2,38 +2,41 @@
   <!--
     The source every app icon is generated from.
 
-    The Ocealgo wave, white on black rather than black on white.
+    The Ocealgo wave, white on black, traced from the supplied artwork: a
+    blunt left tip, the body thickest through the crest, and a long taper out
+    to the right, with the second crest offset right and dropped below the
+    first.
 
-    Inverted rather than reproduced, because of the size this is seen at: a
-    thin dark wave on a white tile reads as an empty square at 48px, and a
-    white tile disappears into a light home screen. White on black is the
-    highest contrast either way round and holds its shape smallest.
+    Scaled to about three quarters of the tile so both tips stay inside the
+    middle 80% — Android crops a maskable icon to a circle, and a mark that
+    ran to the edges would lose its ends.
 
-    Android's maskable crop takes a circle out of the tile, so the mark sits
-    well inside the middle 80% or it would lose its ends.
-
-    The strokes are heavier than the original artwork on purpose. At 48px the
-    logo's own weight thins out to a hairline and the mark stops reading as
-    anything; this keeps its shape at the size it will actually be seen.
-
-    Traced, not the original file — drop the real artwork in over this and
-    re-run the generator to get it exactly.
+    Still a trace rather than the original file. Save the real artwork over
+    this and re-run the generator to get it exactly; the two hand fixes are in
+    the commit message.
   -->
   <rect width="512" height="512" fill="#000000"/>
 
-  <!-- Two tapered crests, the lower offset right and down, as in the mark.
-       Kept inside the middle 80% so a circular maskable crop keeps both tips. -->
-  <g fill="#ffffff" transform="translate(66 168) scale(2.88)">
-    <path d="M0,33
-             C16,34 30,11 52,6
-             C66,3 84,5 98,14
-             C84,11 68,11 54,15
-             C32,21 16,38 0,33 Z"/>
-    <path transform="translate(34 24)"
-          d="M0,33
-             C16,34 30,11 52,6
-             C66,3 84,5 98,14
-             C84,11 68,11 54,15
-             C32,21 16,38 0,33 Z"/>
+  <g fill="#ffffff" transform="translate(64 206) scale(2.69)">
+    <!-- One crest: 100 wide, ~24 tall, thickest a little past the middle. -->
+    <path d="M0,23.6
+             C12,23.5 24,17 38,9.5
+             C50,3.2 60,0.3 72,0.6
+             C84,1 93,5 100,11.5
+             C92,9 84,7.2 73,8.6
+             C60,10.2 50,13.4 38,18.6
+             C25,23 10,24.6 0,23.6 Z"/>
+    <!-- The same crest again, right and below — and tipped a few degrees, which
+         is what opens the black gap between the two and drops the lower tail
+         further than its head. A pure translation closed that gap and the pair
+         read as one thick smear. -->
+    <path transform="translate(43 8) rotate(4)"
+          d="M0,23.6
+             C12,23.5 24,17 38,9.5
+             C50,3.2 60,0.3 72,0.6
+             C84,1 93,5 100,11.5
+             C92,9 84,7.2 73,8.6
+             C60,10.2 50,13.4 38,18.6
+             C25,23 10,24.6 0,23.6 Z"/>
   </g>
 </svg>
