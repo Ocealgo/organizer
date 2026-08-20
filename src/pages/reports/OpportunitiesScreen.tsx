@@ -60,9 +60,31 @@ export default function OpportunitiesScreen({ onBack, uid, onVisit }: Props) {
     const u1 = onSnapshot(collection(db, 'parties'), snap =>
       setParties(snap.docs.map(d => ({ id: d.id, ...d.data() } as Party))))
 
+    /**
+     * A rep's query is filtered by uid; a manager's by date.
+     *
+     * Not a preference — the read rule is `resource.data.uid ==
+     * request.auth.uid` for anyone without `view_reports`, and Firestore
+     * secures a list by the *shape* of the query rather than per document. A
+     * date-range query with no uid in it cannot be proven to return only the
+     * caller's own rows, so the whole listener is denied and the screen shows
+     * an error instead of a list. OutletVisitScreen carries the same warning
+     * above its own query, for the same reason.
+     *
+     * Filtered on uid alone rather than uid plus a date range, because that
+     * pair would need a composite index deployed before it worked at all —
+     * and the date cut is cheap to do here.
+     */
     const u2 = onSnapshot(
-      query(collection(db, 'outlet_visits'), where('date', '>=', since)),
-      snap => { setVisits(snap.docs.map(d => ({ id: d.id, ...d.data() } as OutletVisit))); setLoading(false) },
+      uid
+        ? query(collection(db, 'outlet_visits'), where('uid', '==', uid))
+        : query(collection(db, 'outlet_visits'), where('date', '>=', since)),
+      snap => {
+        setVisits(snap.docs
+          .map(d => ({ id: d.id, ...d.data() } as OutletVisit))
+          .filter(v => v.date >= since))
+        setLoading(false)
+      },
       err => {
         console.error('[Opportunities] visits listener failed', err)
         setReadError(err?.code === 'permission-denied'
@@ -80,7 +102,7 @@ export default function OpportunitiesScreen({ onBack, uid, onVisit }: Props) {
     )
 
     return () => { u1(); u2(); u3() }
-  }, [since])
+  }, [since, uid])
 
   const grouped = useMemo(
     () => groupByKind(findOpportunities({ parties, visits, allocations, uid })),
