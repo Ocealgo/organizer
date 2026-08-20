@@ -19,7 +19,7 @@ import {
   MAY_POSTS,
   STATUS_CONFIG,
 } from "../../data";
-import { CheckIn, AppUser, Party, LeaveRecord, Permission, Product } from "../../types";
+import { CheckIn, AppUser, Party, LeaveRecord, Permission, Product, CREDIT_MEANING } from "../../types";
 import { can, isAdminRole } from "../../auth/permissions";
 import SalesReport from "../reports/SalesReport";
 import ReportsHome from "../reports/ReportsHome";
@@ -74,6 +74,8 @@ export default function AdminDashboard() {
   const { modal: adminLeaveModal, showConfirm: showAdminLeaveConfirm } =
     useConfirm();
   const [subScreen, setSubScreen] = useState<SubScreen>("dashboard");
+  /** Which tile is showing its "what is this?" line. Tapped, because a phone cannot hover. */
+  const [explaining, setExplaining] = useState<SubScreen | null>(null);
   const [allocations, setAllocations] = useState<any[]>([]);
   const [visitLogs, setVisitLogs] = useState<any[]>([]);
   /**
@@ -699,6 +701,7 @@ export default function AdminDashboard() {
     {
       name: "Credit book",
       desc: "See who owes what, and settle it",
+      explain: CREDIT_MEANING,
       screen: "credits" as SubScreen,
       value: owedTotal > 0 ? `${inr(owedTotal)} due` : "Nothing due",
       warn: owedTotal > 0,
@@ -1004,6 +1007,34 @@ export default function AdminDashboard() {
                       }}
                     >
                       {m.name}
+                      {(m as any).explain && (
+                        <span
+                          role="button"
+                          aria-label={`What ${m.name} means`}
+                          title={(m as any).explain}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExplaining(explaining === m.screen ? null : m.screen);
+                          }}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: 16,
+                            height: 16,
+                            marginLeft: 7,
+                            borderRadius: "50%",
+                            border: `0.5px solid ${t.border2}`,
+                            color: t.text3,
+                            fontSize: 10,
+                            lineHeight: 1,
+                            verticalAlign: "middle",
+                            cursor: "help",
+                          }}
+                        >
+                          ?
+                        </span>
+                      )}
                     </span>
                     <span
                       style={{
@@ -1016,6 +1047,23 @@ export default function AdminDashboard() {
                     >
                       {m.desc}
                     </span>
+                    {(m as any).explain && explaining === m.screen && (
+                      <span
+                        style={{
+                          display: "block",
+                          fontSize: 13,
+                          fontWeight: 400,
+                          color: t.text2,
+                          marginTop: 8,
+                          lineHeight: 1.6,
+                          background: t.tint,
+                          borderRadius: 6,
+                          padding: "10px 12px",
+                        }}
+                      >
+                        {(m as any).explain}
+                      </span>
+                    )}
                   </span>
                   <span
                     style={{

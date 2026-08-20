@@ -1,4 +1,4 @@
-import { ReactNode, CSSProperties } from 'react'
+import { ReactNode, CSSProperties, useState } from 'react'
 import { useTheme } from '../context/ThemeContext'
 
 /**
@@ -124,15 +124,25 @@ export function RowGroup({ children, columns = 1 }: { children: ReactNode; colum
   )
 }
 
-export function ListRow({ title, desc, value, warn, onClick, disabled }: {
+export function ListRow({ title, desc, value, warn, onClick, disabled, explain }: {
   title: string
   desc?: string
   value?: ReactNode
   warn?: boolean
   onClick?: () => void
   disabled?: boolean
+  /**
+   * A sentence for somebody who does not already know what this screen is.
+   *
+   * `desc` says what the row does; this says what the words in it mean. Kept
+   * apart because a rep who opens Credit book every day should not read a
+   * definition every time — it is a hover title on a desktop and a tap on the
+   * question mark on a phone, where hovering does not exist.
+   */
+  explain?: string
 }) {
   const { t } = useTheme()
+  const [showExplain, setShowExplain] = useState(false)
   return (
     <button className={disabled ? undefined : 'oc-row'} onClick={disabled ? undefined : onClick}
       disabled={disabled}
@@ -143,10 +153,35 @@ export function ListRow({ title, desc, value, warn, onClick, disabled }: {
         opacity: disabled ? 0.5 : 1,
       }}>
       <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ display: 'block', fontSize: 15, fontWeight: 500, color: t.text }}>{title}</span>
+        <span style={{ display: 'block', fontSize: 15, fontWeight: 500, color: t.text }}>
+          {title}
+          {explain && (
+            <span
+              role="button"
+              aria-label={`What ${title} means`}
+              title={explain}
+              onClick={e => { e.stopPropagation(); setShowExplain(v => !v) }}
+              style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                width: 16, height: 16, marginLeft: 7, borderRadius: '50%',
+                border: `0.5px solid ${t.border2}`, color: t.text3,
+                fontSize: 10, lineHeight: 1, verticalAlign: 'middle', cursor: 'help',
+              }}
+            >?</span>
+          )}
+        </span>
         {desc && (
           <span style={{ display: 'block', fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 3 }}>
             {desc}
+          </span>
+        )}
+        {explain && showExplain && (
+          <span style={{
+            display: 'block', fontSize: 13, fontWeight: 400, color: t.text2,
+            marginTop: 8, lineHeight: 1.6, background: t.tint,
+            borderRadius: 6, padding: '10px 12px',
+          }}>
+            {explain}
           </span>
         )}
       </span>

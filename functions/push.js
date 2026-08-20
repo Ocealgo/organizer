@@ -22,8 +22,16 @@ const { getMessaging } = require('firebase-admin/messaging')
 
 const REGION = 'asia-south1'
 
-/** Roles that receive anything addressed to the admin group. */
-const ADMIN_ROLES = ['admin', 'super_admin']
+/**
+ * Roles that receive anything addressed to the admin group.
+ *
+ * Must stay identical to `isManagement()` in src/auth/permissions.ts, which is
+ * what the in-app bell uses. They disagreed once — this required a manager to
+ * also hold view_reports — and the result was a manager who could see an alert
+ * on their screen but never got it on their phone, with nothing anywhere
+ * explaining the difference. One definition, or the channel decides who hears.
+ */
+const MANAGEMENT_ROLES = ['admin', 'super_admin', 'sales_manager']
 
 /**
  * Every live token for a set of users.
@@ -59,10 +67,7 @@ async function recipientsFor(db, alert) {
   users.forEach(d => {
     const u = d.data()
     if (wantsEveryone) { uids.push(d.id); return }
-    const isAdmin = ADMIN_ROLES.includes(u.role)
-    const isManagerWithReports =
-      u.role === 'sales_manager' && u.permissions && u.permissions.view_reports === true
-    if (isAdmin || isManagerWithReports) uids.push(d.id)
+    if (MANAGEMENT_ROLES.includes(u.role)) uids.push(d.id)
   })
   return uids
 }

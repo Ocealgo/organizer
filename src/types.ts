@@ -329,6 +329,20 @@ export interface StockMovement {
 }
 
 // ── CREDIT ────────────────────────────────────────────────────────────────────
+
+/**
+ * What "credit" means, for somebody who opens the tab and is not sure.
+ *
+ * Lives here rather than beside either tile because a rep and an admin must be
+ * told the same thing — two copies drift, and this is the sort of sentence that
+ * gets quietly reworded on one screen and not the other. The long version is in
+ * CREDIT.md.
+ */
+export const CREDIT_MEANING =
+  'Credit is stock sent now and paid for later. A bill becomes money owed the '
+  + 'day it is dispatched, is due 30 days after that, and counts against the '
+  + "shop's credit limit until it is paid. This is what is outstanding right now."
+
 // CreditEntry is legacy (pre-payment-transaction system). Kept for backward compat.
 // New credit tracking uses PaymentTransaction + UnifiedAllocation.creditDueDate.
 export interface CreditEntry {
