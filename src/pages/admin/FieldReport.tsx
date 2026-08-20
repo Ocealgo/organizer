@@ -32,8 +32,18 @@ function lastDayOfMonth(m: string): string {
 const hhmm = (ts: number) =>
   new Date(ts).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
 
-/** A stored photo, resolved lazily. Opens full size in a new tab. */
-function StoragePhoto({ path, label }: { path: string; label: string }) {
+/**
+ * A stored photo, resolved lazily. Opens full size in a new tab.
+ *
+ * `unverified` means the app could not guarantee it came from a live camera —
+ * true for anyone on the web app, which can only attach a file. There is no
+ * iOS build, so reps on iPhone are always in that case, and a gallery picture
+ * of yesterday's meter would otherwise sit here looking exactly like today's.
+ * Marked rather than rejected: it is still the only photo there is.
+ */
+function StoragePhoto({ path, label, unverified }: {
+  path: string; label: string; unverified?: boolean
+}) {
   const { t } = useTheme()
   const [url, setUrl] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
@@ -50,8 +60,12 @@ function StoragePhoto({ path, label }: { path: string; label: string }) {
     <a href={url} target="_blank" rel="noopener noreferrer"
       style={{ display: 'inline-block', textDecoration: 'none' }}>
       <img src={url} alt={label}
-        style={{ width: 74, height: 74, objectFit: 'cover', borderRadius: 6, border: `0.5px solid ${t.border}`, display: 'block' }} />
+        style={{ width: 74, height: 74, objectFit: 'cover', borderRadius: 6,
+                 border: `0.5px solid ${unverified ? t.warn : t.border}`, display: 'block' }} />
       <span style={{ fontSize: 11, color: t.text3, display: 'block', marginTop: 4 }}>{label}</span>
+      {unverified && (
+        <span style={{ fontSize: 11, color: t.warn, display: 'block' }}>from a file</span>
+      )}
     </a>
   )
 }
@@ -285,8 +299,14 @@ export default function FieldReport({ onBack }: Props) {
 
                         {(s.startOdometerPhoto || s.endOdometerPhoto) && (
                           <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
-                            {s.startOdometerPhoto && <StoragePhoto path={s.startOdometerPhoto} label="Opening" />}
-                            {s.endOdometerPhoto && <StoragePhoto path={s.endOdometerPhoto} label="Closing" />}
+                            {s.startOdometerPhoto && (
+                              <StoragePhoto path={s.startOdometerPhoto} label="Opening"
+                                unverified={s.startOdometerPhotoVerified === false} />
+                            )}
+                            {s.endOdometerPhoto && (
+                              <StoragePhoto path={s.endOdometerPhoto} label="Closing"
+                                unverified={s.endOdometerPhotoVerified === false} />
+                            )}
                           </div>
                         )}
                       </div>

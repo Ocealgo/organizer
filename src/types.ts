@@ -904,6 +904,19 @@ export interface DutySession {
   startLocationIssue?: LocationIssue
   startOdometerKm?: number
   startOdometerPhoto?: string     // Storage path
+  /**
+   * Whether that photo came from a camera the app controlled.
+   *
+   * False on the web app, which can only attach a file — there is no iOS
+   * build, so reps on iPhone are always in that case, and a gallery picture of
+   * yesterday's meter is indistinguishable from today's unless this says so.
+   *
+   * It is on the session as well as in the photo's Storage metadata because
+   * the report reads sessions and should not have to fetch a file to find out
+   * whether it can believe one. Same reason the fuel rate is copied onto its
+   * expense entry.
+   */
+  startOdometerPhotoVerified?: boolean
   startBatteryPct?: number
 
   /** Whether a meter reading was possible at all. Defaults to 'recorded'. */
@@ -918,6 +931,7 @@ export interface DutySession {
   endLocationIssue?: LocationIssue
   endOdometerKm?: number
   endOdometerPhoto?: string
+  endOdometerPhotoVerified?: boolean
   endBatteryPct?: number
   /** Set when the meter could be read in the morning but not at close of day. */
   endOdometerIssueNote?: string

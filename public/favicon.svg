@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!--
+    The source every app icon is generated from.
+
+    Brand green on a full bleed, with the mark kept well inside the middle 60%
+    so an Android maskable crop — which can take a circle out of this — never
+    clips it. The wordmark is unreadable at 48px on a home screen, so this is
+    the letter and the drop rather than the name.
+  -->
+  <rect width="512" height="512" fill="#0d3d2e"/>
+  <g fill="none" stroke="#ffffff" stroke-width="26" stroke-linecap="round">
+    <circle cx="256" cy="262" r="96"/>
+  </g>
+  <!-- A drop sitting in the counter of the O: wipes, water, clean. -->
+  <path d="M256 196c26 34 40 56 40 74a40 40 0 0 1-80 0c0-18 14-40 40-74z"
+        fill="#6ee7b7"/>
+</svg>
