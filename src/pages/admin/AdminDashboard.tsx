@@ -22,6 +22,7 @@ import {
 import { CheckIn, AppUser, Party, LeaveRecord, Permission, Product } from "../../types";
 import { can, isAdminRole } from "../../auth/permissions";
 import SalesReport from "../reports/SalesReport";
+import ReportsHome from "../reports/ReportsHome";
 import FieldReport from "./FieldReport";
 import {
   Eyebrow, PageHeader, Section, StatGrid, StatCard, EmptyState,
@@ -57,6 +58,7 @@ type SubScreen =
   | "leaves"
   | "reports"
   | "field"
+  | "reportsHome"
   | "settings";
 
 function isValidUrl(url: string): boolean {
@@ -497,10 +499,20 @@ export default function AdminDashboard() {
         isAdmin={can(appUser, "dispatch_allocations")}
       />
     );
+  // The reports front door. Both screens below it existed and neither was
+  // findable — this is a way in, not a third report.
+  if (subScreen === "reportsHome")
+    return (
+      <ReportsHome
+        onBack={() => setSubScreen("dashboard")}
+        onOpenField={() => setSubScreen("field")}
+        onOpenSales={() => setSubScreen("reports")}
+      />
+    );
   if (subScreen === "reports")
-    return <SalesReport onBack={() => setSubScreen("dashboard")} />;
+    return <SalesReport onBack={() => setSubScreen("reportsHome")} />;
   if (subScreen === "field")
-    return <FieldReport onBack={() => setSubScreen("dashboard")} />;
+    return <FieldReport onBack={() => setSubScreen("reportsHome")} />;
   if (subScreen === "products")
     return <ProductManager onBack={() => setSubScreen("dashboard")} />;
   if (subScreen === "parties")
@@ -628,6 +640,7 @@ export default function AdminDashboard() {
     leaves: "view_leave",
     reports: "view_reports",
     field: "view_reports",
+    reportsHome: "view_reports",
   };
 
   // The nav doubles as a status board: every row carries its own live number,
@@ -683,22 +696,17 @@ export default function AdminDashboard() {
             : "Nobody out",
       warn: pendingLeaveCount > 0,
     },
+    // One door instead of two. Field activity and the sales report both still
+    // exist and are unchanged — they were simply two tiles that sounded alike,
+    // so nobody knew which one held the answer they were after.
     {
-      name: "Field activity",
-      desc: "Attendance, meter readings and every visit remark",
-      screen: "field" as SubScreen,
+      name: "Reports",
+      desc: "Growth against last period, attendance, and every visit in detail",
+      screen: "reportsHome" as SubScreen,
       value: todayDuty.filter((d: any) => d.status === "active").length > 0
         ? `${todayDuty.filter((d: any) => d.status === "active").length} out now`
-        : todayDuty.length > 0
-          ? `${todayDuty.length} worked today`
-          : "Nobody out",
+        : `${visitsThisMonth} visits`,
       warn: todayDuty.filter((d: any) => d.status === "active").length > 0,
-    },
-    {
-      name: "Sales report",
-      desc: "Visits, orders and collections, by person or team",
-      screen: "reports" as SubScreen,
-      value: `${visitsThisMonth} visits`,
     },
     ...(appUser?.role === "super_admin"
       ? [{
