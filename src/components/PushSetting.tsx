@@ -96,6 +96,8 @@ export default function PushSetting() {
               setState(result)
               if (result === 'denied') setNote('Your browser refused. You can change that in its settings for this site.')
               if (result === 'unsupported') setNote('This device cannot receive them.')
+              // Nothing to do with the phone in front of them.
+              if (result === 'unconfigured') setNote('Notifications are not set up for this deployment — the Web Push key is missing. Nothing wrong with your device; somebody needs to add it and rebuild.')
               setBusy(false)
             }}>
               {busy ? 'Asking…' : 'Turn on notifications'}

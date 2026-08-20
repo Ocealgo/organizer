@@ -25,7 +25,15 @@ import { platform } from './platform'
 
 const TOKENS = 'push_tokens'
 
-export type PushState = 'unsupported' | 'default' | 'granted' | 'denied'
+/**
+ * `unconfigured` is deliberately not `unsupported`.
+ *
+ * A missing Web Push key is a deployment that was never finished; an
+ * unsupported device is a phone that cannot do this at all. Collapsing the two
+ * sends whoever is setting it up to debug a handset when the answer is an
+ * environment variable, so they are separate states with separate wording.
+ */
+export type PushState = 'unsupported' | 'unconfigured' | 'default' | 'granted' | 'denied'
 
 /**
  * Whether this browser can receive a push at all.
@@ -66,9 +74,11 @@ export async function enablePush(uid: string): Promise<PushState> {
   const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY
   if (!vapidKey) {
     // Without the Web Push certificate from the Firebase console there is no
-    // token to be had. Loud, because the failure is otherwise invisible.
+    // token to be had. Loud, because the failure is otherwise invisible — and
+    // note that VITE_ values are inlined at build time, so adding the variable
+    // does nothing until the site is rebuilt.
     console.error('[push] VITE_FIREBASE_VAPID_KEY is not set — no token can be issued')
-    return 'unsupported'
+    return 'unconfigured'
   }
 
   try {
