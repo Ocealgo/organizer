@@ -153,26 +153,36 @@ hand. Worth knowing before advances become routine.
 Shown to anybody without `approve_payments` — which by default is every rep
 **and every sales manager**. Admins get the confirmation queue instead.
 
-They are scoped differently, which is not obvious from looking at them, so each
-carries a `?`:
+**The first two cards mean whatever the person reading them is responsible
+for.** A rep carries a route, so they mean the rep. A sales manager oversees the
+team, so they mean the team — a manager's own collection is nearly always zero,
+and a card that reads ₹0 every day is worse than no card.
 
-| Card | Whose | Over what |
+| Card | A rep sees | A sales manager sees |
 |---|---|---|
-| **You collected** | yours alone — money *you* took from a shop | this calendar month |
-| **Awaiting confirmation** | yours alone — your receipts an admin has not ticked off | however old |
-| **Outstanding** | the whole book, the whole team | everything dispatched and unpaid |
+| **You collected** / **Team collected** | money you took from a shop, this calendar month | money anybody in sales took, this calendar month — with their own share on the line beneath, since a manager can spend a day in the field |
+| **Awaiting confirmation** | your receipts an admin has not ticked off | the team's, however old |
+| **Outstanding** | the whole book | the whole book — same for everyone |
 
-So a sales manager who does not personally collect cash sees ₹0 on the first
-card and a company-wide figure on the third. That is correct, not a fault.
+The third card cannot sensibly be anything but the book: nobody owns a party.
 
-"You collected" excludes money a party paid the company directly — a bank
-transfer is nobody's collection. It counts from the moment you record it, not
-from confirmation, so it does not sink when the office is slow.
+Both of the first two switch together. Mixing scopes within one row is what made
+this hard to read in the first place.
 
-> The middle card used to count **everybody's** unconfirmed receipts, sat
-> between two cards about you. It was also actionable by nobody who could see
-> it: the people who confirm a payment are admins, and admins never see these
-> cards. Now it is your own.
+**"The team" is everybody in sales**, because there are no reporting lines in
+the data — no `managerId` on a user, one sales team. If reps are ever assigned
+to a particular manager, this has to narrow, and the tooltip says "anybody in
+sales" so that nobody has been reading it as "mine" in the meantime.
+
+Neither collection card counts money a party paid the company directly. A bank
+transfer is nobody's collection. Both count from the moment the receipt is
+recorded rather than from confirmation, so the number does not sink when the
+office is slow.
+
+> The middle card used to count **everybody's** unconfirmed receipts no matter
+> who was reading, sitting between two cards about you. It was also actionable
+> by nobody who could see it: the people who confirm a payment are admins, and
+> admins never see these cards.
 
 That last one is numbers rather than an assertion. There used to be a "Credit
 limit checked" tick a rep had to flip on every distributor visit; nothing ever

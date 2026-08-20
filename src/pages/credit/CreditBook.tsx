@@ -15,7 +15,7 @@ import {
   CollectionType,
 } from "../../types";
 import { useAuth } from "../../context/AuthContext";
-import { can } from "../../auth/permissions";
+import { can, isSalesManager } from "../../auth/permissions";
 import { useTheme } from "../../context/ThemeContext";
 import { useConfirm } from "../../hooks/useConfirm";
 import { localDateStr } from "../../utils/date";
@@ -161,19 +161,49 @@ export default function CreditBook({ onBack, initialPartyId, focusPaymentId, sal
   ).length;
 
   const currentMonth = today.slice(0, 7)
-  const repCollectedThisMonth = payments
+
+  /**
+   * A manager reads these cards as the team; a rep reads them as themselves.
+   *
+   * Both cards switch together on purpose. Mixing the two scopes in one row is
+   * what made this hard to read in the first place — a manager whose own number
+   * is nearly always zero, sitting beside a figure that was not.
+   *
+   * "The team" is everybody, because there are no reporting lines in the data:
+   * one sales team, no managerId on a user. The day somebody is assigned to a
+   * particular manager this needs to narrow, and the tooltip says "everybody"
+   * so nobody has read it as "mine" in the meantime.
+   */
+  const seesTeam = isSalesManager(appUser)
+
+  /** Money a person carried in — never a transfer the party made to the company. */
+  const collectedByHand = (p: PaymentTransaction) =>
+    seesTeam ? !!p.collectedBy : p.collectedBy === appUser?.uid
+
+  const collectedThisMonth = payments
+    .filter(p => collectedByHand(p) && p.date?.startsWith(currentMonth) && p.status !== 'rejected')
+    .reduce((s, p) => s + p.amount, 0)
+  /** A manager who spent a day in the field has their own share in that total. */
+  const ownCollectedThisMonth = payments
     .filter(p => p.collectedBy === appUser?.uid && p.date?.startsWith(currentMonth) && p.status !== 'rejected')
     .reduce((s, p) => s + p.amount, 0)
-  // Your own receipts, not the book's. This used to count everybody's, which
-  // put a team-wide number between two cards that were about you — and it was
-  // actionable by nobody who could see it, since the people who confirm a
+
+  // Not the whole book. This used to count everybody's regardless of who was
+  // reading, which put a team-wide number between two cards about you — and it
+  // was actionable by nobody who could see it, since the people who confirm a
   // payment are admins and admins do not get these cards at all.
-  const repPending = payments.filter(p =>
+  const unconfirmed = payments.filter(p =>
     p.status === 'pending_approval'
-    && p.collectedBy === appUser?.uid
+    && collectedByHand(p)
     && directParties.some(d => d.id === p.partyId))
-  const repPendingCount = repPending.length
-  const repFirstPendingPartyId = repPending[0]?.partyId ?? null
+  const unconfirmedCount = unconfirmed.length
+  // The oldest, not the newest — a receipt that has sat there a fortnight is
+  // the one worth opening. Taken by comparison rather than by position: this
+  // list is sorted newest-first for display, and a card should not break
+  // because somebody changes how the list below it is ordered.
+  const oldestUnconfirmedPartyId = unconfirmed.length
+    ? unconfirmed.reduce((a, b) => (a.createdAt <= b.createdAt ? a : b)).partyId
+    : null
 
   // Per-party: determine overdue status client-side
   const isPartyOverdue = (partyId: string) =>
@@ -803,15 +833,27 @@ export default function CreditBook({ onBack, initialPartyId, focusPaymentId, sal
       <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 28 }}>
         {!isAdmin && (
           <StatGrid>
-            <StatCard value={money(repCollectedThisMonth)} label="You collected" context="This month"
-              explain={"Money you personally took from a shop this calendar month — not the team's, "
-                + "and not anything a party paid the company directly. Counted from the day you "
-                + "recorded it, whether or not an admin has confirmed it yet."} />
-            <StatCard value={repPendingCount} label="Awaiting confirmation"
-              context={repPendingCount > 0 ? "Tap below to review" : undefined}
-              explain={"How many of your own receipts an admin has not yet ticked off as reaching "
-                + "the company. The money is already off the shop's balance; this is the office "
-                + "confirming it arrived. Until then it is your word for it."} />
+            <StatCard
+              value={money(collectedThisMonth)}
+              label={seesTeam ? "Team collected" : "You collected"}
+              context={seesTeam && ownCollectedThisMonth > 0
+                ? `This month · ${money(ownCollectedThisMonth)} of it yours`
+                : "This month"}
+              explain={seesTeam
+                ? "Money anybody in sales carried in from a shop this calendar month, you "
+                  + "included. Not what a party paid the company directly — a bank transfer is "
+                  + "nobody's collection. Counted from the day it was recorded, whether or not an "
+                  + "admin has confirmed it yet."
+                : "Money you personally took from a shop this calendar month — not the team's, "
+                  + "and not anything a party paid the company directly. Counted from the day you "
+                  + "recorded it, whether or not an admin has confirmed it yet."} />
+            <StatCard value={unconfirmedCount} label="Awaiting confirmation"
+              context={unconfirmedCount > 0 ? "Tap below to review" : undefined}
+              explain={(seesTeam
+                ? "How many receipts the team has taken that an admin has not yet ticked off as "
+                : "How many of your own receipts an admin has not yet ticked off as ")
+                + "reaching the company. The money is already off the shop's balance; this is the "
+                + "office confirming it arrived. Only an admin can clear it."} />
             <StatCard value={money(totalOutstanding)} label="Outstanding" context="Across the book"
               explain={"What every shop in the book still owes Ocealgo — the whole team's, not "
                 + "yours. Counts dispatched credit bills only: an order not yet sent is a promise, "
@@ -819,17 +861,17 @@ export default function CreditBook({ onBack, initialPartyId, focusPaymentId, sal
           </StatGrid>
         )}
 
-        {!isAdmin && repPendingCount > 0 && repFirstPendingPartyId && (
+        {!isAdmin && unconfirmedCount > 0 && oldestUnconfirmedPartyId && (
           <div>
             <GhostButton
               onClick={() => {
                 setDeepLinked(false);
                 setAllocsCollapsed(false);
                 setPaymentsCollapsed(false);
-                setSelectedPartyId(repFirstPendingPartyId);
+                setSelectedPartyId(oldestUnconfirmedPartyId);
               }}
             >
-              Review the first pending payment
+              Review the oldest unconfirmed receipt
             </GhostButton>
           </div>
         )}
