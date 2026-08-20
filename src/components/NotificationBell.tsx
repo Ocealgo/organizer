@@ -91,9 +91,7 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 12px)', right: 0,
-          width: 'min(320px, calc(100vw - 40px))',
+        <div className="oc-popover" style={{
           background: t.bg2, border: `0.5px solid ${t.border}`, borderRadius: 8,
           overflow: 'hidden', zIndex: 1000,
         }}>
@@ -113,7 +111,7 @@ export default function NotificationBell() {
             )}
           </div>
 
-          <div style={{ maxHeight: 380, overflowY: 'auto' }}>
+          <div style={{ maxHeight: 380, overflowY: 'auto', flex: '1 1 auto', minHeight: 0 }}>
             {alerts.length === 0 ? (
               <div style={{ padding: '28px 20px' }}>
                 <div style={{ fontSize: 14, fontWeight: 500, color: t.text, marginBottom: 4 }}>

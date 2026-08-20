@@ -86,6 +86,34 @@
          opening rule, so the first row must not draw its own. */
       .oc-list-flush > :first-child { border-top: none !important; }
 
+      /* A panel hanging off a header button.
+         Anchored to the button on a wide screen, which is right there. On a
+         phone the bell is not at the edge of the screen — there is a Menu to
+         its right — so a 320px panel anchored to it runs off the left side and
+         gets clipped by the body's overflow-x, cutting the message in half.
+         Below the header breakpoint it anchors to the viewport instead.
+         Positioning lives here rather than inline because an inline style
+         cannot be overridden by a media query. */
+      .oc-popover {
+        position: absolute;
+        top: calc(100% + 12px);
+        right: 0;
+        width: min(320px, calc(100vw - 40px));
+      }
+      @media (max-width: 599px) {
+        .oc-popover {
+          position: fixed;
+          top: calc(env(safe-area-inset-top, 0px) + 58px);
+          left: 12px;
+          right: 12px;
+          width: auto;
+          /* And never taller than the screen it is sitting on. */
+          max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 80px);
+          display: flex;
+          flex-direction: column;
+        }
+      }
+
       /* Header responsive switch — the nav never wraps or overflows. */
       .oc-sm-only { display: none; }
       @media (max-width: 599px) {
