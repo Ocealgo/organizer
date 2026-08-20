@@ -13,6 +13,7 @@ import {
   PaymentTransaction,
   PaymentMethod,
   CollectionType,
+  advanceHeld,
 } from "../../types";
 import { useAuth } from "../../context/AuthContext";
 import { can, isSalesManager } from "../../auth/permissions";
@@ -455,6 +456,12 @@ export default function CreditBook({ onBack, initialPartyId, focusPaymentId, sal
         )
       : partyPaymentsRaw;
     const balance = outstandingBalance(selectedPartyId);
+    // Money this party handed over that never found a bill. Derived, not
+    // stored — see unappliedAmount(). Computed from the full payment list
+    // rather than partyPayments, which a rep's deep link narrows to their own.
+    const advance = advanceHeld(
+      payments.filter((p) => p.partyId === selectedPartyId),
+    );
     // Sum of active alloc totals (before any payments)
     const totalActiveCredit = creditAllocs.reduce((s, a) => s + a.totalAmount, 0);
     // Sum of paidAmount already applied across active allocs
@@ -487,6 +494,17 @@ export default function CreditBook({ onBack, initialPartyId, focusPaymentId, sal
               context={balance === 0 ? "Nothing owed" : undefined}
             />
           </StatGrid>
+
+          {advance > 0 && (
+            <Note>
+              <strong>{money(advance)} paid in advance.</strong> That much has been
+              received from {party.name} without landing on a bill — either it arrived
+              before the goods did, or a payment came in over what was owed.
+              {balance > 0
+                ? " It does not come off the outstanding above on its own. To settle a bill with it, use Mark paid on that bill rather than recording the money a second time."
+                : " It will not attach itself to the next bill either. When one arrives, use Mark paid on it rather than recording the money a second time."}
+            </Note>
+          )}
 
           {pendingPayments.length > 0 && (
             <Note tone="warn">
@@ -558,7 +576,19 @@ export default function CreditBook({ onBack, initialPartyId, focusPaymentId, sal
               </Section>
             ) : (
               <div>
-                <GhostButton onClick={() => setShowPayForm(true)}>Record a payment</GhostButton>
+                <GhostButton
+                  onClick={() => {
+                    // Start at the whole debt, because settling a bill in full
+                    // is the ordinary case and retyping a figure already on
+                    // screen is how a digit goes missing. Editable, and left
+                    // empty when nothing is owed so that an advance has to be
+                    // typed deliberately.
+                    setPayAmount(balance > 0 ? String(balance) : "");
+                    setShowPayForm(true);
+                  }}
+                >
+                  Record a payment
+                </GhostButton>
               </div>
             )
           )}

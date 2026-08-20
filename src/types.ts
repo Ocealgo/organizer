@@ -288,6 +288,32 @@ export interface PaymentTransaction {
   confirmedByName?: string
 }
 
+/**
+ * The part of a receipt that never landed on a bill.
+ *
+ * Settlement fills the oldest bills in turn and stops when they run out; the
+ * receipt keeps the full amount while `appliedTo` keeps only the part that
+ * found a home. The difference is an advance, and until somebody puts it
+ * against a bill by hand it is recorded in no balance anywhere.
+ *
+ * Receipts written before `appliedTo` existed are skipped rather than counted.
+ * Without a record of what a payment settled, its unapplied share is not
+ * knowable — and treating "no record" as "applied to nothing" would report
+ * every old receipt in the book as an advance.
+ *
+ * A rejected receipt holds nothing: its application was already unwound.
+ */
+export function unappliedAmount(p: PaymentTransaction): number {
+  if (p.status === 'rejected' || !Array.isArray(p.appliedTo)) return 0
+  const applied = p.appliedTo.reduce((s, a) => s + (a.amount || 0), 0)
+  return Math.max(0, (p.amount || 0) - applied)
+}
+
+/** Money this party has handed over that is sitting against no bill. */
+export function advanceHeld(payments: PaymentTransaction[]): number {
+  return payments.reduce((s, p) => s + unappliedAmount(p), 0)
+}
+
 export interface Dispatch {
   id?: string
   partyId: string

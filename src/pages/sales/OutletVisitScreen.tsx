@@ -6,7 +6,7 @@ import {
   AppUser, DutySession, OutletVisit, Party, Product, GeoPoint, LocationIssue,
   PaymentType, PaymentMethod, UnifiedAllocation, PaymentTransaction,
   OutletType, OUTLET_TYPE_LABEL, OUTLET_STOCK_LABEL,
-  VisitOutcomeCategory, VISIT_OUTCOME_LABEL, VISIT_OUTCOME_REASONS,
+  VisitOutcomeCategory, VISIT_OUTCOME_LABEL, VISIT_OUTCOME_REASONS, advanceHeld,
   NO_ORDER_CATEGORIES, SUGGESTED_REMARKS_LENGTH, validateVisitForPunchOut,
   CompetitorObservation, OutletStockLine,
 } from '../../types'
@@ -359,6 +359,9 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
     .filter(p => p.status !== 'rejected')
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, 5)
+
+  /** Already handed over, sitting against no bill. Do not ask for it twice. */
+  const advance = advanceHeld(payments)
 
   const payValue = parseFloat(payAmount)
   const payProblem = !payAmount.trim() ? null
@@ -1017,7 +1020,15 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
             )}
 
             <div style={{ marginTop: 12 }}>
-              <ToggleRow label="Collected a payment" value={collecting} onChange={setCollecting} />
+              <ToggleRow label="Collected a payment" value={collecting}
+                onChange={on => {
+                  // Open it holding the whole debt. A rep settling a bill in
+                  // full is the ordinary case, and copying a figure that is
+                  // already on the screen is how a digit gets dropped. Left
+                  // empty when nothing is owed, so an advance is deliberate.
+                  if (on && !payAmount) setPayAmount(outstanding > 0 ? String(outstanding) : '')
+                  setCollecting(on)
+                }} />
             </div>
 
             {/* Taking money against no bill is a real thing — an advance, or
@@ -1029,6 +1040,14 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
                 Nothing is owed right now, so this is recorded as an advance. It is not
                 applied to any bill — including an order booked here today, which is not
                 dispatched yet — so somebody will settle it against one later.
+              </div>
+            )}
+
+            {advance > 0 && (
+              <div style={{ fontSize: 12, color: t.text2, lineHeight: 1.6, marginTop: 10 }}>
+                ₹{advance.toLocaleString('en-IN')} of what they have already paid is not
+                against any bill. It stays that way until the office puts it against one,
+                so do not count it off what is owed above.
               </div>
             )}
 
