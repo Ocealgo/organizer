@@ -316,6 +316,23 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
   const outstanding = openBills.reduce(
     (sum, a) => sum + Math.max(0, (a.totalAmount || 0) - (a.paidAmount || 0)), 0)
   const overdueCount = openBills.filter(a => a.status === 'overdue').length
+
+  /**
+   * Whether to ask about money at this shop at all.
+   *
+   * The rule is who owes Ocealgo, and that is normally a distributor or a
+   * retailer standing on its own — a retailer under a distributor buys from
+   * that distributor and settles with them, so there is nothing here for a rep
+   * to collect and asking would be wrong.
+   *
+   * Normally, but not always. The order form offers "Ocealgo — direct from the
+   * company" for every shop, including one that sits under a distributor, so a
+   * shop can carry a company bill without matching the shape of a direct
+   * customer. Deciding purely on the shape hid that debt from the only person
+   * standing in front of it. So the debt itself is the deciding fact, and the
+   * party type is only what is expected in the absence of one.
+   */
+  const showMoney = isDirectCustomer || openBills.length > 0
   const creditLimit = visitedParty?.creditLimit
   const headroom = creditLimit !== undefined ? creditLimit - outstanding : null
 
@@ -449,7 +466,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
         competitors,
         // The credit position as it stood, captured rather than attested. Only
         // for the people who can owe the company anything.
-        ...(isDirectCustomer ? {
+        ...(showMoney ? {
           creditOutstandingAtVisit: outstanding,
           ...(creditLimit !== undefined ? { creditLimitAtVisit: creditLimit } : {}),
         } : {}),
@@ -945,7 +962,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
             retailers standing on their own. A retailer under a distributor
             buys from that distributor and settles with them, so there is
             nothing here for a rep to collect and asking would be wrong. */}
-        {isDirectCustomer && (
+        {showMoney && (
           <div>
             <div style={{ marginBottom: 10 }}><Eyebrow>Money</Eyebrow></div>
 
