@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(npx tsc *)",
-      "Bash(grep -rn \"confirm\\\\\\(\\\\\\\\|alert\\\\\\(\" \"d:\\\\ocealgo\\\\organiser\\\\ocealgo-app\\\\ocealgo-team\\\\src\")"
+      "Bash(grep -rn \"confirm\\\\\\(\\\\\\\\|alert\\\\\\(\" \"d:\\\\ocealgo\\\\organiser\\\\ocealgo-app\\\\ocealgo-team\\\\src\")",
+      "Bash(echo \"== tsc exit: $?\")",
+      "PowerShell(cd \"d:\\\\ocealgo\\\\git-repositories\\\\organizer\"; npx firebase emulators:exec --only firestore --project demo-ocealgo 'node verify-rules.mjs' 2>&1 | Select-String \"PASS|FAIL|phone must|the rest of\" | ForEach-Object { $_.Line.Trim\\(\\) })"
     ]
   }
 }
