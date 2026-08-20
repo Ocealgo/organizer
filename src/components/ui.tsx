@@ -100,15 +100,62 @@ export function StatGrid({ children }: { children: ReactNode }) {
   return <div className="oc-stats">{children}</div>
 }
 
-export function StatCard({ value, label, context }: {
-  value: ReactNode; label: string; context?: string
+/**
+ * The "what does this actually count?" dot.
+ *
+ * A span rather than a button because some of the things it sits inside are
+ * already buttons, and a button inside a button is not valid HTML. It carries
+ * `title` for a mouse and toggles a line of text for a phone, which has no
+ * hover at all — the phone is where most of this app is read.
+ */
+export function ExplainDot({ label, text, open, onToggle }: {
+  label: string; text: string; open: boolean; onToggle: () => void
 }) {
   const { t } = useTheme()
   return (
+    <span
+      role="button"
+      aria-label={`What ${label} means`}
+      title={text}
+      onClick={e => { e.stopPropagation(); onToggle() }}
+      style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: 16, height: 16, marginLeft: 6, borderRadius: '50%',
+        border: `0.5px solid ${open ? t.text3 : t.border2}`,
+        color: t.text3, fontSize: 10, lineHeight: 1,
+        verticalAlign: 'middle', cursor: 'help', flexShrink: 0,
+      }}
+    >?</span>
+  )
+}
+
+export function StatCard({ value, label, context, explain }: {
+  value: ReactNode; label: string; context?: string
+  /**
+   * What the number counts, in a sentence — specifically whose money and over
+   * what period. Three cards in a row can each be scoped differently and look
+   * identical, which is exactly how somebody reads the middle one wrong.
+   */
+  explain?: string
+}) {
+  const { t } = useTheme()
+  const [open, setOpen] = useState(false)
+  return (
     <div style={{ background: t.tint, borderRadius: 6, padding: '16px 16px 14px' }}>
       <div style={{ fontSize: 26, fontWeight: 500, color: t.text, lineHeight: 1.1 }}>{value}</div>
-      <div style={{ fontSize: 13, fontWeight: 400, color: t.text, marginTop: 6 }}>{label}</div>
+      <div style={{ fontSize: 13, fontWeight: 400, color: t.text, marginTop: 6 }}>
+        {label}
+        {explain && <ExplainDot label={label} text={explain} open={open} onToggle={() => setOpen(v => !v)} />}
+      </div>
       {context && <div style={{ fontSize: 12, color: t.text3, marginTop: 2 }}>{context}</div>}
+      {explain && open && (
+        <div style={{
+          fontSize: 12, color: t.text2, marginTop: 10, lineHeight: 1.55,
+          borderTop: `0.5px solid ${t.border}`, paddingTop: 10,
+        }}>
+          {explain}
+        </div>
+      )}
     </div>
   )
 }
@@ -156,18 +203,8 @@ export function ListRow({ title, desc, value, warn, onClick, disabled, explain }
         <span style={{ display: 'block', fontSize: 15, fontWeight: 500, color: t.text }}>
           {title}
           {explain && (
-            <span
-              role="button"
-              aria-label={`What ${title} means`}
-              title={explain}
-              onClick={e => { e.stopPropagation(); setShowExplain(v => !v) }}
-              style={{
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                width: 16, height: 16, marginLeft: 7, borderRadius: '50%',
-                border: `0.5px solid ${t.border2}`, color: t.text3,
-                fontSize: 10, lineHeight: 1, verticalAlign: 'middle', cursor: 'help',
-              }}
-            >?</span>
+            <ExplainDot label={title} text={explain} open={showExplain}
+              onToggle={() => setShowExplain(v => !v)} />
           )}
         </span>
         {desc && (

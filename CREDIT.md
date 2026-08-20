@@ -148,6 +148,32 @@ hand. Worth knowing before advances become routine.
 | Which receipts are unconfirmed | **Credit book** — pending approval |
 | What this shop owed on the day of a visit | the visit record itself — `creditOutstandingAtVisit` and `creditLimitAtVisit`, captured at punch-out |
 
+### The three cards at the top of Credit book
+
+Shown to anybody without `approve_payments` — which by default is every rep
+**and every sales manager**. Admins get the confirmation queue instead.
+
+They are scoped differently, which is not obvious from looking at them, so each
+carries a `?`:
+
+| Card | Whose | Over what |
+|---|---|---|
+| **You collected** | yours alone — money *you* took from a shop | this calendar month |
+| **Awaiting confirmation** | yours alone — your receipts an admin has not ticked off | however old |
+| **Outstanding** | the whole book, the whole team | everything dispatched and unpaid |
+
+So a sales manager who does not personally collect cash sees ₹0 on the first
+card and a company-wide figure on the third. That is correct, not a fault.
+
+"You collected" excludes money a party paid the company directly — a bank
+transfer is nobody's collection. It counts from the moment you record it, not
+from confirmation, so it does not sink when the office is slow.
+
+> The middle card used to count **everybody's** unconfirmed receipts, sat
+> between two cards about you. It was also actionable by nobody who could see
+> it: the people who confirm a payment are admins, and admins never see these
+> cards. Now it is your own.
+
 That last one is numbers rather than an assertion. There used to be a "Credit
 limit checked" tick a rep had to flip on every distributor visit; nothing ever
 read it, and it recorded that somebody said they looked rather than what they

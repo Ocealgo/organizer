@@ -26,7 +26,7 @@ import ReportsHome from "../reports/ReportsHome";
 import OpportunitiesScreen from "../reports/OpportunitiesScreen";
 import FieldReport from "./FieldReport";
 import {
-  Eyebrow, PageHeader, Section, StatGrid, StatCard, EmptyState,
+  Eyebrow, PageHeader, Section, StatGrid, StatCard, EmptyState, ExplainDot,
   Field, GhostButton, PrimaryButton, inputStyle,
 } from "../../components/ui";
 import StockManager from "../stock/StockManager";
@@ -1008,32 +1008,14 @@ export default function AdminDashboard() {
                     >
                       {m.name}
                       {(m as any).explain && (
-                        <span
-                          role="button"
-                          aria-label={`What ${m.name} means`}
-                          title={(m as any).explain}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setExplaining(explaining === m.screen ? null : m.screen);
-                          }}
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            width: 16,
-                            height: 16,
-                            marginLeft: 7,
-                            borderRadius: "50%",
-                            border: `0.5px solid ${t.border2}`,
-                            color: t.text3,
-                            fontSize: 10,
-                            lineHeight: 1,
-                            verticalAlign: "middle",
-                            cursor: "help",
-                          }}
-                        >
-                          ?
-                        </span>
+                        <ExplainDot
+                          label={m.name}
+                          text={(m as any).explain}
+                          open={explaining === m.screen}
+                          onToggle={() =>
+                            setExplaining(explaining === m.screen ? null : m.screen)
+                          }
+                        />
                       )}
                     </span>
                     <span

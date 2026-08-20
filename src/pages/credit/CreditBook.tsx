@@ -164,8 +164,16 @@ export default function CreditBook({ onBack, initialPartyId, focusPaymentId, sal
   const repCollectedThisMonth = payments
     .filter(p => p.collectedBy === appUser?.uid && p.date?.startsWith(currentMonth) && p.status !== 'rejected')
     .reduce((s, p) => s + p.amount, 0)
-  const repPendingCount = payments.filter(p => p.status === 'pending_approval' && directParties.some(d => d.id === p.partyId)).length
-  const repFirstPendingPartyId = payments.find(p => p.status === 'pending_approval' && directParties.some(d => d.id === p.partyId))?.partyId ?? null
+  // Your own receipts, not the book's. This used to count everybody's, which
+  // put a team-wide number between two cards that were about you — and it was
+  // actionable by nobody who could see it, since the people who confirm a
+  // payment are admins and admins do not get these cards at all.
+  const repPending = payments.filter(p =>
+    p.status === 'pending_approval'
+    && p.collectedBy === appUser?.uid
+    && directParties.some(d => d.id === p.partyId))
+  const repPendingCount = repPending.length
+  const repFirstPendingPartyId = repPending[0]?.partyId ?? null
 
   // Per-party: determine overdue status client-side
   const isPartyOverdue = (partyId: string) =>
@@ -795,10 +803,19 @@ export default function CreditBook({ onBack, initialPartyId, focusPaymentId, sal
       <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 28 }}>
         {!isAdmin && (
           <StatGrid>
-            <StatCard value={money(repCollectedThisMonth)} label="You collected" context="This month" />
+            <StatCard value={money(repCollectedThisMonth)} label="You collected" context="This month"
+              explain={"Money you personally took from a shop this calendar month — not the team's, "
+                + "and not anything a party paid the company directly. Counted from the day you "
+                + "recorded it, whether or not an admin has confirmed it yet."} />
             <StatCard value={repPendingCount} label="Awaiting confirmation"
-              context={repPendingCount > 0 ? "Tap below to review" : undefined} />
-            <StatCard value={money(totalOutstanding)} label="Outstanding" context="Across the book" />
+              context={repPendingCount > 0 ? "Tap below to review" : undefined}
+              explain={"How many of your own receipts an admin has not yet ticked off as reaching "
+                + "the company. The money is already off the shop's balance; this is the office "
+                + "confirming it arrived. Until then it is your word for it."} />
+            <StatCard value={money(totalOutstanding)} label="Outstanding" context="Across the book"
+              explain={"What every shop in the book still owes Ocealgo — the whole team's, not "
+                + "yours. Counts dispatched credit bills only: an order not yet sent is a promise, "
+                + "and stock a distributor sends its own retailer was never our money."} />
           </StatGrid>
         )}
 
