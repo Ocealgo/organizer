@@ -30,18 +30,23 @@ is checked on the field paths at all.
 
 **Where, and they behave differently:**
 
-| Path | Screen | Due date set? | Credit limit checked? |
-|---|---|---|---|
-| In a shop | Log a visit → Order | ✅ +30 days | ✅ warns, then allows |
-| Phone / WhatsApp | Remote contact | ✅ +30 days | ❌ |
-| At a desk | Allocations → New | ✅ editable, defaults 30 | ❌ |
-| Revisit (older flow) | Revisit logger | ❌ **none** | ❌ |
+| Path | Screen | Due date set? |
+|---|---|---|
+| In a shop | Log a visit → Order | ✅ +30 days |
+| Phone / WhatsApp | Remote contact | ✅ +30 days |
+| At a desk | Allocations → New | ✅ editable, defaults 30 |
+| Revisit (older flow) | Revisit logger | ❌ **none** |
+
+Nothing caps what a party may owe — see
+[CREDIT.md](CREDIT.md#there-is-no-limit--and-that-is-deliberate). A rep is shown
+the outstanding balance before they ask for an order, and that is the whole of
+it.
 
 The order is written `status: 'pending'`, the stock is **locked** but not
 removed, and management gets a `new_allocation` alert.
 
 **Nothing is owed yet.** A pending order is a promise. It does not appear in
-Outstanding, does not age, and does not count against the credit limit.
+Outstanding and does not age.
 
 **The rep cannot dispatch their own order.** They see *"Waiting for an admin to
 dispatch this."*
@@ -62,8 +67,7 @@ This is the step that creates the debt. In one transaction it:
 - adds them to the party's stock
 - writes a stock ledger line
 
-From this moment the amount is owed, appears in Outstanding, counts against the
-credit limit, and starts ageing.
+From this moment the amount is owed, appears in Outstanding, and starts ageing.
 
 > **The due date does not move.** It was fixed when the order was raised — 30
 > days from the *planned* date, not from the day it actually shipped. If
@@ -137,9 +141,9 @@ balance reappears. The receipt is marked `rejected` and stops counting.
 
 Daily, in the field. Nothing here needs a permission.
 
-- Raise orders. Prefer **Log a visit → Order** over the other paths: it is the
-  only one that checks the credit limit and tells you before you commit.
-- Read the shop's outstanding and headroom before asking for a bigger order.
+- Raise orders. Prefer **Log a visit → Order** over the other paths — it is the
+  one that shows you the shop's position while you are standing in it.
+- Read the shop's outstanding before asking for a bigger order.
 - Collect money and record it the same day, at the shop.
 - If you take money for an order that has not shipped yet, expect the balance
   not to move. That is an advance, and somebody applies it by hand later.
@@ -155,8 +159,6 @@ So the manager's job here is oversight, not action:
 - Watch **Team collected** and **Awaiting confirmation** in the Credit book —
   both are the whole team's for a manager.
 - Chase reps on overdue balances; chase admins on receipts sitting unconfirmed.
-- Escalate a shop that needs a bigger credit limit — a manager cannot change it,
-  and neither can anybody else in the app (see below).
 
 An admin can grant a manager `dispatch_allocations`, `mark_paid` or
 `approve_payments` individually, in User management. Two cautions before doing
@@ -164,6 +166,9 @@ so — a manager granted `dispatch_allocations` gets a **Mark paid** button that
 fails, because that button checks the wrong permission; and a manager who works
 a field day and collects cash will **half-record** it. Both are detailed at the
 bottom.
+
+A manager cannot cap what a shop owes, and neither can anyone else — there are
+no credit limits in this app.
 
 ### Admin
 
@@ -187,25 +192,6 @@ What only a super admin can do sits around the edges:
 - Delete users
 - Write `config/settings`
 - Delete the dispatch, ledger and stock-movement audit records
-
----
-
-## Nobody owns the credit limit
-
-`Party.creditLimit` is read in the visit screen — it drives the over-limit
-warning, the headroom line and the `credit_limit_exceeded` alert — and **it is
-never written anywhere in the app.** There is no field for it in Party manager,
-none in the CSV importer, none in any admin screen. Every reference in `src/` is
-a read.
-
-The rules reserve it for admins, so the *permission* story is right. The screen
-behind it was never built. Today the only way to set a limit is the Firebase
-console.
-
-Practical effect: unless somebody has set limits by hand, `creditLimit` is
-undefined for every party, the over-limit check never fires, and
-`credit_limit_exceeded` never sends. Nothing is broken and nothing warns — the
-feature is simply dormant.
 
 ---
 
@@ -250,4 +236,4 @@ split of field versus office orders is wrong.
 
 **The revisit flow bypasses the shared order writer.** It locks stock it never
 records, writes no due date — so those credit bills never age — and skips the
-credit-limit check and the `new_allocation` alert entirely.
+`new_allocation` alert entirely.

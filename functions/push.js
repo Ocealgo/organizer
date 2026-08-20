@@ -122,7 +122,6 @@ function titleFor(alert) {
     case 'leave_requested': return 'Leave to approve'
     case 'expense_submitted': return 'Expenses'
     case 'credit_settlement': return 'Cash collected'
-    case 'credit_limit_exceeded': return 'Past a credit limit'
     case 'duty_auto_closed': return 'A day was left open'
     case 'party_pin_moved': return 'A shop moved'
     case 'new_allocation': return 'New order'

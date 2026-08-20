@@ -353,24 +353,12 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
    * party type is only what is expected in the absence of one.
    */
   const showMoney = isDirectCustomer || openBills.length > 0
-  const creditLimit = visitedParty?.creditLimit
-  const headroom = creditLimit !== undefined ? creditLimit - outstanding : null
 
   /** What has been taken off this shop lately, newest first. */
   const recentPayments = payments
     .filter(p => p.status !== 'rejected')
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, 5)
-
-  /**
-   * Would this order take them past what they are allowed to owe?
-   *
-   * Only Ocealgo's own credit counts. A cash order is settled on the spot, and
-   * a distributor supplying their own retailer is not the company's exposure.
-   */
-  const wouldOwe = outstanding + orderTotal
-  const overLimit = creditLimit !== undefined && !orderSource
-    && orderPayment === 'credit' && orderTotal > 0 && wouldOwe > creditLimit
 
   const payValue = parseFloat(payAmount)
   const payProblem = !payAmount.trim() ? null
@@ -488,7 +476,6 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
         // for the people who can owe the company anything.
         ...(showMoney ? {
           creditOutstandingAtVisit: outstanding,
-          ...(creditLimit !== undefined ? { creditLimitAtVisit: creditLimit } : {}),
         } : {}),
         ...extra,
         remarksCategory: category,
@@ -518,20 +505,6 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
   async function placeOrder() {
     if (!visit || !visitedParty || !orderProduct || orderProblem) return
 
-    // Told before, not refused. The rep is standing in the shop and cannot
-    // wait on the office to raise a number; refusing would cost the sale
-    // without collecting a rupee of the debt. So it is a deliberate act.
-    if (overLimit) {
-      const ok = await showConfirm(
-        'This goes past their credit limit',
-        `${visitedParty.name} owes ₹${outstanding.toLocaleString('en-IN')} and this adds ₹${orderTotal.toLocaleString('en-IN')}, ` +
-        `taking them to ₹${wouldOwe.toLocaleString('en-IN')} against a limit of ₹${creditLimit!.toLocaleString('en-IN')}.\n\n` +
-        'You can book it. The admin team is told, and the order carries the fact.',
-        'Book it anyway',
-      )
-      if (!ok) return
-    }
-
     setPlacingOrder(true); setError(null)
     try {
       const id = await bookAllocation({
@@ -550,7 +523,6 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
         notes: 'Booked during an outlet visit',
         by: appUser,
         packetsPerCarton: orderProduct.unitsPerCarton || 1,
-        overCreditLimit: overLimit,
       })
 
       const ids = [...(visit.allocationIds ?? (visit.allocationId ? [visit.allocationId] : [])), id]
@@ -972,14 +944,6 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
                 </>
               )}
 
-              {overLimit && (
-                <div style={{ fontSize: 12, color: t.warn, lineHeight: 1.6 }}>
-                  This takes them to ₹{wouldOwe.toLocaleString('en-IN')} owed against a
-                  ₹{creditLimit!.toLocaleString('en-IN')} limit. You can still book it — the
-                  admin team is told, and the order carries the fact.
-                </div>
-              )}
-
               <div>
                 <PrimaryButton onClick={placeOrder}
                   disabled={!orderProduct || !!orderProblem || isNaN(orderPackets) || orderPackets <= 0 || placingOrder}
@@ -1017,13 +981,6 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
                   ? 'Nothing owed. Their bills are settled.'
                   : `Across ${openBills.length} ${openBills.length === 1 ? 'bill' : 'bills'}` +
                     (overdueCount > 0 ? ` · ${overdueCount} past the due date` : '')}
-                {creditLimit !== undefined && headroom !== null && (
-                  <div style={{ marginTop: 3, color: headroom < 0 ? t.warn : t.text3 }}>
-                    {headroom < 0
-                      ? `Over their ₹${creditLimit.toLocaleString('en-IN')} limit by ₹${Math.abs(headroom).toLocaleString('en-IN')}.`
-                      : `₹${headroom.toLocaleString('en-IN')} left of a ₹${creditLimit.toLocaleString('en-IN')} limit.`}
-                  </div>
-                )}
               </div>
             </div>
 

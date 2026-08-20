@@ -84,7 +84,6 @@ Reaches **admin, super admin and every sales manager**.
 | `expense_submitted` | *Ravi declared nothing to claim for w/c 8 Sep* | a nil return is declared |
 | `credit_settlement` | *₹5,000 collected from Anand Stores by Ravi during a visit* | cash taken on a visit — `OutletVisitScreen.tsx` |
 | `credit_settlement` | *₹5,000 cash collected from Anand Stores by Ravi (UPI)* | cash taken on a revisit — `RevisitLogger.tsx` |
-| `credit_limit_exceeded` | *Ravi booked ₹18,000 for Anand Stores, which is past their credit limit* | an order crosses the limit and the rep goes ahead — `bookAllocation.ts` |
 | `new_allocation` | *New allocation: 120 packets of Baby Wet Wipes to Anand Stores, from Ocealgo* | any order is raised, anywhere — `bookAllocation.ts` |
 | `new_party` | *Ravi added retailer: Kumar Medicals during a field visit* | an outlet is added mid-visit — `QuickAddParty.tsx` |
 | `new_party` | *Ravi added retailer: Kumar Medicals — needs 5 cartons* | a rep adds an outlet from Network — `PartyManager.tsx` |
@@ -115,6 +114,9 @@ locally and ignores this.
   are worth interrupting somebody for.
 - **`toRole: "everyone"` is never written.** If you find yourself wanting it,
   ask whether it is really for everyone or just for management.
+- **Nothing is sent about a credit limit.** There used to be a
+  `credit_limit_exceeded` alert. Limits were removed — see
+  [CREDIT.md](CREDIT.md) — and it went with them.
 
 ---
 

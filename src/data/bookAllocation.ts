@@ -42,11 +42,6 @@ export interface BookOrderArgs {
   by: AppUser
   /** Packets per carton, for the alert wording. */
   packetsPerCarton: number
-  /**
-   * Set when the caller has established this order takes the party past their
-   * credit limit and the person raising it has said to go ahead anyway.
-   */
-  overCreditLimit?: boolean
   /** Where the order was taken. Defaults to the shop floor. */
   channel?: OrderChannel
 }
@@ -60,7 +55,7 @@ export interface BookOrderArgs {
 export async function bookAllocation(args: BookOrderArgs): Promise<string> {
   const {
     party, product, packets, supplier, paymentType, plannedDate,
-    creditDueDate, notes, by, packetsPerCarton, overCreditLimit, channel,
+    creditDueDate, notes, by, packetsPerCarton, channel,
   } = args
 
   const fromCompany = !supplier
@@ -86,7 +81,6 @@ export async function bookAllocation(args: BookOrderArgs): Promise<string> {
     createdBy: by.uid, createdByName: by.name,
     createdAt: Date.now(), month: planned.slice(0, 7),
     lockedAtCreation: fromCompany,
-    ...(overCreditLimit ? { overCreditLimit: true } : {}),
     // Always written, so absence means "raised before anyone was asked" rather
     // than "raised in a shop". A report that guesses the difference is worse
     // than one that admits it does not know.
@@ -108,18 +102,6 @@ export async function bookAllocation(args: BookOrderArgs): Promise<string> {
     relatedId: ref.id, toRole: 'admin_group',
     read: false, createdAt: Date.now(),
   })
-
-  // Its own alert, because it is its own event. Somebody in the office should
-  // hear that a limit was crossed on the day it was crossed, rather than find
-  // it in a balance a month later.
-  if (overCreditLimit) {
-    await addDoc(collection(db, 'alerts'), {
-      type: 'credit_limit_exceeded',
-      message: `${by.name} booked ₹${(packets * price).toLocaleString('en-IN')} for ${party.name}, which is past their credit limit`,
-      relatedId: ref.id, toRole: 'admin_group',
-      read: false, createdAt: Date.now(),
-    })
-  }
 
   // An outlet that has ordered is no longer a prospect.
   await updateDoc(doc(db, 'parties', party.id!), { status: 'active' })

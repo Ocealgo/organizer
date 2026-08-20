@@ -375,15 +375,10 @@ describe('parties', () => {
     await assertFails(updateDoc(doc(asUser(U.rep), 'parties', 'p1'), { pricePerPacket: 1 }))
   })
 
-  it('a rep CANNOT change a party credit limit', async () => {
-    await seed((db) => setDoc(doc(db, 'parties', 'p1'), party()))
-    await assertFails(updateDoc(doc(asUser(U.rep), 'parties', 'p1'), { creditLimit: 999999 }))
-  })
-
-  it('an admin CAN set the commercial terms', async () => {
+  it('an admin CAN set the price a party is charged', async () => {
     await seed((db) => setDoc(doc(db, 'parties', 'p1'), party()))
     await assertSucceeds(updateDoc(doc(asUser(U.admin), 'parties', 'p1'),
-      { pricePerPacket: 45, creditLimit: 100000 }))
+      { pricePerPacket: 45 }))
   })
 
   it('a rep CANNOT delete a party', async () => {

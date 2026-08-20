@@ -167,7 +167,6 @@ export interface Party {
   coordinatesHistory?: PinChange[]
   contactPersonName?: string       // hospitals / institutional
   contactPersonRole?: string
-  creditLimit?: number             // distributors — checked before order booking
 }
 
 /** How a shop's position came to be where it is. */
@@ -468,7 +467,7 @@ export interface Alert {
     | 'new_party' | 'credit_settlement' | 'low_stock' | 'stock_dispatched'
     | 'new_allocation' | 'visit_log_submitted' | 'leave_requested'
     | 'leave_approved' | 'visit_share_requested' | 'expense_submitted'
-    | 'duty_auto_closed' | 'party_pin_moved' | 'credit_limit_exceeded'
+    | 'duty_auto_closed' | 'party_pin_moved'
   message: string; relatedId: string; read: boolean; createdAt: number
 
   /**
@@ -586,7 +585,6 @@ export interface UnifiedAllocation {
    * debt. So it goes through, the rep is told what they are doing before they
    * do it, an admin is told after, and the allocation carries the fact.
    */
-  overCreditLimit?: boolean
 
   /**
    * How this order came about.
@@ -1170,7 +1168,6 @@ export interface OutletVisit {
    * shows the real figures and captures them below, which is the thing the
    * tick was standing in for. Kept only so old visits still parse.
    */
-  creditLimitChecked?: boolean
 
   /**
    * The credit position as it actually stood when this visit closed.
@@ -1179,7 +1176,6 @@ export interface OutletVisit {
    * limit being changed afterwards, which is exactly when somebody wants to
    * know what it was on the day.
    */
-  creditLimitAtVisit?: number
   creditOutstandingAtVisit?: number
 
   // Visit outcome (spec §5). The category is required at punch-out; the

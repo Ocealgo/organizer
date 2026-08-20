@@ -201,12 +201,10 @@ service cloud.firestore {
 
       // Reps legitimately update parties: status → active on order, stock.*
       // on a revisit stock update, coordinates on a first visit, and inline
-      // field edits. They may not touch the commercial terms — the price they
-      // are charged and their credit limit are an admin's to set, and no screen
-      // outside admin even offers those fields.
+      // field edits. They may not touch the price they are charged — that is
+      // an admin's to set, and no screen outside admin offers the field.
       allow update: if approved()
-        && (isAdmin()
-            || (isUnchanged('pricePerPacket') && isUnchanged('creditLimit')));
+        && (isAdmin() || isUnchanged('pricePerPacket'));
 
       allow delete: if hasPerm('delete_parties');
     }
