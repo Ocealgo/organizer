@@ -21,6 +21,32 @@ export default function UpdatePrompt() {
     updateServiceWorker,
   } = useRegisterSW({
     onRegisterError(e) { console.error('[pwa] service worker registration failed', e) },
+
+    /**
+     * Ask whether there is a new version, on the two occasions it matters.
+     *
+     * The browser only re-fetches the worker on a navigation, and an installed
+     * app hardly ever navigates — people background it and resume it from the
+     * switcher, which is not a page load. So a phone could sit on a build from
+     * last week and never once look, which is exactly the case this whole
+     * prompt exists for.
+     *
+     * Coming back to the foreground is the honest trigger: it is when somebody
+     * has just picked the phone up, before they have started anything they
+     * could lose. The hourly timer is only there for the app left open all day
+     * on a desk.
+     */
+    onRegisteredSW(_url, registration) {
+      if (!registration) return
+
+      const check = () => { void registration.update().catch(() => { /* offline */ }) }
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') check()
+      })
+      window.addEventListener('online', check)
+      setInterval(check, 60 * 60 * 1000)
+    },
   })
 
   if (!needRefresh) return null
