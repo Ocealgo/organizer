@@ -435,6 +435,21 @@ export interface ExpenseEntry {
    */
   allowanceFromKm?: number
   allowanceSuggested?: AllowanceType
+
+  /**
+   * Why money was spent on a day with no duty session at all.
+   *
+   * Reimbursements are not refused on a day nobody worked, because the days
+   * that go wrong are exactly the expensive ones — a rep travelling the
+   * evening before an outstation market, or one who broke down on the way and
+   * never reached their territory to punch in. Refusing those would not stop
+   * the spending, it would only move the argument to WhatsApp.
+   *
+   * So it is told, recorded and flagged rather than prevented, the same trade
+   * an over-limit order gets. Present here means an admin should read the line
+   * before clearing it.
+   */
+  noDutyReason?: string
   /**
    * The ₹/km in force when this was claimed, copied onto the entry rather than
    * looked up later. A manager changing the rate must not restate what has

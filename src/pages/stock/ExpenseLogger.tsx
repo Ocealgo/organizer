@@ -190,7 +190,7 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
   const [weekStart, setWeekStart] = useState(getWeekStart())
   const [selectedDay, setSelectedDay] = useState(localDateStr())
   const [addVarDay, setAddVarDay] = useState<string | null>(null)
-  const [varForm, setVarForm] = useState({ category: 'bus_fare' as ExpenseCategory, amount: '', km: '', customLabel: '', notes: '' })
+  const [varForm, setVarForm] = useState({ category: 'bus_fare' as ExpenseCategory, amount: '', km: '', customLabel: '', notes: '', noDutyReason: '' })
   const [addDaDay, setAddDaDay] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [csvMode, setCsvMode] = useState(false)
@@ -305,6 +305,19 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
     sessions.find(s => s.date === date && s.status === 'closed') ?? null
 
   /**
+   * Whether they were at work that day at all — a lower bar than `dayWorked`,
+   * and deliberately so.
+   *
+   * The allowance is payment for a completed day, so it wants a punch-out.
+   * Money already spent only wants somebody to have been working: punching in
+   * happens at the start of the day on a fresh phone, while punching out is
+   * the tap that gets forgotten or lost to a flat battery at six. Holding a
+   * bus fare hostage to the second would be a penalty for a clerical slip
+   * rather than a rule about work.
+   */
+  const presentOn = (date: string) => sessions.some(s => s.date === date)
+
+  /**
    * Which allowance the day's distance points at.
    *
    * HQ and EX are already defined by a distance — within or beyond 25 km — so
@@ -382,6 +395,15 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
     const amount = fuelByDistance ? round2(km * fuelRate!) : parseFloat(varForm.amount)
     if (isNaN(amount) || amount <= 0) { await showAlert('Amount needed', 'Enter an amount above zero.'); return }
 
+    // Spending on a day with no duty session is allowed and is not silent. The
+    // reason is required, kept on the entry, and flagged to whoever clears it.
+    const away = !presentOn(addVarDay)
+    if (away && varForm.noDutyReason.trim().length < 5) {
+      await showAlert('Say why',
+        `There is no working day on record for ${fmtDate(addVarDay)}. You can still claim what you spent — write a line saying why, and an admin will see it when they clear the week.`)
+      return
+    }
+
     const rpt = await getOrCreateReport()
     await addDoc(collection(db, 'expense_entries'), {
       reportId: rpt.id!, userId: appUser.uid,
@@ -392,11 +414,12 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
       // The rate is recorded on the entry, not just applied to it. A rate
       // change later must not silently restate what was already claimed.
       ...(fuelByDistance ? { autoCalculated: true, distanceKm: km, ratePerKm: fuelRate } : {}),
+      ...(away ? { noDutyReason: varForm.noDutyReason.trim() } : {}),
       ...(varForm.notes ? { notes: varForm.notes } : {}),
       createdAt: Date.now(),
     })
     await syncReportTotal(rpt.id!, amount)
-    setVarForm({ category: 'bus_fare', amount: '', km: '', customLabel: '', notes: '' })
+    setVarForm({ category: 'bus_fare', amount: '', km: '', customLabel: '', notes: '', noDutyReason: '' })
     setAddVarDay(null)
   }
 
@@ -782,7 +805,7 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
                               so it says both rather than only the answer. */}
                           {allowanceEntry.allowanceFromKm !== undefined && (
                             <div style={{ fontSize: 12, color: t.text3, marginTop: 3 }}>
-                              {allowanceEntry.allowanceFromKm} km on the meter
+                              {allowanceEntry.allowanceFromKm} km on the meter{''}
                               {allowanceEntry.allowanceSuggested &&
                                allowanceEntry.allowanceSuggested !== allowanceEntry.allowanceType
                                 ? ` · ${allowanceEntry.allowanceSuggested} was suggested`
@@ -919,11 +942,23 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
                                 onChange={e => setVarForm(f => ({ ...f, notes: e.target.value }))}
                                 placeholder="Optional" style={inputStyle(t)} />
                             </Field>
+                            {/* Only on a day nobody worked. Not a refusal — the
+                                days that go wrong are the expensive ones — but
+                                somebody has to read it before it is cleared. */}
+                            {!presentOn(date) && (
+                              <Field label="Why were you spending on a day you did not work?"
+                                hint="There is no duty session on this date. You can still claim it, and an admin will read this when they clear the week.">
+                                <input value={varForm.noDutyReason}
+                                  onChange={e => setVarForm(f => ({ ...f, noDutyReason: e.target.value }))}
+                                  placeholder="Travelled the night before an outstation market"
+                                  style={inputStyle(t)} />
+                              </Field>
+                            )}
                             <div style={{ display: 'flex', gap: 10 }}>
                               <PrimaryButton onClick={handleAddVariable}>Add</PrimaryButton>
                               <GhostButton onClick={() => {
                                 setAddVarDay(null)
-                                setVarForm({ category: 'bus_fare', amount: '', km: '', customLabel: '', notes: '' })
+                                setVarForm({ category: 'bus_fare', amount: '', km: '', customLabel: '', notes: '', noDutyReason: '' })
                               }}>
                                 Cancel
                               </GhostButton>
@@ -1450,6 +1485,14 @@ This cannot be undone.`,
                                                   {e.allowanceSuggested && e.allowanceSuggested !== e.allowanceType
                                                     ? `, ${e.allowanceSuggested} suggested`
                                                     : ''}
+                                                </span>
+                                              )}
+                                              {/* Spent on a day with no duty session.
+                                                  Not refused, but the whole point is
+                                                  that somebody reads it. */}
+                                              {e.noDutyReason && (
+                                                <span style={{ color: t.warn }}>
+                                                  {' · '}no working day — “{e.noDutyReason}”
                                                 </span>
                                               )}
                                               {e.notes && (
