@@ -552,6 +552,27 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ── PUSH TOKENS ─────────────────────────────────────────────────────────
+    // One document per device that has agreed to receive notifications, keyed
+    // by the token so re-registering the same handset overwrites instead of
+    // piling up. Deliberately its own collection rather than a field on the
+    // user: that block is the most security-sensitive in this file, and
+    // "a device said hello" has no business loosening it.
+    //
+    // Nobody reads these from the client. Only the sending function needs
+    // them, and it runs with admin credentials — so a rep cannot enumerate
+    // which of their colleagues have notifications switched on.
+    match /push_tokens/{token} {
+      allow read: if false;
+
+      allow create, update: if approved()
+        && request.resource.data.uid == request.auth.uid;
+
+      // Turning them off on your own device, or an admin clearing a stale one.
+      allow delete: if isAdmin()
+        || (approved() && resource.data.uid == request.auth.uid);
+    }
+
     // ── REMOTE CONTACTS ─────────────────────────────────────────────────────
     // A shop reached by phone or message rather than by going to it. No
     // location, no punch in and out, and nothing to evidence it beyond the

@@ -159,3 +159,10 @@ exports.adminResetPassword = onCall(
     return { password, name: target.name ?? '' }
   },
 )
+
+/**
+ * Delivering the alerts the app already writes, as push notifications.
+ * Kept in its own file — this one is about signing in, that one is about
+ * telling people things.
+ */
+Object.assign(exports, require('./push'))

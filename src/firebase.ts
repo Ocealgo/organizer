@@ -13,7 +13,9 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 }
 
-const app = initializeApp(firebaseConfig)
+// Exported so the push registration can attach Messaging to the same app
+// instance rather than initialising a second one.
+export const app = initializeApp(firebaseConfig)
 export const db = getFirestore(app)
 export const auth = getAuth(app)
 // Field evidence — odometer readings, shelf photos, expense bills.
