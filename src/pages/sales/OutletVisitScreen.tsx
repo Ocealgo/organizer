@@ -19,6 +19,7 @@ import { PageHeader, Eyebrow, ChipGroup, GhostButton, PrimaryButton, EmptyState,
 import { getFixOrReason, checkGeofence, distanceM, DEFAULT_GEOFENCE_RADIUS_M } from '../../device/location'
 import { setPartyPin, accurateEnoughForPin } from '../../data/partyPin'
 import { bookAllocation, cancelAllocation } from '../../data/bookAllocation'
+import { supplierOptions, defaultSupplierId } from '../../data/supplierOptions'
 import { localDateStr } from '../../utils/date'
 
 interface Props {
@@ -235,8 +236,12 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
   // ── the order, if there is one ────────────────────────────────────────────
   const visitedParty = visit ? parties.find(p => p.id === visit.partyId) ?? null : null
   /** Everyone who could supply this shop — never the shop itself. */
-  const suppliers = parties.filter(p => p.type === 'distributor' && p.id !== visit?.partyId)
-  const orderSource = orderSourceId ? suppliers.find(p => p.id === orderSourceId) ?? null : null
+  // Ordered by what actually happened at this shop, not just by the one link
+  // on its record — see src/data/supplierOptions.ts.
+  const supplyChoices = supplierOptions(parties, visitedParty, allocations)
+  const orderSource = orderSourceId
+    ? parties.find(p => p.id === orderSourceId) ?? null
+    : null
   const orderProduct = products.find(p => p.id === orderProductId) ?? null
 
   const rawQty = parseInt(orderQty)
@@ -863,7 +868,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
               setOrderOpen(on)
               // Start on the shop's own distributor when it has one. Usually
               // right, always visible, and always changeable.
-              if (on && !orderSourceId) setOrderSourceId(visitedParty?.underDistributorId ?? '')
+              if (on && !orderSourceId) setOrderSourceId(defaultSupplierId(visitedParty, allocations))
             }} />
           {orderOpen && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
@@ -871,15 +876,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
               {/* Who is supplying it. The question that was never asked. */}
               <CustomSelect value={orderSourceId} onChange={setOrderSourceId}
                 placeholder="Supplied by"
-                options={[
-                  { value: '', label: 'Ocealgo — direct from the company' },
-                  ...suppliers.map(d => ({
-                    value: d.id!,
-                    label: d.id === visitedParty?.underDistributorId
-                      ? `${d.name} — their distributor`
-                      : d.name,
-                  })),
-                ]} />
+                options={supplyChoices} />
 
               <CustomSelect value={orderProductId} onChange={setOrderProductId} placeholder="Which product"
                 options={products.map(p => ({ value: p.id!, label: p.name }))} />

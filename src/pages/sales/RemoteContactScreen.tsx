@@ -12,6 +12,7 @@ import { useConfirm } from '../../hooks/useConfirm'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
 import { bookAllocation, cancelAllocation } from '../../data/bookAllocation'
+import { supplierOptions, defaultSupplierId } from '../../data/supplierOptions'
 import { PageHeader, Eyebrow, ChipGroup, GhostButton, PrimaryButton, EmptyState, inputStyle } from '../../components/ui'
 import { localDateStr } from '../../utils/date'
 
@@ -102,8 +103,10 @@ export default function RemoteContactScreen({ appUser, session, onBack }: Props)
       setAllocations(snap.docs.map(d => ({ id: d.id, ...d.data() } as UnifiedAllocation))))
   }, [party?.id])
 
-  const suppliers = parties.filter(p => p.type === 'distributor' && p.id !== party?.id)
-  const orderSource = orderSourceId ? suppliers.find(p => p.id === orderSourceId) ?? null : null
+  const supplyChoices = supplierOptions(parties, party, allocations)
+  const orderSource = orderSourceId
+    ? parties.find(p => p.id === orderSourceId) ?? null
+    : null
   const orderProduct = products.find(p => p.id === orderProductId) ?? null
 
   const rawQty = parseInt(orderQty)
@@ -326,7 +329,7 @@ export default function RemoteContactScreen({ appUser, session, onBack }: Props)
 
           <GhostButton onClick={() => {
             setOrderOpen(!orderOpen)
-            if (!orderOpen && !orderSourceId) setOrderSourceId(party.underDistributorId ?? '')
+            if (!orderOpen && !orderSourceId) setOrderSourceId(defaultSupplierId(party, allocations))
           }}>
             {orderOpen ? 'Not this time' : placed.length ? 'Add another order' : 'They placed an order'}
           </GhostButton>
@@ -334,13 +337,7 @@ export default function RemoteContactScreen({ appUser, session, onBack }: Props)
           {orderOpen && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
               <CustomSelect value={orderSourceId} onChange={setOrderSourceId} placeholder="Supplied by"
-                options={[
-                  { value: '', label: 'Ocealgo — direct from the company' },
-                  ...suppliers.map(d => ({
-                    value: d.id!,
-                    label: d.id === party.underDistributorId ? `${d.name} — their distributor` : d.name,
-                  })),
-                ]} />
+                options={supplyChoices} />
               <CustomSelect value={orderProductId} onChange={setOrderProductId} placeholder="Which product"
                 options={products.map(p => ({ value: p.id!, label: p.name }))} />
               <div className="oc-wrap" style={{ gap: 10 }}>
