@@ -10,6 +10,7 @@ import { useConfirm } from '../../hooks/useConfirm'
 import { PageHeader, Eyebrow, GhostButton, PrimaryButton, inputStyle } from '../../components/ui'
 import { getFixOrReason } from '../../device/location'
 import { capture, upload, CapturedPhoto } from '../../device/photo'
+import { cameraIsVerifiable } from '../../device/platform'
 import { batteryPercent } from '../../device/battery'
 import { lastDutyDay } from '../../hooks/useDutySession'
 import { scheduleEndOfDayReminder, cancelEndOfDayReminder } from '../../device/notify'
@@ -252,7 +253,9 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
           ...(fix ? { startLocation: fix } : locIssue ? { startLocationIssue: locIssue } : {}),
           odometerStatus: odoStatus,
           ...(needsReading ? { startOdometerKm: km } : {}),
-          ...(photoPath ? { startOdometerPhoto: photoPath } : {}),
+          ...(photoPath
+            ? { startOdometerPhoto: photoPath, startOdometerPhotoVerified: !!photo?.fromLiveCamera }
+            : {}),
           ...(noMeterReading ? { odometerIssueNote: note.trim() } : {}),
           ...(battery !== undefined ? { startBatteryPct: battery } : {}),
           status: 'active',
@@ -273,7 +276,9 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
           endAt: Date.now(),
           ...(fix ? { endLocation: fix } : locIssue ? { endLocationIssue: locIssue } : {}),
           ...(needsReading ? { endOdometerKm: km } : {}),
-          ...(photoPath ? { endOdometerPhoto: photoPath } : {}),
+          ...(photoPath
+            ? { endOdometerPhoto: photoPath, endOdometerPhotoVerified: !!photo?.fromLiveCamera }
+            : {}),
           ...(meterUnreadable ? { endOdometerIssueNote: note.trim() } : {}),
           ...(battery !== undefined ? { endBatteryPct: battery } : {}),
           ...(distance !== null ? { claimedDistanceKm: distance } : {}),
@@ -485,6 +490,18 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
                   <GhostButton onClick={takePhoto}>Take the photo</GhostButton>
                   <div style={{ fontSize: 13, color: t.text3, marginTop: 10, lineHeight: 1.6 }}>
                     The reading has to be legible in the photo.
+                    {/* Said here rather than discovered later. The app build
+                        opens a camera with no gallery behind it; the web app
+                        cannot, so what it takes is a file and is recorded as
+                        one. A rep should know which of the two they are
+                        giving before they give it. */}
+                    {!cameraIsVerifiable() && (
+                      <div style={{ marginTop: 6 }}>
+                        You are on the web app, which can only attach a file — so this
+                        photo is stored as unverified and your manager sees it that way.
+                        The Android app takes it straight from the camera.
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

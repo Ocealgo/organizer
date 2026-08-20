@@ -17,6 +17,8 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 import UserManagement from "./pages/admin/UserManagement";
 import NotificationBell from "./components/NotificationBell";
 import ListenerErrors from "./components/ListenerErrors";
+import InstallHint from "./components/InstallHint";
+import UpdatePrompt from "./components/UpdatePrompt";
 import { Eyebrow, GhostButton } from "./components/ui";
 
 // Nothing is auto-seeded any more.
@@ -224,6 +226,9 @@ function AppContent() {
           wide-screen case is handled: one centred column instead of a phone
           layout stretched across a monitor. */}
       <div className="oc-page">
+        {/* Offered once, above whatever screen they landed on, and never again
+            after it is waved away. */}
+        <InstallHint />
         {showProfile ? (
           <ProfilePage onBack={() => setShowProfile(false)} />
         ) : showUserMgmt ? (
@@ -548,6 +553,9 @@ function AppWithTheme() {
           any screen is reported. Renders nothing unless a super admin is
           signed in and something has actually failed. */}
       <ListenerErrors />
+      {/* Outside the route switch: a release can land on any screen, and the
+          offer to take it should survive moving between them. */}
+      <UpdatePrompt />
     </ThemeProvider>
   );
 }

@@ -9,6 +9,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0d3d2e" />
     <meta name="description" content="Ocealgo Team Dashboard" />
+
+    <!-- iOS reads none of the web manifest for the home-screen install: the
+         icon, the name and whether it opens without Safari's chrome all come
+         from these instead. Android takes them from the manifest and ignores
+         these, so both are needed and neither is redundant. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Ocealgo" />
+    <!-- `black-translucent` puts the page under the status bar, which is what
+         the safe-area padding below is already written for. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
     <title>Ocealgo — Team App</title>
     <style>
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

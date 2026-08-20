@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+/// <reference types="vite-plugin-pwa/react" />
 
 interface ImportMetaEnv {
   readonly VITE_FIREBASE_API_KEY: string;
@@ -10,6 +11,10 @@ interface ImportMetaEnv {
   /** 'true' only in .env.test — points the app at the local emulator suite. */
   readonly VITE_USE_EMULATORS?: string;
   readonly VITE_EMULATOR_HOST?: string;
+  /** Tiles and geocoding for the map — see components/MapPicker.tsx. */
+  readonly VITE_MAP_TILE_URL?: string;
+  readonly VITE_MAP_TILE_ATTR?: string;
+  readonly VITE_GEOCODE_URL?: string;
 }
 
 interface ImportMeta {
