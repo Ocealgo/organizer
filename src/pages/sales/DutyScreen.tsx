@@ -7,7 +7,7 @@ import {
 } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
 import { useConfirm } from '../../hooks/useConfirm'
-import { PageHeader, Eyebrow, GhostButton, PrimaryButton, inputStyle } from '../../components/ui'
+import { PageHeader, Eyebrow, GhostButton, PrimaryButton, Note, inputStyle } from '../../components/ui'
 import { getFixOrReason } from '../../device/location'
 import { capture, upload, CapturedPhoto } from '../../device/photo'
 import { cameraIsVerifiable } from '../../device/platform'
@@ -395,8 +395,8 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
                signal, so the officer hears that from the app first — along with
                the one thing they can actually do about it. Nothing is blocked
                either way. */
-            <div>
-              <div style={{ fontSize: 14, color: t.text3, marginBottom: 10, lineHeight: 1.6 }}>
+            <Note tone={locIssue === 'denied' ? 'warn' : 'plain'}>
+              <div style={{ marginBottom: 10, lineHeight: 1.6 }}>
                 {locIssue === 'denied' ? (
                   <>
                     Location is switched off for Ocealgo, so your day will be recorded
@@ -416,7 +416,7 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
                 )}
               </div>
               <GhostButton onClick={locate}>Try again</GhostButton>
-            </div>
+            </Note>
           )}
         </div>
 

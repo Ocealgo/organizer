@@ -15,7 +15,7 @@ import { useConfirm } from '../../hooks/useConfirm'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
 import QuickAddParty from '../../components/QuickAddParty'
-import { PageHeader, Eyebrow, ChipGroup, GhostButton, PrimaryButton, EmptyState, inputStyle } from '../../components/ui'
+import { PageHeader, Eyebrow, ChipGroup, GhostButton, PrimaryButton, EmptyState, Note, inputStyle } from '../../components/ui'
 import { getFixOrReason, checkGeofence, distanceM, DEFAULT_GEOFENCE_RADIUS_M } from '../../device/location'
 import { setPartyPin, accurateEnoughForPin } from '../../data/partyPin'
 import { bookAllocation, cancelAllocation } from '../../data/bookAllocation'
@@ -645,12 +645,27 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
           right={<GhostButton onClick={() => setAdding(true)}>Add an outlet</GhostButton>}
           subtitle={locating ? 'Finding your location…'
             : fix ? `Sorted by distance from you, accurate to about ${Math.round(fix.accuracy)} m.`
-            : fixError ?? undefined} />
+            : undefined} />
+
+        {/* Loud, because it changes what the visit is worth.
+            This used to be grey subtitle text under the heading, which is
+            where nobody looks — so a rep worked a whole round with location
+            off and only found out when a manager asked why every visit had no
+            distance against it. */}
+        {!locating && !fix && (
+          <div style={{ padding: '16px 20px 0' }}>
+            <Note tone="warn">
+              {fixIssue === 'denied'
+                ? 'Location is switched off for Ocealgo. Your visits will be recorded without one, and your manager sees that the permission was declined rather than that the signal was poor. Turn it on in your phone’s Settings → Apps → Ocealgo → Permissions → Location.'
+                : fixError ?? 'No location available — visits will be recorded without one.'}
+              <div style={{ marginTop: 10 }}>
+                <GhostButton onClick={locate}>Try again</GhostButton>
+              </div>
+            </Note>
+          </div>
+        )}
 
         <div style={{ padding: '20px 20px 0' }}>
-          {!fix && !locating && (
-            <div style={{ marginBottom: 16 }}><GhostButton onClick={locate}>Try location again</GhostButton></div>
-          )}
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Search by name or place" style={inputStyle(t)} />
         </div>
