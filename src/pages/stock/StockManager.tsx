@@ -10,7 +10,7 @@ import { useTheme } from '../../context/ThemeContext'
 import { useStockConfig, updateStockConfig, toDisplay, setProductStock } from '../../hooks/useFirebase'
 import { localMonthStr } from '../../utils/date'
 import {
-  PageHeader, TabBar, StatGrid, StatCard, Section, EmptyState,
+  PageHeader, TabBar, StatGrid, StatCard, Section, EmptyState, Eyebrow,
   ChipGroup, GhostButton, PrimaryButton, inputStyle,
 } from '../../components/ui'
 
@@ -41,13 +41,28 @@ export default function StockManager({ onBack }: Props) {
   const [editingProductActive, setEditingProductActive] = useState<string | null>(null)
   const [editingProductStock, setEditingProductStock] = useState<Record<string, string>>({})
   const [partyStatusFilter, setPartyStatusFilter] = useState<'all' | 'active' | 'prospect' | 'inactive'>('all')
+  /**
+   * Which product the headline numbers are about.
+   *
+   * They used to be a sum across everything with nothing saying so — "4,200
+   * held" over a catalogue of three products tells you almost nothing, and
+   * cannot answer the only question anybody actually has, which is whether
+   * there is enough of the one they are about to promise somebody.
+   */
+  const [productFilter, setProductFilter] = useState<'all' | string>('all')
 
   const isAdmin = can(appUser, 'edit_stock')
 
   // Aggregate display values from per-product stock
   const hasProductStock = config.productStock && Object.keys(config.productStock).length > 0
-  const displayTotal = hasProductStock ? Object.values(config.productStock!).reduce((s, p) => s + p.total, 0) : config.total
-  const displayLocked = hasProductStock ? Object.values(config.productStock!).reduce((s, p) => s + p.locked, 0) : config.locked
+  // One product, or the whole catalogue added up — and the cards say which.
+  const scoped = productFilter === 'all'
+    ? null
+    : config.productStock?.[productFilter] ?? { total: 0, locked: 0 }
+  const displayTotal = scoped ? scoped.total
+    : hasProductStock ? Object.values(config.productStock!).reduce((s, p) => s + p.total, 0) : config.total
+  const displayLocked = scoped ? scoped.locked
+    : hasProductStock ? Object.values(config.productStock!).reduce((s, p) => s + p.locked, 0) : config.locked
   const displayAvailable = displayTotal - displayLocked
   const totalDispatched = dispatches.filter(d => !d.fromType || d.fromType === 'company').reduce((s, d) => s + (d.packets || 0), 0)
 
@@ -93,7 +108,9 @@ export default function StockManager({ onBack }: Props) {
       <PageHeader
         eyebrow="Inventory"
         title="Stock"
-        subtitle={`${toDisplay(displayAvailable, config.packetsPerCarton)} available of ${toDisplay(displayTotal, config.packetsPerCarton)} held`}
+        subtitle={`${toDisplay(displayAvailable, config.packetsPerCarton)} available of ${toDisplay(displayTotal, config.packetsPerCarton)} held`
+          + (productFilter === 'all' ? ' across every product'
+            : ` of ${products.find(p => p.id === productFilter)?.name ?? 'this product'}`)}
         onBack={onBack}
         divider={false}
       />
@@ -112,6 +129,40 @@ export default function StockManager({ onBack }: Props) {
         {/* OVERVIEW */}
         {tab === 'overview' && (
           <>
+            {/* Which product, above the numbers it changes. Nothing here was
+                wrong before — it was a total across the catalogue — but it
+                could not answer "is there enough of the one I am about to
+                promise", which is the only question this screen gets asked. */}
+            {products.length > 0 && (
+              <div>
+                <div style={{ marginBottom: 8 }}><Eyebrow>Which product</Eyebrow></div>
+                <div className="oc-scroll-x" style={{ display: 'flex', gap: 6 }}>
+                  {[{ id: 'all', name: 'All products' },
+                    ...products.map(p => ({ id: p.id!, name: p.name }))].map(o => {
+                    const on = productFilter === o.id
+                    return (
+                      <button key={o.id} className="oc-action"
+                        onClick={() => setProductFilter(o.id)}
+                        style={{
+                          background: 'none',
+                          border: `0.5px solid ${on ? t.text2 : t.border}`,
+                          borderRadius: 99, padding: '6px 13px', fontSize: 12,
+                          color: on ? t.text : t.text3, cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}>
+                        {o.name}
+                      </button>
+                    )
+                  })}
+                </div>
+                <div style={{ fontSize: 12, color: t.text3, marginTop: 8 }}>
+                  {productFilter === 'all'
+                    ? `Every product added together — ${products.length} in the catalogue.`
+                    : `Just ${products.find(p => p.id === productFilter)?.name ?? 'this product'}.`}
+                </div>
+              </div>
+            )}
+
             <StatGrid>
               <StatCard value={toDisplay(displayTotal, config.packetsPerCarton)} label="Held" />
               <StatCard value={toDisplay(displayLocked, config.packetsPerCarton)} label="Locked"
@@ -152,8 +203,13 @@ export default function StockManager({ onBack }: Props) {
               </Section>
             )}
 
-            {isAdmin && (
-              <Section label="Stock per product">
+            {/* Read by everybody, changed by admins.
+                This whole section used to be behind the edit permission, so a
+                sales manager saw one aggregate number and no way to find out
+                which product it was made of — while being the person most
+                likely to be standing in front of a distributor asking. */}
+            {(
+              <Section label={isAdmin ? 'Stock per product' : 'What we hold, by product'}>
                 {products.length === 0 ? (
                   <EmptyState
                     title="No active products"
@@ -180,7 +236,7 @@ export default function StockManager({ onBack }: Props) {
                             <div style={{ fontSize: 14, fontWeight: 400, color: pAvail > 0 ? t.text2 : t.warn, whiteSpace: 'nowrap' }}>
                               {toDisplay(pAvail, config.packetsPerCarton)} free
                             </div>
-                            {!isEditing && (
+                            {!isEditing && isAdmin && (
                               <button className="oc-action"
                                 onClick={() => { setEditingProductActive(p.id!); setEditingProductStock(prev => ({ ...prev, [p.id!]: String(pTotal) })) }}
                                 style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, fontWeight: 400, color: t.text2, cursor: 'pointer', flexShrink: 0 }}>
@@ -188,7 +244,7 @@ export default function StockManager({ onBack }: Props) {
                               </button>
                             )}
                           </div>
-                          {isEditing && (
+                          {isEditing && isAdmin && (
                             <div className="oc-wrap" style={{ gap: 8, marginTop: 12, maxWidth: 420, alignItems: 'center' }}>
                               <input type="number" inputMode="numeric" autoFocus
                                 value={editingProductStock[p.id!] ?? ''}
