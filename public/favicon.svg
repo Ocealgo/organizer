@@ -2,14 +2,15 @@
   <!--
     The source every app icon is generated from.
 
-    The Ocealgo wave, white on the brand green rather than black on white.
-    Three reasons, all about the size this is actually seen at:
+    The Ocealgo wave, white on black rather than black on white.
 
-      · a thin dark wave on a white tile reads as an empty square at 48px
-      · Android's maskable crop takes a circle out of the tile, so the mark has
-        to sit well inside the middle 80% or it loses its ends
-      · a white tile disappears into a light home screen; the green is the one
-        thing that makes it findable at a glance
+    Inverted rather than reproduced, because of the size this is seen at: a
+    thin dark wave on a white tile reads as an empty square at 48px, and a
+    white tile disappears into a light home screen. White on black is the
+    highest contrast either way round and holds its shape smallest.
+
+    Android's maskable crop takes a circle out of the tile, so the mark sits
+    well inside the middle 80% or it would lose its ends.
 
     The strokes are heavier than the original artwork on purpose. At 48px the
     logo's own weight thins out to a hairline and the mark stops reading as
@@ -18,7 +19,7 @@
     Traced, not the original file — drop the real artwork in over this and
     re-run the generator to get it exactly.
   -->
-  <rect width="512" height="512" fill="#0d3d2e"/>
+  <rect width="512" height="512" fill="#000000"/>
 
   <!-- Two tapered crests, the lower offset right and down, as in the mark.
        Kept inside the middle 80% so a circular maskable crop keeps both tips. -->
