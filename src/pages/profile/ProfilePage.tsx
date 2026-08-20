@@ -9,6 +9,7 @@ import { isIndianMobile, asTyped, toE164, fromE164, pretty } from '../../lib/pho
 import {
   PageHeader, Section, Field, Note, GhostButton, PrimaryButton, inputStyle,
 } from '../../components/ui'
+import PushSetting from '../../components/PushSetting'
 
 /**
  * Your own account: the name on it, the number that recovers it, the password
@@ -259,6 +260,8 @@ export default function ProfilePage({ onBack }: Props) {
             )}
           </div>
         </Section>
+
+        <PushSetting />
 
         <Section label="Password">
           <div style={stack}>

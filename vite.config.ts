@@ -23,6 +23,12 @@ export default defineConfig({
      */
     VitePWA({
       registerType: 'prompt',
+      // The worker is written by hand rather than generated, because Firebase
+      // Messaging needs to receive a background push in the same one — see
+      // src/sw.ts.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       // Registered from React by UpdatePrompt, so the 'new version ready'
       // state has somewhere to be shown rather than being applied silently.
       injectRegister: null,
@@ -55,18 +61,12 @@ export default defineConfig({
         ],
       },
 
-      workbox: {
+      injectManifest: {
         // The build is well past the 2MB default — Recharts and the map alone
         // are a quarter of a megabyte, and both are split out and worth having
         // available offline once fetched.
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
-        // Anything the app asks a server for at runtime is live data. None of
-        // it is cacheable and the service worker must not try — a stale
-        // balance is worse than no balance.
-        navigateFallbackDenylist: [/^\/__/, /\/[^/?]+\.[^/]+$/],
-        cleanupOutdatedCaches: true,
-        clientsClaim: true,
       },
 
       devOptions: { enabled: false },

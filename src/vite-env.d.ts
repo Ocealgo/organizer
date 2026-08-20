@@ -12,6 +12,8 @@ interface ImportMetaEnv {
   readonly VITE_USE_EMULATORS?: string;
   readonly VITE_EMULATOR_HOST?: string;
   /** Tiles and geocoding for the map — see components/MapPicker.tsx. */
+  /** Web Push certificate from Firebase console → Cloud Messaging. */
+  readonly VITE_FIREBASE_VAPID_KEY?: string;
   readonly VITE_MAP_TILE_URL?: string;
   readonly VITE_MAP_TILE_ATTR?: string;
   readonly VITE_GEOCODE_URL?: string;
