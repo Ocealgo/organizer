@@ -74,6 +74,16 @@ export default function AdminDashboard() {
   const [subScreen, setSubScreen] = useState<SubScreen>("dashboard");
   const [allocations, setAllocations] = useState<any[]>([]);
   const [visitLogs, setVisitLogs] = useState<any[]>([]);
+  /**
+   * Shop visits from the field app, this month.
+   *
+   * `visit_logs` is the older screen's collection and the outlet flow never
+   * writes one, so every count on this dashboard drawn from it read zero no
+   * matter how many shops the team walked into. Bounded to the current month:
+   * everything here asks about today or this month, and the whole team's
+   * history is not something a dashboard should stream.
+   */
+  const [outletVisits, setOutletVisits] = useState<any[]>([]);
   const [revisitLogs, setRevisitLogs] = useState<any[]>([]);
   const [pendingPayments, setPendingPayments] = useState<any[]>([]);
   const [allAdminPayments, setAllAdminPayments] = useState<any[]>([])
@@ -130,6 +140,10 @@ export default function AdminDashboard() {
           .sort((a: any, b: any) => b.createdAt - a.createdAt),
       );
     });
+    const u4b = onSnapshot(
+      query(collection(db, "outlet_visits"), where("date", ">=", localMonthStr() + "-01")),
+      (snap) => setOutletVisits(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    );
     const u5 = onSnapshot(collection(db, "revisit_logs"), (snap) => {
       const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as any);
       setRevisitLogs(all);
@@ -160,7 +174,7 @@ export default function AdminDashboard() {
       )
     );
     return () => {
-      u0(); u3(); u4(); u5(); u5b(); u6(); u7(); u8(); u9();
+      u0(); u3(); u4(); u4b(); u5(); u5b(); u6(); u7(); u8(); u9();
     };
   }, []);
 
@@ -611,9 +625,14 @@ export default function AdminDashboard() {
   const monthSpend = allExpenses
     .filter((e: any) => (e.date || "").startsWith(thisMonth))
     .reduce((s: number, e: any) => s + (e.amount || 0), 0);
-  const visitsThisMonth = visitLogs
-    .filter((l: any) => (l.date || "").startsWith(thisMonth))
-    .reduce((s: number, l: any) => s + (l.visits?.length || 0), 0);
+  // Both flows, so the number is right whichever screen the team is using.
+  // An abandoned visit never collected an outcome and is not counted, the same
+  // exclusion the sales report makes.
+  const visitsThisMonth =
+    visitLogs
+      .filter((l: any) => (l.date || "").startsWith(thisMonth))
+      .reduce((s: number, l: any) => s + (l.visits?.length || 0), 0) +
+    outletVisits.filter((v: any) => v.status !== "abandoned").length;
 
   const stockUnits = config.productStock && Object.keys(config.productStock).length
     ? Object.values(config.productStock).reduce((s, p) => s + (p.total - p.locked), 0)
@@ -1008,9 +1027,35 @@ export default function AdminDashboard() {
 
             {/* Visits today */}
             {(() => {
-              const todayLogs = visitLogs.filter(
-                (l: any) => l.date === todayStr,
-              );
+              /**
+               * One row per rep who has been into a shop today, from both flows.
+               *
+               * This read `visit_logs` alone, which the outlet flow never
+               * writes — so it said "nobody has logged a visit yet today" to a
+               * manager whose team had been round thirty shops.
+               */
+              const byRep = new Map<string, { name: string; visits: number; orders: number }>();
+              visitLogs
+                .filter((l: any) => l.date === todayStr && !l.isNoEntry)
+                .forEach((l: any) => {
+                  const row = byRep.get(l.salesPersonId) ?? {
+                    name: l.salesPersonName, visits: 0, orders: 0,
+                  };
+                  row.visits += l.totalVisited || 0;
+                  row.orders += l.totalInterested || 0;
+                  byRep.set(l.salesPersonId, row);
+                });
+              outletVisits
+                .filter((v: any) => v.date === todayStr && v.status !== "abandoned")
+                .forEach((v: any) => {
+                  const row = byRep.get(v.uid) ?? { name: v.name, visits: 0, orders: 0 };
+                  row.visits += 1;
+                  if (v.orderPlaced) row.orders += 1;
+                  byRep.set(v.uid, row);
+                });
+              const todayLogs = [...byRep.entries()]
+                .map(([uid, r]) => ({ id: uid, ...r }))
+                .sort((a, b) => b.visits - a.visits);
               return (
                 <div>
                   <div
@@ -1048,7 +1093,7 @@ export default function AdminDashboard() {
                             color: t.text,
                           }}
                         >
-                          {log.salesPersonName}
+                          {log.name}
                         </span>
                         <span
                           style={{
@@ -1057,8 +1102,10 @@ export default function AdminDashboard() {
                             whiteSpace: "nowrap",
                           }}
                         >
-                          {log.totalVisited || 0} visits,{" "}
-                          {log.totalInterested || 0} interested
+                          {log.visits} {log.visits === 1 ? "visit" : "visits"}
+                          {log.orders > 0
+                            ? `, ${log.orders} ${log.orders === 1 ? "order" : "orders"}`
+                            : ""}
                         </span>
                       </div>
                     ))
