@@ -1032,6 +1032,16 @@ export const VISIT_OUTCOME_REASONS: Record<VisitOutcomeCategory, readonly string
     'Key decision maker unavailable',
     'Shop closed during visit',
     'Stock delivery delayed',
+    // A collection round is not a failed sales call. Without this a rep who
+    // walked in purely to pick up money had to file the visit under a reason
+    // that was not true, and every one of those visits read as a shop that
+    // would not order.
+    //
+    // It says "came to collect" rather than "collected" on purpose: whether
+    // any money actually arrived is recorded in the visit's money section,
+    // truthfully and to the rupee. This field is the reason there was no
+    // order, and that reason holds either way.
+    'Came to collect payment',
   ],
   institutional: [
     'Product trial requested',
