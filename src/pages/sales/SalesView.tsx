@@ -22,13 +22,14 @@ import { REMINDER_HOUR, AUTO_CLOSE_HOUR } from '../../device/notify'
 import DutyScreen from './DutyScreen'
 import OutletVisitScreen from './OutletVisitScreen'
 import RemoteContactScreen from './RemoteContactScreen'
+import OpportunitiesScreen from '../reports/OpportunitiesScreen'
 
 interface Props { name: string }
 
 const todayStr = () => localDateStr()
 const currentMonth = () => localMonthStr()
 
-type SubScreen = 'home' | 'duty' | 'outlet' | 'contact' | 'visits' | 'parties' | 'stock' | 'expenses' | 'credits' | 'allocations' | 'history' | 'leaves'
+type SubScreen = 'home' | 'duty' | 'outlet' | 'contact' | 'opportunities' | 'visits' | 'parties' | 'stock' | 'expenses' | 'credits' | 'allocations' | 'history' | 'leaves'
 
 export default function SalesView({ name }: Props) {
   const { appUser } = useAuth()
@@ -281,6 +282,8 @@ export default function SalesView({ name }: Props) {
   // already finished — including one that closes while this screen is open.
   if (screen === 'outlet' && appUser && dutySession && isOnDuty) return <OutletVisitScreen appUser={appUser} session={dutySession} onBack={() => setScreen('home')} />
   if (screen === 'contact' && appUser && dutySession && isOnDuty) return <RemoteContactScreen appUser={appUser} session={dutySession} onBack={() => setScreen('home')} />
+  // A rep's own list, not a league table of anybody else's territory.
+  if (screen === 'opportunities' && appUser) return <OpportunitiesScreen uid={appUser.uid} onBack={() => setScreen('home')} onVisit={() => setScreen('outlet')} />
   if (screen === 'visits')      return <VisitLogger onBack={() => { setVisitInitialDate(undefined); setScreen('home') }} initialDate={visitInitialDate} onViewAllocation={(id) => { setHighlightAllocationId(id); setScreen('allocations') }} onViewPayment={(partyId, paymentId) => { setDeepLinkPaymentPartyId(partyId); setDeepLinkPaymentId(paymentId); setCreditReturnScreen('visits'); setScreen('credits') }} />
   if (screen === 'parties')     return <PartyManager onBack={() => setScreen('home')} />
   if (screen === 'stock')       return <StockManager onBack={() => setScreen('home')} />
@@ -486,6 +489,9 @@ export default function SalesView({ name }: Props) {
         <div>
           <div style={{ marginBottom: 12 }}><Eyebrow>Yours</Eyebrow></div>
           <RowGroup columns={2}>
+            <ListRow title="Worth going back to"
+              desc="Shops that stopped ordering, or ran empty last time you looked"
+              onClick={() => setScreen('opportunities')} />
             <ListRow title="My activity" desc="Everything you have logged, day by day"
               value={`${monthlyVisitLogCount} days this month`} onClick={() => setScreen('history')} />
             <ListRow title="My leaves" desc="Apply for time off and track approvals"

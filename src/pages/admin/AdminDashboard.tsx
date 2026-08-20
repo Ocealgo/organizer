@@ -23,6 +23,7 @@ import { CheckIn, AppUser, Party, LeaveRecord, Permission, Product } from "../..
 import { can, isAdminRole } from "../../auth/permissions";
 import SalesReport from "../reports/SalesReport";
 import ReportsHome from "../reports/ReportsHome";
+import OpportunitiesScreen from "../reports/OpportunitiesScreen";
 import FieldReport from "./FieldReport";
 import {
   Eyebrow, PageHeader, Section, StatGrid, StatCard, EmptyState,
@@ -59,6 +60,7 @@ type SubScreen =
   | "reports"
   | "field"
   | "reportsHome"
+  | "opportunities"
   | "settings";
 
 function isValidUrl(url: string): boolean {
@@ -521,8 +523,11 @@ export default function AdminDashboard() {
         onBack={() => setSubScreen("dashboard")}
         onOpenField={() => setSubScreen("field")}
         onOpenSales={() => setSubScreen("reports")}
+        onOpenOpportunities={() => setSubScreen("opportunities")}
       />
     );
+  if (subScreen === "opportunities")
+    return <OpportunitiesScreen onBack={() => setSubScreen("reportsHome")} />;
   if (subScreen === "reports")
     return <SalesReport onBack={() => setSubScreen("reportsHome")} />;
   if (subScreen === "field")
@@ -660,6 +665,7 @@ export default function AdminDashboard() {
     reports: "view_reports",
     field: "view_reports",
     reportsHome: "view_reports",
+    opportunities: "view_reports",
   };
 
   // The nav doubles as a status board: every row carries its own live number,

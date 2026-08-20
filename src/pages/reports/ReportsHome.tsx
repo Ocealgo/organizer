@@ -2,10 +2,11 @@ import { useState, useEffect, useMemo } from 'react'
 import { collection, query, where } from 'firebase/firestore'
 import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
-import { OutletVisit, UnifiedAllocation, PaymentTransaction } from '../../types'
+import { AppUser, OutletVisit, UnifiedAllocation, PaymentTransaction } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
 import DateInput from '../../components/DateInput'
 import LazyChart from '../../components/LazyChart'
+import RankedBars, { RankedRow } from '../../components/RankedBars'
 import type { TrendPoint } from '../../components/TrendChart'
 import { PageHeader, Eyebrow, RowGroup, ListRow, Note } from '../../components/ui'
 import { localDateStr } from '../../utils/date'
@@ -14,6 +15,7 @@ interface Props {
   onBack: () => void
   onOpenField: () => void
   onOpenSales: () => void
+  onOpenOpportunities: () => void
 }
 
 /** Month arithmetic that does not care what today is. */
@@ -49,7 +51,7 @@ const EMPTY: Totals = { visits: 0, outlets: 0, orderValue: 0, collected: 0 }
  * measured on them, and time-per-shop measures how long the form was open
  * rather than how long anybody stood in a doorway.
  */
-export default function ReportsHome({ onBack, onOpenField, onOpenSales }: Props) {
+export default function ReportsHome({ onBack, onOpenField, onOpenSales, onOpenOpportunities }: Props) {
   const { t } = useTheme()
 
   const [preset, setPreset] = useState<Preset>('this_month')
@@ -97,11 +99,16 @@ export default function ReportsHome({ onBack, onOpenField, onOpenSales }: Props)
     }
   }, [preset, from, to])
 
+  const [users, setUsers] = useState<AppUser[]>([])
   const [visits, setVisits] = useState<OutletVisit[]>([])
   const [allocations, setAllocations] = useState<UnifiedAllocation[]>([])
   const [payments, setPayments] = useState<PaymentTransaction[]>([])
   const [loading, setLoading] = useState(true)
   const [readError, setReadError] = useState<string | null>(null)
+
+  useEffect(() => onSnapshot(collection(db, 'users'), snap =>
+    setUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as AppUser))
+      .filter(u => u.status === 'approved'))), [])
 
   // One window covering both periods, so the comparison never needs a second
   // round trip and the two halves can never come from different reads.
@@ -170,6 +177,35 @@ export default function ReportsHome({ onBack, onOpenField, onOpenSales }: Props)
     }
     return out
   }, [visits, current.from, previous.from, spanDays])
+
+  /**
+   * Who did what this period. Bars, not a pie — a pie shows share, and share
+   * moves when somebody else moves, so a rep who was flat all month reads as
+   * declining because a colleague improved.
+   */
+  const [rankBy, setRankBy] = useState<'visits' | 'orders' | 'collected'>('visits')
+
+  const ranked = useMemo<RankedRow[]>(() => {
+    const name = new Map(users.map(u => [u.uid, u.name]))
+    const rows = new Map<string, number>()
+    const add = (uid: string | undefined, n: number) => {
+      if (!uid || !name.has(uid)) return
+      rows.set(uid, (rows.get(uid) ?? 0) + n)
+    }
+    if (rankBy === 'visits') {
+      visits.filter(v => inRange(v.date, current) && v.status !== 'abandoned')
+        .forEach(v => add(v.uid, 1))
+    } else if (rankBy === 'orders') {
+      allocations.filter(a => inRange(allocDate(a), current) && a.status !== 'cancelled')
+        .forEach(a => add(a.createdBy, a.totalAmount || 0))
+    } else {
+      payments.filter(p => inRange(p.date, current) && p.status !== 'rejected')
+        .forEach(p => add(p.collectedBy, p.amount || 0))
+    }
+    return [...rows.entries()].map(([uid, value]) => ({
+      id: uid, label: name.get(uid) ?? 'Someone', value,
+    }))
+  }, [rankBy, users, visits, allocations, payments, current])
 
   const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
 
@@ -241,10 +277,35 @@ export default function ReportsHome({ onBack, onOpenField, onOpenSales }: Props)
           )}
         </div>
 
+        {/* Who did what */}
+        <div>
+          <div style={{ marginBottom: 10 }}><Eyebrow>By person</Eyebrow></div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+            {([['visits', 'Shops visited'], ['orders', 'Ordered'], ['collected', 'Collected']] as const)
+              .map(([id, label]) => (
+                <button key={id} className="oc-action" onClick={() => setRankBy(id)}
+                  style={{
+                    background: 'none',
+                    border: `0.5px solid ${rankBy === id ? t.text2 : t.border}`,
+                    borderRadius: 99, padding: '6px 13px', fontSize: 12,
+                    color: rankBy === id ? t.text : t.text3, cursor: 'pointer',
+                  }}>
+                  {label}
+                </button>
+              ))}
+          </div>
+          {loading
+            ? <div style={{ fontSize: 13, color: t.text3 }}>Loading…</div>
+            : <RankedBars rows={ranked} format={rankBy === 'visits' ? undefined : inr} />}
+        </div>
+
         {/* The two screens that already answer everything else */}
         <div>
           <div style={{ marginBottom: 12 }}><Eyebrow>The detail</Eyebrow></div>
           <RowGroup>
+            <ListRow title="Worth going back to"
+              desc="Shops that stopped ordering, ran empty, or nobody has visited"
+              onClick={onOpenOpportunities} />
             <ListRow title="Field activity"
               desc="Day by day, per rep — punch in and out, time in each shop, meter readings, every remark"
               onClick={onOpenField} />
