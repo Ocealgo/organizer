@@ -422,6 +422,19 @@ export interface ExpenseEntry {
   /** True when the amount came from distance × rate rather than being typed. */
   autoCalculated?: boolean
   distanceKm?: number
+
+  /**
+   * On an allowance: the day's metered distance, and what it pointed at.
+   *
+   * Written when the type was picked out from the duty session rather than
+   * chosen cold — kept even when the rep overrode the suggestion, because
+   * "the meter said 12 km and they claimed OS" is the interesting case and it
+   * cannot be reconstructed later. The same reason the fuel rate is copied
+   * onto its entry: a week cleared in March has to explain itself in
+   * September, when the session may be archived and the rule may have moved.
+   */
+  allowanceFromKm?: number
+  allowanceSuggested?: AllowanceType
   /**
    * The ₹/km in force when this was claimed, copied onto the entry rather than
    * looked up later. A manager changing the rate must not restate what has

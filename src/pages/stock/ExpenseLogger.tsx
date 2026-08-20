@@ -17,6 +17,7 @@ import { db } from '../../firebase'
 import {
   AllowanceType, ExpenseCategory, ExpenseConfig,
   ExpenseReport, ExpenseEntry, LeaveRecord, AppUser, DailyVisitLog, Holiday,
+  DutySession,
 } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { can, maySignOffFor } from '../../auth/permissions'
@@ -198,6 +199,7 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
   const [importing, setImporting] = useState(false)
   const [visitedDates, setVisitedDates] = useState<Set<string>>(new Set())
   const [holidays, setHolidays] = useState<Holiday[]>([])
+  const [sessions, setSessions] = useState<DutySession[]>([])
 
   // In day mode derive the week from the selected day
   const activeWeekStart = viewMode === 'day' ? getWeekStart(new Date(selectedDay + 'T00:00:00')) : weekStart
@@ -238,7 +240,13 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
     const u5 = onSnapshot(collection(db, 'holidays'), snap => {
       setHolidays(snap.docs.map(d => ({ id: d.id, ...d.data() } as Holiday)))
     })
-    return () => { u1(); u2(); u3(); u4(); u5() }
+    // The days this person actually worked. The daily allowance is payment for
+    // a working day, so it is the duty session that says whether there is one
+    // to be paid for — see workedDays below.
+    const u6 = onSnapshot(query(collection(db, 'duty_sessions'), where('uid', '==', appUser.uid)), snap => {
+      setSessions(snap.docs.map(d => ({ id: d.id, ...d.data() } as DutySession)))
+    })
+    return () => { u1(); u2(); u3(); u4(); u5(); u6() }
   }, [appUser.uid])
 
   useEffect(() => {
@@ -275,18 +283,79 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
     await updateDoc(doc(db, 'expense_reports', reportId), { totalAmount: base + delta })
   }
 
+  /**
+   * The days this person actually worked.
+   *
+   * A daily allowance is payment for a working day, so a day nobody worked has
+   * nothing to pay for — and until now nothing checked. An allowance could be
+   * added to a Sunday, to a day of approved leave, or to a day the rep never
+   * punched in at all, and the sheet would carry it through to an admin as if
+   * it were ordinary.
+   *
+   * An auto-closed day counts. The officer started their day; what they failed
+   * to do was tap once at the end of it, and that already costs them the
+   * distance. Taking the allowance too would be two punishments for one slip,
+   * and `autoClosed` is on the record for anyone who wants to look.
+   */
+  const dayWorked = (date: string) =>
+    sessions.some(s => s.date === date && s.status === 'closed')
+
+  /** The session behind a worked day, for the distance it recorded. */
+  const sessionFor = (date: string) =>
+    sessions.find(s => s.date === date && s.status === 'closed') ?? null
+
+  /**
+   * Which allowance the day's distance points at.
+   *
+   * HQ and EX are already defined by a distance — within or beyond 25 km — so
+   * this applies a rule that is written on the screen rather than inventing
+   * one. OS is not derivable: "staying over" is not visible in an odometer,
+   * and a two hundred kilometre day that ended at home is EX.
+   *
+   * Null when there is no reading to go on — a broken meter, no vehicle, or a
+   * day closed automatically. Guessing there would file the cheapest
+   * allowance against somebody who spent the day on a bus, which is the app
+   * quietly underpaying them in their own name.
+   */
+  const HQ_RADIUS_KM = 25
+  const suggestedAllowance = (date: string): AllowanceType | null => {
+    const km = sessionFor(date)?.claimedDistanceKm
+    if (typeof km !== 'number') return null
+    return km <= HQ_RADIUS_KM ? 'HQ' : 'EX'
+  }
+
   const handleSetAllowance = async (date: string, type: AllowanceType) => {
+    // The gate, not just the button state. A stale screen, a slow listener or
+    // a second tab must not be able to walk around it.
+    if (!dayWorked(date)) {
+      await showAlert('No working day on record',
+        `The daily allowance is paid for a day worked, and ${fmtDate(date)} has no finished duty session. Start and end the day first — anything you actually spent can still be claimed as an expense.`)
+      return
+    }
     const rpt = await getOrCreateReport()
     const existing = weekEntries.find(e => e.date === date && e.type === 'allowance')
     const amount = config[type.toLowerCase() as 'hq' | 'ex' | 'os']
+
+    // What the day's meter said, and what that pointed at — kept whether or
+    // not the rep took the suggestion, because a claim that departs from the
+    // distance is the one worth being able to see later.
+    const km = sessionFor(date)?.claimedDistanceKm
+    const suggested = suggestedAllowance(date)
+    const provenance = suggested && typeof km === 'number'
+      ? { allowanceFromKm: km, allowanceSuggested: suggested }
+      : {}
+
     if (existing) {
       if (existing.allowanceType === type) return
-      await updateDoc(doc(db, 'expense_entries', existing.id!), { allowanceType: type, amount })
+      await updateDoc(doc(db, 'expense_entries', existing.id!),
+        { allowanceType: type, amount, ...provenance })
       await syncReportTotal(rpt.id!, amount - existing.amount)
     } else {
       await addDoc(collection(db, 'expense_entries'), {
         reportId: rpt.id!, userId: appUser.uid,
-        date, type: 'allowance', allowanceType: type, amount, createdAt: Date.now(),
+        date, type: 'allowance', allowanceType: type, amount,
+        ...provenance,
+        createdAt: Date.now(),
       })
       await syncReportTotal(rpt.id!, amount)
     }
@@ -708,6 +777,18 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
                               {money(allowanceEntry.amount)}
                             </span>
                           </div>
+                          {/* The working, shown. A claim that departs from what
+                              the meter said is the one an admin wants to see,
+                              so it says both rather than only the answer. */}
+                          {allowanceEntry.allowanceFromKm !== undefined && (
+                            <div style={{ fontSize: 12, color: t.text3, marginTop: 3 }}>
+                              {allowanceEntry.allowanceFromKm} km on the meter
+                              {allowanceEntry.allowanceSuggested &&
+                               allowanceEntry.allowanceSuggested !== allowanceEntry.allowanceType
+                                ? ` · ${allowanceEntry.allowanceSuggested} was suggested`
+                                : ''}
+                            </div>
+                          )}
                           {!isLocked && (
                             <div style={{ display: 'flex', gap: 14, marginTop: 8, flexWrap: 'wrap' }}>
                               {(['HQ', 'EX', 'OS'] as AllowanceType[])
@@ -718,9 +799,18 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
                           )}
                         </div>
                       ) : !isLocked && addDaDay === date ? (
-                        <Field label="Which allowance applies">
+                        <Field label="Which allowance applies"
+                          hint={(() => {
+                            const km = sessionFor(date)?.claimedDistanceKm
+                            const suggested = suggestedAllowance(date)
+                            // The distance does the arithmetic; the rep still
+                            // presses. Nothing is claimed that nobody chose.
+                            if (suggested && typeof km === 'number')
+                              return `Your meter recorded ${km} km that day, which is ${km <= HQ_RADIUS_KM ? 'within' : 'beyond'} ${HQ_RADIUS_KM} km — so ${suggested} is picked out for you. Change it if the day was different, and pick OS if you stayed over.`
+                            return 'No meter reading on that day, so nothing is picked out for you — choose the one that matches where you worked.'
+                          })()}>
                           <ChipGroup
-                            value={'' as AllowanceType}
+                            value={(suggestedAllowance(date) ?? '') as AllowanceType}
                             onChange={async (a: AllowanceType) => { await handleSetAllowance(date, a); setAddDaDay(null) }}
                             options={(['HQ', 'EX', 'OS'] as AllowanceType[]).map(a => ({
                               id: a,
@@ -842,7 +932,21 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
                         ) : (
                           <div style={{ display: 'flex', gap: 14 }}>
                             {action('Add an expense', () => { setAddVarDay(date); setAddDaDay(null) })}
-                            {!allowanceEntry && action('Add the daily allowance', () => { setAddDaDay(date); setAddVarDay(null) })}
+                            {/* Only offered on a day that was worked. Money
+                                already spent is a different question and is
+                                never gated on it — that is the expense above,
+                                which stays available whatever the day did. */}
+                            {!allowanceEntry && dayWorked(date) &&
+                              action(
+                                suggestedAllowance(date)
+                                  ? `Add the ${suggestedAllowance(date)} allowance`
+                                  : 'Add the daily allowance',
+                                () => { setAddDaDay(date); setAddVarDay(null) })}
+                            {!allowanceEntry && !dayWorked(date) && (
+                              <span style={{ fontSize: 13, color: t.text3 }}>
+                                No allowance — the day was not started and finished
+                              </span>
+                            )}
                           </div>
                         )
                       )}
@@ -1332,6 +1436,20 @@ This cannot be undone.`,
                                                 <span style={{ color: t.text3 }}>
                                                   {' · '}{e.distanceKm} km
                                                   {e.ratePerKm ? ` at ${money(e.ratePerKm)}/km` : ''}
+                                                </span>
+                                              )}
+                                              {/* An allowance that departs from what the
+                                                  meter said is the one to look at, so it
+                                                  is coloured rather than merely printed. */}
+                                              {e.allowanceFromKm !== undefined && (
+                                                <span style={{
+                                                  color: e.allowanceSuggested && e.allowanceSuggested !== e.allowanceType
+                                                    ? t.warn : t.text3,
+                                                }}>
+                                                  {' · '}{e.allowanceFromKm} km on the meter
+                                                  {e.allowanceSuggested && e.allowanceSuggested !== e.allowanceType
+                                                    ? `, ${e.allowanceSuggested} suggested`
+                                                    : ''}
                                                 </span>
                                               )}
                                               {e.notes && (
