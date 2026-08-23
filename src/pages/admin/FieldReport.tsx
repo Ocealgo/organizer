@@ -160,7 +160,7 @@ export default function FieldReport({ onBack }: Props) {
   })
 
   return (
-    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 56 }}>
+    <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 56 }}>
       <PageHeader
         eyebrow="Reports"
         title="Field activity"

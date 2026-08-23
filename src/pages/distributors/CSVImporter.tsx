@@ -237,7 +237,7 @@ export default function CSVImporter({ onBack, onDone }: Props) {
 
   // ── UPLOAD ────────────────────────────────────────────────────────────────
   if (step === 'upload') return (
-    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
+    <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 40 }}>
       <PageHeader
         eyebrow="Import"
         title="Import from Excel or CSV"
@@ -287,7 +287,7 @@ export default function CSVImporter({ onBack, onDone }: Props) {
 
   // ── DONE ──────────────────────────────────────────────────────────────────
   if (step === 'done') return (
-    <div style={{ minHeight: '100vh', background: t.bg }}>
+    <div style={{ minHeight: 'var(--oc-screen)', background: t.bg }}>
       <PageHeader
         eyebrow="Import"
         title="Import finished"
@@ -310,7 +310,7 @@ export default function CSVImporter({ onBack, onDone }: Props) {
   if (!currentRow) return null
 
   return (
-    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
+    <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 40 }}>
       <PageHeader
         eyebrow={`Entry ${currentIdx + 1} of ${activeRows.length}`}
         title={currentRow.name || 'Untitled entry'}

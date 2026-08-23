@@ -222,7 +222,7 @@ export default function UserManagement({ onBack }: Props) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 56 }}>
+    <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 56 }}>
       {/* Waiting on somebody here. Above the tabs because it is the only thing
           on this screen where a person is currently unable to work. */}
       {requests.length > 0 && (

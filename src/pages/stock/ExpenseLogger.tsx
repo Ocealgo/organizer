@@ -580,7 +580,7 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
   )
 
   return (
-    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
+    <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 40 }}>
       <PageHeader
         eyebrow="My expenses"
         title={isCurrentWeek && viewMode === 'week' ? 'This week' : weekLabel(activeWeekStart)}
@@ -1259,7 +1259,7 @@ This cannot be undone.`,
   const pendingCount = reports.filter(r => r.status === 'submitted').length
 
   return (
-    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
+    <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 40 }}>
       <PageHeader
         eyebrow="Admin"
         title="Expenses"

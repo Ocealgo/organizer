@@ -92,7 +92,7 @@ export default function SignupPage({ onSwitch }: Props) {
 
   const shell = (children: React.ReactNode) => (
     <div style={{
-      minHeight: '100vh', background: t.bg, display: 'flex', flexDirection: 'column',
+      minHeight: 'var(--oc-screen)', background: t.bg, display: 'flex', flexDirection: 'column',
       justifyContent: 'center', padding: '40px 24px',
     }}>
       <div style={{ width: '100%', maxWidth: 340, margin: '0 auto' }}>{children}</div>

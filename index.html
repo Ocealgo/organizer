@@ -42,7 +42,46 @@
          This centres that column and stops it stretching across a desktop
          monitor, which is the whole of the wide-screen story: one place to
          change, no per-screen media queries. */
-      :root { --oc-page-max: 1120px; }
+      /* ── Text size ──────────────────────────────────────────────────────
+         One knob. --oc-zoom is set by ThemeProvider from the user's saved
+         preference, and zooming #root grows text, padding and hit targets
+         together — which is the point, since the same person who cannot read
+         a label usually cannot hit the chip next to it either.
+
+         --oc-screen exists because viewport units do not know they are inside
+         a zoom: a plain 100vh inside zoom:1.3 renders 1.3 screens tall and
+         every page gains a phantom scroll. Dividing it back out keeps a
+         full-height page exactly one screen at every step. */
+      :root { --oc-page-max: 1120px; --oc-zoom: 1; --oc-screen: calc(100vh / var(--oc-zoom)); }
+      #root { zoom: var(--oc-zoom); }
+
+      /* A full-screen overlay is fixed to the viewport, and viewport units do
+         not know about the zoom either — so `inset: 0` inside a zoomed root
+         measures the screen and is then scaled up, leaving the backdrop
+         oversized and anything centred in it pushed down and to the right.
+         Sizing it explicitly against the divided viewport keeps a modal in the
+         middle of the screen at every step. Identical to `inset: 0` at 1×. */
+      .oc-overlay {
+        position: fixed; top: 0; left: 0;
+        width: calc(100vw / var(--oc-zoom));
+        height: calc(100vh / var(--oc-zoom));
+      }
+
+      /* ── Hit targets ────────────────────────────────────────────────────
+         44px is the floor Apple and WCAG 2.5.5 both land on. These are the
+         controls that sat under it — chips at about 34px, and the bare icon
+         buttons worst of all at 6px of horizontal padding and no height of
+         their own.
+
+         Only for fingers. A mouse hits a 20px target perfectly well, and
+         forcing 44px everywhere would push the desktop header from 46px to
+         72px to solve a problem nobody has with a pointer. */
+      @media (pointer: coarse) {
+        .oc-action {
+          min-height: 44px; min-width: 44px;
+          display: inline-flex; align-items: center; justify-content: center;
+        }
+      }
       .oc-page { width: 100%; max-width: var(--oc-page-max); margin-left: auto; margin-right: auto; }
 
       /* Anything that genuinely cannot shrink — a cross-tab, a wide chip strip —

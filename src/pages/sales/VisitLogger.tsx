@@ -882,12 +882,12 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
 
   if (step === "home")
     return (
-      <div style={{ minHeight: "100vh", background: t.bg, paddingBottom: 40 }}>
+      <div style={{ minHeight: "var(--oc-screen)", background: t.bg, paddingBottom: 40 }}>
         {confirmModal}
 
         {/* Delete entry modal */}
         {deleteModal && (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 16px' }}>
+          <div className="oc-overlay" style={{ zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 16px' }}>
             <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }} onClick={() => setDeleteModal(null)} />
             <div style={{ position: 'relative', zIndex: 1, background: t.card, borderRadius: 20, padding: '24px 20px', width: '100%', maxWidth: 440, border: `1.5px solid ${t.border}`, boxShadow: '0 24px 64px rgba(0,0,0,0.5)', maxHeight: '90vh', overflowY: 'auto' }}>
               <div style={{ fontSize: 16, fontWeight: 500, color: t.text, marginBottom: 4 }}>Delete visit to {deleteModal.entry.partyName}</div>
@@ -946,7 +946,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
 
         {/* Simple entry edit modal */}
         {editSimpleEntry && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center' }}>
+          <div className="oc-overlay" style={{ background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center' }}>
             <div style={{ background: t.card, borderRadius: '20px 20px 0 0', padding: '20px 16px 32px', maxHeight: '85vh', overflowY: 'auto', width: '100%', maxWidth: 520 }}>
               <div style={{ fontWeight: 500, fontSize: 16, color: t.text, marginBottom: 4 }}>Edit Visit — {editSimpleEntry.partyName}</div>
               {selectedDate !== localDateStr() && (
@@ -1735,7 +1735,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
   // ── SELECT PARTY ─────────────────────────────────────────────────────────
   if (step === "selectShop")
     return (
-      <div style={{ minHeight: "100vh", background: t.bg, paddingBottom: 40 }}>
+      <div style={{ minHeight: "var(--oc-screen)", background: t.bg, paddingBottom: 40 }}>
         <PageHeader
           eyebrow="Visit log"
           title="Pick who you visited"
@@ -1853,7 +1853,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
   // ── ADD NEW PARTY ─────────────────────────────────────────────────────────
   if (step === "addNewShop")
     return (
-      <div style={{ minHeight: "100vh", background: t.bg, paddingBottom: 40 }}>
+      <div style={{ minHeight: "var(--oc-screen)", background: t.bg, paddingBottom: 40 }}>
         <PageHeader
           eyebrow="Visit log"
           title="Add a new party"

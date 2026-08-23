@@ -239,7 +239,7 @@ export default function RemoteContactScreen({ appUser, session, onBack }: Props)
       .slice(0, 40)
 
     return (
-      <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 56 }}>
+      <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 56 }}>
         <PageHeader eyebrow="Contact" title="Who did you speak to?" onBack={onBack}
           subtitle="A call or a message, logged against your day. It is not a visit and is never counted as one." />
 
@@ -296,7 +296,7 @@ export default function RemoteContactScreen({ appUser, session, onBack }: Props)
 
   // ── log the conversation ──────────────────────────────────────────────────
   return (
-    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 56 }}>
+    <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 56 }}>
       <PageHeader eyebrow="Contact" title={party.name} onBack={() => resetForm()}
         subtitle={party.phone ? `${party.place ?? ''}${party.place ? ' · ' : ''}${party.phone}` : party.place} />
 

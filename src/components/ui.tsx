@@ -295,8 +295,17 @@ export function inputStyle(t: ReturnType<typeof useTheme>['t']): CSSProperties {
   return {
     width: '100%', boxSizing: 'border-box',
     background: 'transparent', border: `0.5px solid ${t.border2}`,
-    borderRadius: 6, padding: '11px 13px',
-    fontSize: 14, fontWeight: 400, color: t.text, outline: 'none',
+    borderRadius: 6, padding: '12px 13px',
+    /**
+     * 16px is not a taste decision. Safari on iOS force-zooms the whole page
+     * whenever a focused input is smaller than 16px, and there is no way to
+     * refuse — the page jumps, the layout reflows, and the field ends up
+     * somewhere other than where the thumb was. This was 14px, which is why
+     * typing on an iPhone felt like fighting the screen.
+     */
+    fontSize: 16, fontWeight: 400, color: t.text, outline: 'none',
+    /** WCAG 2.5.5 and Apple's HIG agree on 44. This landed at about 42. */
+    minHeight: 44,
   }
 }
 

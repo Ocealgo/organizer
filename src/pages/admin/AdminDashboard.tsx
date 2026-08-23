@@ -329,7 +329,7 @@ export default function AdminDashboard() {
   });
 
   if (subScreen === "settings") return (
-    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
+    <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 40 }}>
       <PageHeader
         eyebrow="Super admin"
         title="Settings"
@@ -930,7 +930,7 @@ export default function AdminDashboard() {
   ] as { id: MainTab; label: string }[];
 
   return (
-    <div style={{ minHeight: "100vh", background: t.bg }}>
+    <div style={{ minHeight: "var(--oc-screen)", background: t.bg }}>
       {/* Attention line — what is actually waiting, in one sentence */}
       <div style={{ padding: "30px 20px 10px", maxWidth: 720 }}>
         <div

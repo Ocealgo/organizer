@@ -271,7 +271,7 @@ export default function SalesView({ name }: Props) {
   // handed a session that has merely not arrived yet.
   if (screen === 'duty' && appUser) return dutyLoading
     ? (
-      <div style={{ minHeight: '100vh', background: t.bg, padding: '30px 20px',
+      <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, padding: '30px 20px',
                     fontSize: 14, color: t.text3 }}>
         Checking where your day stands…
       </div>
@@ -295,7 +295,7 @@ export default function SalesView({ name }: Props) {
 
   // Online Sales — not built yet
   if (isOnline) return (
-    <div style={{ minHeight: '100vh', background: t.bg, padding: '30px 20px' }}>
+    <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, padding: '30px 20px' }}>
       <EmptyState
         title="Online sales"
         body="E-commerce orders and digital campaigns will live here. Nothing to do in this space yet."
@@ -330,7 +330,7 @@ export default function SalesView({ name }: Props) {
             : `${visitsToday} ${visitsToday === 1 ? 'visit' : 'visits'} logged today${ordersToday > 0 ? `, and ${ordersToday} ${ordersToday === 1 ? 'order' : 'orders'} placed` : ''}.`
 
   return (
-    <div style={{ minHeight: '100vh', background: t.bg }}>
+    <div style={{ minHeight: 'var(--oc-screen)', background: t.bg }}>
       {/* Attention line */}
       <div style={{ padding: '30px 20px 24px', maxWidth: 720 }}>
         <div style={{ marginBottom: 10 }}>

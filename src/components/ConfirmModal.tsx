@@ -16,7 +16,7 @@ export default function ConfirmModal({ message, detail, confirmLabel, cancelLabe
   const isDanger = type === 'danger'
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+    <div className="oc-overlay" style={{ zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)' }}
         onClick={isAlert ? onConfirm : onCancel} />
 
