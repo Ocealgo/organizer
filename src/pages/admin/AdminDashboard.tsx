@@ -20,7 +20,8 @@ import {
   STATUS_CONFIG,
 } from "../../data";
 import { CheckIn, AppUser, Party, LeaveRecord, Permission, Product } from "../../types";
-import { can, isAdminRole } from "../../auth/permissions";
+import { can, isAdminRole, ROLE_LABELS_PLAIN } from "../../auth/permissions";
+import { survey, resetPerson, ResetSurvey, ResetProgress } from "../../data/resetPerson";
 import SalesReport from "../reports/SalesReport";
 import ReportsHome from "../reports/ReportsHome";
 import OpportunitiesScreen from "../reports/OpportunitiesScreen";
@@ -128,6 +129,14 @@ export default function AdminDashboard() {
   const [dangerStep, setDangerStep] = useState<'idle' | 'confirm'>('idle')
   const [dangerDone, setDangerDone] = useState<string[]>([])
   const [dangerError, setDangerError] = useState<string | null>(null)
+
+  // Reset one person — see src/data/resetPerson.ts for what it actually does.
+  const [resetUid, setResetUid] = useState('')
+  const [resetSurvey, setResetSurvey] = useState<ResetSurvey | null>(null)
+  const [resetBusy, setResetBusy] = useState<string | null>(null)
+  const [resetConfirm, setResetConfirm] = useState('')
+  const [resetDone, setResetDone] = useState<string[] | null>(null)
+  const [resetError, setResetError] = useState<string | null>(null)
 
   useEffect(() => {
     const u0 = onSnapshot(collection(db, "parties"), (snap) => {
@@ -380,6 +389,156 @@ export default function AdminDashboard() {
             </div>
           </div>
         </Section>
+
+        {/* ── Reset one person ── */}
+        {(() => {
+          const person = salesUsers.find(u => u.uid === resetUid)
+          const armed = !!person && resetConfirm.trim() === person.name.trim()
+
+          const runSurvey = async () => {
+            setResetError(null); setResetDone(null); setResetSurvey(null)
+            setResetBusy('Reading their records…')
+            try {
+              setResetSurvey(await survey(resetUid))
+            } catch (e: any) {
+              setResetError(e?.message || 'Could not read their records.')
+            } finally { setResetBusy(null) }
+          }
+
+          const runReset = async () => {
+            setResetError(null)
+            setResetBusy('Starting…')
+            try {
+              const done = await resetPerson(resetUid, (p: ResetProgress) => setResetBusy(p.step))
+              setResetDone(done)
+              setResetSurvey(null); setResetConfirm(''); setResetUid('')
+            } catch (e: any) {
+              setResetError(
+                (e?.code === 'permission-denied'
+                  ? 'Firestore refused part of this. '
+                  : '') +
+                (e?.message || 'It stopped partway.') +
+                ' Some of it may already be done — run the preview again to see what is left.',
+              )
+            } finally { setResetBusy(null) }
+          }
+
+          return (
+            <div style={{
+              background: 'rgba(220,38,38,0.05)', borderRadius: 16, padding: 20,
+              border: '1.5px solid rgba(220,38,38,0.25)', marginBottom: 28,
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: t.warn, marginBottom: 4 }}>
+                Reset one person
+              </div>
+              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16, lineHeight: 1.5 }}>
+                Erases everything a rep has ever done and puts back what it moved — stock returns to
+                the company, locked packets are released, and bills they settled are owed again.
+                Meant for handing a test account back clean.
+                <br /><br />
+                Their shops go too. Look at the preview before you confirm: if a colleague has
+                traded with one of those shops, that work is left pointing at a shop that no longer
+                exists.
+              </div>
+
+              {resetError && (
+                <div style={{ background: 'rgba(220,38,38,0.12)', border: '1px solid rgba(220,38,38,0.4)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#f87171', lineHeight: 1.5 }}>
+                  {resetError}
+                </div>
+              )}
+
+              {resetDone && (
+                <div style={{ background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(22,163,74,0.25)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#6ee7b7', lineHeight: 1.6 }}>
+                  Done — {resetDone.join(' · ')}
+                </div>
+              )}
+
+              <div style={{ maxWidth: 460, marginBottom: 14 }}>
+                <CustomSelect
+                  value={resetUid}
+                  onChange={v => { setResetUid(v); setResetSurvey(null); setResetConfirm(''); setResetDone(null) }}
+                  options={salesUsers.map(u => ({ value: u.uid, label: u.name, sub: ROLE_LABELS_PLAIN[u.role] }))}
+                  placeholder="Choose a person"
+                />
+              </div>
+
+              {resetUid && !resetSurvey && (
+                <GhostButton onClick={runSurvey} disabled={!!resetBusy}>
+                  {resetBusy || 'Show me what this would delete'}
+                </GhostButton>
+              )}
+
+              {resetSurvey && (
+                <div style={{ background: 'rgba(220,38,38,0.08)', border: '1.5px solid rgba(220,38,38,0.3)', borderRadius: 12, padding: 16 }}>
+                  {resetSurvey.total === 0 ? (
+                    <div style={{ fontSize: 13, color: '#94a3b8' }}>
+                      {person?.name} has no records. Nothing to reset.
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 12, color: '#f87171', marginBottom: 10, lineHeight: 1.7 }}>
+                        <strong>{person?.name}</strong> — {resetSurvey.total} records will be
+                        permanently deleted:
+                        <br />
+                        {resetSurvey.counts.map(c => `${c.n} ${c.label.toLowerCase()}`).join(' · ')}
+                      </div>
+
+                      {resetSurvey.collected > 0 && (
+                        <div style={{ fontSize: 12, color: '#f87171', marginBottom: 10, lineHeight: 1.6 }}>
+                          ₹{resetSurvey.collected.toLocaleString('en-IN')} of collections will be
+                          undone
+                          {resetSurvey.foreignBillsTouched > 0
+                            ? `, putting ${resetSurvey.foreignBillsTouched} bill(s) raised by other people back into what is owed.`
+                            : '.'}
+                        </div>
+                      )}
+
+                      {Object.keys(resetSurvey.stockReturned).length > 0 && (
+                        <div style={{ fontSize: 12, color: '#f87171', marginBottom: 10, lineHeight: 1.6 }}>
+                          {Object.entries(resetSurvey.stockReturned)
+                            .map(([pid, n]) => `${n} packets of ${products.find(p => p.id === pid)?.name || 'a product'}`)
+                            .join(', ')} will be taken back off the shops and returned to company stock.
+                        </div>
+                      )}
+
+                      {resetSurvey.partiesUsedByOthers.length > 0 && (
+                        <div style={{ background: 'rgba(220,38,38,0.15)', borderRadius: 8, padding: '10px 12px', marginBottom: 10, fontSize: 12, color: '#fca5a5', lineHeight: 1.6 }}>
+                          <strong>{resetSurvey.partiesUsedByOthers.length} of their shops are used
+                          by other people</strong> and will still be deleted:
+                          <br />
+                          {resetSurvey.partiesUsedByOthers.map(p => `${p.name} (${p.why})`).join('; ')}
+                        </div>
+                      )}
+
+                      <div style={{ fontSize: 12, color: '#f87171', marginBottom: 10 }}>
+                        Type <strong>{person?.name}</strong> to confirm.
+                      </div>
+                      <input
+                        value={resetConfirm}
+                        onChange={e => setResetConfirm(e.target.value)}
+                        placeholder={person?.name}
+                        style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(220,38,38,0.4)', borderRadius: 10, padding: '12px 14px', fontSize: 16, minHeight: 44, color: '#fff', outline: 'none', marginBottom: 10 }}
+                      />
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          onClick={() => { setResetSurvey(null); setResetConfirm('') }}
+                          style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 500, minHeight: 44, cursor: 'pointer' }}>
+                          Cancel
+                        </button>
+                        <button
+                          onClick={runReset}
+                          disabled={!armed || !!resetBusy}
+                          style={{ flex: 2, background: armed ? '#dc2626' : 'rgba(220,38,38,0.2)', border: 'none', color: '#fff', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 500, minHeight: 44, cursor: armed ? 'pointer' : 'not-allowed', opacity: resetBusy ? 0.6 : 1 }}>
+                          {resetBusy || `Erase everything ${person?.name} has done`}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
         {/* ── Danger Zone ── */}
         {(() => {
