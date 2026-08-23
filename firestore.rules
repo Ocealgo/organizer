@@ -347,9 +347,16 @@ service cloud.firestore {
 
     // ── VISIT SHARE REQUESTS ────────────────────────────────────────────────
     match /visit_share_requests/{id} {
-      allow read: if approved()
-        && (resource.data.fromUid == request.auth.uid
-            || resource.data.toUid == request.auth.uid);
+      // The admin branch has to come first and stand alone. Firestore checks a
+      // list query against the rule rather than against each document, so a
+      // condition that only ever compares a field to the caller's own uid makes
+      // any query for somebody else's rows unanswerable — not filtered, denied.
+      // Without this an admin cannot ask "what has this person shared", which
+      // is exactly what the reset survey asks.
+      allow read: if isAdmin()
+        || (approved()
+            && (resource.data.fromUid == request.auth.uid
+                || resource.data.toUid == request.auth.uid));
 
       allow create: if approved()
         && request.resource.data.fromUid == request.auth.uid

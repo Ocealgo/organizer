@@ -470,7 +470,15 @@ export default function AdminDashboard() {
 
               {resetSurvey && (
                 <div style={{ background: 'rgba(220,38,38,0.08)', border: '1.5px solid rgba(220,38,38,0.3)', borderRadius: 12, padding: 16 }}>
-                  {resetSurvey.total === 0 ? (
+                  {resetSurvey.unreadable.length > 0 && (
+                    <div style={{ background: 'rgba(220,38,38,0.15)', borderRadius: 8, padding: '10px 12px', marginBottom: 10, fontSize: 12, color: '#fca5a5', lineHeight: 1.6 }}>
+                      <strong>Could not read: {resetSurvey.unreadable.join(', ')}.</strong> The
+                      deployed rules refuse it, so those are not counted below and the reset will
+                      not clear them. Deploy the current firestore.rules and try again.
+                    </div>
+                  )}
+
+                  {resetSurvey.total === 0 && resetSurvey.unreadable.length === 0 ? (
                     <div style={{ fontSize: 13, color: '#94a3b8' }}>
                       {person?.name} has no records. Nothing to reset.
                     </div>

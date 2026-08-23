@@ -56,6 +56,16 @@ export interface ResetSurvey {
   partiesUsedByOthers: { id: string; name: string; why: string }[]
   /** Stock that will go back to the company, per product. */
   stockReturned: Record<string, number>
+  /**
+   * Collections the rules would not let us read.
+   *
+   * Reported rather than thrown. One collection the caller lacks read access
+   * to used to kill the whole preview with "Missing or insufficient
+   * permissions" and no clue which of fourteen queries was at fault — and a
+   * preview that shows thirteen categories and names the fourteenth is far
+   * more use than one that shows nothing.
+   */
+  unreadable: string[]
   total: number
 }
 
@@ -69,17 +79,28 @@ async function byField<T>(col: string, field: string, uid: string): Promise<T[]>
 /** Read-only. Counts what would go, and what it would disturb. */
 export async function survey(uid: string): Promise<ResetSurvey> {
   const counts: { label: string; n: number }[] = []
+  const unreadable: string[] = []
   let total = 0
 
+  /** Never let one denied collection hide the other thirteen. */
+  const tryRead = async <T>(col: string, field: string, label: string): Promise<T[]> => {
+    try {
+      return await byField<T>(col, field, uid)
+    } catch {
+      unreadable.push(label)
+      return []
+    }
+  }
+
   for (const { col, field, label } of OWNED) {
-    const rows = await byField<{ id: string }>(col, field, uid)
+    const rows = await tryRead<{ id: string }>(col, field, label)
     counts.push({ label, n: rows.length })
     total += rows.length
   }
 
-  const allocations = await byField<UnifiedAllocation>('allocations_v2', 'createdBy', uid)
-  const payments = await byField<PaymentTransaction>('payment_transactions', 'collectedBy', uid)
-  const parties = await byField<Party>('parties', 'addedBy', uid)
+  const allocations = await tryRead<UnifiedAllocation>('allocations_v2', 'createdBy', 'Orders raised')
+  const payments = await tryRead<PaymentTransaction>('payment_transactions', 'collectedBy', 'Payments collected')
+  const parties = await tryRead<Party>('parties', 'addedBy', 'Shops added')
   counts.push({ label: 'Orders raised', n: allocations.length })
   counts.push({ label: 'Payments collected', n: payments.length })
   counts.push({ label: 'Shops added', n: parties.length })
@@ -138,7 +159,8 @@ export async function survey(uid: string): Promise<ResetSurvey> {
   return {
     counts: counts.filter(c => c.n > 0),
     allocations, payments, parties,
-    collected, foreignBillsTouched, partiesUsedByOthers, stockReturned, total,
+    collected, foreignBillsTouched, partiesUsedByOthers, stockReturned,
+    unreadable, total,
   }
 }
 
