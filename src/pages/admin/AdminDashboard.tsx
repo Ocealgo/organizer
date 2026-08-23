@@ -127,6 +127,7 @@ export default function AdminDashboard() {
   const [dangerClearing, setDangerClearing] = useState(false)
   const [dangerStep, setDangerStep] = useState<'idle' | 'confirm'>('idle')
   const [dangerDone, setDangerDone] = useState<string[]>([])
+  const [dangerError, setDangerError] = useState<string | null>(null)
 
   useEffect(() => {
     const u0 = onSnapshot(collection(db, "parties"), (snap) => {
@@ -382,16 +383,63 @@ export default function AdminDashboard() {
 
         {/* ── Danger Zone ── */}
         {(() => {
-          const CLEARABLE = [
-            { id: 'revisit_logs',         label: 'Visit Logs',              desc: 'All field visit & activity logs' },
-            { id: 'visit_logs',           label: 'Check-in Logs',           desc: 'Daily check-in records' },
-            { id: 'allocations_v2',       label: 'Allocations',             desc: 'All stock allocation records' },
-            { id: 'payment_transactions', label: 'Payments',                desc: 'All credit payment records' },
-            { id: 'dispatches',           label: 'Dispatches',              desc: 'Dispatch audit trail' },
-            { id: 'expense_entries',      label: 'Expenses',                desc: 'All expense entries' },
-            { id: 'parties',              label: 'Parties',                 desc: 'Retailers, distributors & their stock' },
-            { id: 'leave_records',        label: 'Leave Records',           desc: 'All leave requests & approvals' },
-            { id: 'users',                label: 'Users',                   desc: 'All accounts except super admins' },
+          /**
+           * What "clear this" means, per group.
+           *
+           * Grouped rather than one box per collection, because these records
+           * refer to each other and half a clear is worse than none. Orders
+           * without their receipts leave payments pointing at bills that no
+           * longer exist; visits without their duty sessions leave days on
+           * which nobody went anywhere. A group is the smallest unit that
+           * leaves the data consistent.
+           *
+           * Both generations of the field app are listed together on purpose.
+           * Visits used to be `revisit_logs` and are now `outlet_visits`, and
+           * a super admin clearing "field work" means all of it — not whichever
+           * half the app happened to be writing when this list was last edited.
+           */
+          const CLEARABLE: { id: string; label: string; desc: string; collections: string[] }[] = [
+            {
+              id: 'field_work',
+              label: 'Field work',
+              desc: 'Visits, punch in and out, odometer readings, phone and WhatsApp orders, shared visits, check-ins',
+              collections: [
+                'outlet_visits', 'duty_sessions', 'remote_contacts',
+                'revisit_logs', 'visit_logs', 'visit_share_requests', 'checkins',
+              ],
+            },
+            {
+              id: 'orders',
+              label: 'Orders and stock movement',
+              desc: 'Allocations, dispatches, the stock ledger and every indent. Also puts locked stock back to zero',
+              collections: [
+                'allocations_v2', 'dispatches', 'stock_ledger', 'stock_movements',
+                'credits', 'retailer_indents',
+              ],
+            },
+            { id: 'money', label: 'Payments', desc: 'Every recorded collection and its confirmation',
+              collections: ['payment_transactions'] },
+            { id: 'expenses', label: 'Expenses', desc: 'Claims and the weekly submissions that wrap them',
+              collections: ['expense_entries', 'expense_reports'] },
+            { id: 'leave', label: 'Leave', desc: 'All leave requests and approvals',
+              collections: ['leave_records'] },
+            { id: 'parties', label: 'Parties', desc: 'Retailers, distributors and the stock they hold',
+              collections: ['parties'] },
+            // password_requests is deliberately not here. Its rule is
+            // `allow write: if false` — only the Cloud Function that raises a
+            // request may touch it, and that runs on admin credentials. Adding
+            // it would make this whole group fail with permission-denied, and
+            // loosening a rule that tight for a housekeeping button is the
+            // wrong trade. Those rows are small and close themselves when a
+            // password is next reset.
+            { id: 'alerts', label: 'Notifications', desc: 'The alert queue — every notification raised so far',
+              collections: ['alerts'] },
+            {
+              id: 'users',
+              label: 'User records',
+              desc: 'Every account record except super admins. Does not remove their sign-in — see below',
+              collections: ['users'],
+            },
           ]
 
           const toggleAll = (checked: boolean) =>
@@ -399,22 +447,62 @@ export default function AdminDashboard() {
 
           const handleClear = async () => {
             setDangerClearing(true)
+            setDangerError(null)
+            const cleared: string[] = []
             try {
-              for (const colId of Array.from(dangerSelected)) {
-                const snap = await getDocs(collection(db, colId))
-                const docs = colId === 'users'
-                  ? snap.docs.filter(d => (d.data() as any).role !== 'super_admin')
-                  : snap.docs
-                for (let i = 0; i < docs.length; i += 499) {
-                  const batch = writeBatch(db)
-                  docs.slice(i, i + 499).forEach(d => batch.delete(d.ref))
-                  await batch.commit()
+              for (const groupId of Array.from(dangerSelected)) {
+                const group = CLEARABLE.find(c => c.id === groupId)
+                if (!group) continue
+                for (const colId of group.collections) {
+                  const snap = await getDocs(collection(db, colId))
+                  // Super admins are excluded here as well as in the rules. The
+                  // rule is what actually stops it; this stops a whole batch
+                  // dying on one document it was never going to be allowed to
+                  // delete, taking the other 498 with it.
+                  const docs = colId === 'users'
+                    ? snap.docs.filter(d => (d.data() as any).role !== 'super_admin')
+                    : snap.docs
+                  for (let i = 0; i < docs.length; i += 499) {
+                    const batch = writeBatch(db)
+                    docs.slice(i, i + 499).forEach(d => batch.delete(d.ref))
+                    await batch.commit()
+                  }
                 }
+                // Locked stock is a reservation an allocation holds. Delete the
+                // allocations and nothing stands behind the reservation — the
+                // packets stay unavailable for good, and no screen explains
+                // why. Releasing it belongs to clearing the orders, not to a
+                // tidy-up somebody has to remember afterwards.
+                if (groupId === 'orders') {
+                  const stockSnap = await getDoc(doc(db, 'config', 'stock'))
+                  const productStock = (stockSnap.data() as any)?.productStock
+                  if (productStock) {
+                    const release: Record<string, unknown> = { updatedAt: Date.now() }
+                    Object.keys(productStock).forEach(id => {
+                      release[`productStock.${id}.locked`] = 0
+                    })
+                    await updateDoc(doc(db, 'config', 'stock'), release)
+                  }
+                }
+                cleared.push(group.label)
               }
-              setDangerDone(Array.from(dangerSelected))
+              setDangerDone(cleared)
               setDangerSelected(new Set())
               setDangerConfirm('')
               setDangerStep('idle')
+            } catch (e: any) {
+              // Without this it failed in silence: the button span back to
+              // normal, nothing was deleted, and there was no way to tell that
+              // apart from success.
+              setDangerError(
+                (cleared.length > 0
+                  ? `Cleared ${cleared.join(', ')}, then stopped. `
+                  : 'Nothing was deleted. ') +
+                (e?.code === 'permission-denied'
+                  ? 'Firestore refused the delete. Check the deployed rules still let a super admin remove these.'
+                  : e?.message || 'Firestore rejected the request.'),
+              )
+              setDangerDone(cleared)
             } finally {
               setDangerClearing(false)
             }
@@ -424,8 +512,20 @@ export default function AdminDashboard() {
             <div style={{ background: 'rgba(220,38,38,0.05)', borderRadius: 16, padding: 20, border: '1.5px solid rgba(220,38,38,0.25)' }}>
               <div style={{ fontSize: 13, fontWeight: 500, color: t.warn, marginBottom: 4 }}>Danger zone</div>
               <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16, lineHeight: 1.5 }}>
-                Permanently delete data from Firestore. This cannot be undone. User accounts are never affected.
+                Permanently deletes data from Firestore. There is no undo and no backup taken.
+                <br /><br />
+                Clearing <strong>User records</strong> removes the account record — the role, the
+                permissions, the name — but not the sign-in itself, which lives in Firebase Auth and
+                cannot be removed from here. Those people can still log in, and will land on the
+                screen for an account that has not been set up. Remove them in User management first
+                if you want them actually gone.
               </div>
+
+              {dangerError && (
+                <div style={{ background: 'rgba(220,38,38,0.12)', border: '1px solid rgba(220,38,38,0.4)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#f87171', lineHeight: 1.5 }}>
+                  {dangerError}
+                </div>
+              )}
 
               {dangerDone.length > 0 && (
                 <div style={{ background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(22,163,74,0.25)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#6ee7b7' }}>
