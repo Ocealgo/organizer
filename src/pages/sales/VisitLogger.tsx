@@ -1687,7 +1687,9 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
                 border: `1px solid ${t.border}`,
                 borderRadius: 10,
                 padding: "12px 14px",
-                fontSize: 14,
+                // 16px, like every other field — under it, focusing this on an
+                // iPhone zooms the page.
+                fontSize: 16,
                 color: isBlocked ? t.text3 : t.text,
                 outline: "none",
                 resize: "none",

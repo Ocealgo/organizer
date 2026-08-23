@@ -65,7 +65,8 @@ export default function CustomSelect({ value, onChange, options, placeholder = '
       <div key={o.value} className="oc-row"
         onClick={() => { onChange(o.value); setOpen(false); setSearch('') }}
         style={{
-          padding: '12px 14px', cursor: 'pointer',
+          padding: '12px 14px', minHeight: 44, display: 'flex',
+          flexDirection: 'column', justifyContent: 'center', cursor: 'pointer',
           background: value === o.value ? t.tint : 'transparent',
           color: t.text,
         }}>
@@ -80,7 +81,7 @@ export default function CustomSelect({ value, onChange, options, placeholder = '
         style={{
           width: '100%', background: 'transparent',
           border: `0.5px solid ${error ? t.warn : open ? t.text2 : t.border2}`,
-          borderRadius: 6, padding: '11px 13px', fontSize: 14, fontWeight: 400,
+          borderRadius: 6, padding: '12px 13px', fontSize: 16, minHeight: 44, fontWeight: 400,
           color: selected ? t.text : t.text3, cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
           boxSizing: 'border-box',
@@ -111,8 +112,12 @@ export default function CustomSelect({ value, onChange, options, placeholder = '
                 style={{
                   width: '100%', background: 'transparent',
                   border: `0.5px solid ${t.border}`,
-                  borderRadius: 6, padding: '9px 11px',
-                  fontSize: 14, fontWeight: 400, color: t.text, outline: 'none', boxSizing: 'border-box',
+                  borderRadius: 6, padding: '11px',
+                  // A real text input, so the 16px iOS rule applies here too —
+                  // and a dropdown that zooms the page as you start typing is
+                  // the worst place for it to happen.
+                  fontSize: 16, minHeight: 44,
+                  fontWeight: 400, color: t.text, outline: 'none', boxSizing: 'border-box',
                 }}
               />
             </div>

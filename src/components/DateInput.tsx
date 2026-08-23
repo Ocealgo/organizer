@@ -27,8 +27,12 @@ export default function DateInput({ type, value, onChange, style, placeholder, m
     background: 'transparent',
     border: `0.5px solid ${t.border2}`,
     borderRadius: 6,
-    padding: '11px 13px',
-    fontSize: 14,
+    padding: '12px 13px',
+    // Matches inputStyle, and for the same reason: under 16px, focusing this
+    // makes Safari on iOS zoom the whole page. A date field is one of the most
+    // tapped things in the app.
+    fontSize: 16,
+    minHeight: 44,
     fontWeight: 400,
     color: value ? t.text : t.text3,
     outline: 'none',
