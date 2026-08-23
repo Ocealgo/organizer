@@ -103,7 +103,7 @@ export default function MonthlyRequestManager({ onBack, parties }: Props) {
   const monthLabel = new Date(selectedMonth + '-02').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
 
   return (
-    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
+    <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 40 }}>
       <PageHeader
         eyebrow="Monthly planning"
         title="Stock requests"

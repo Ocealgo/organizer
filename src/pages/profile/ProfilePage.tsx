@@ -146,7 +146,7 @@ export default function ProfilePage({ onBack }: Props) {
   const stack = { display: 'flex', flexDirection: 'column' as const, gap: 16 }
 
   return (
-    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 56 }}>
+    <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 56 }}>
       <PageHeader
         eyebrow="Yours"
         title="Your account"

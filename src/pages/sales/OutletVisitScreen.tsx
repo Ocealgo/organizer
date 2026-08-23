@@ -576,7 +576,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
   // ─────────────────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', background: t.bg }}>
+      <div style={{ minHeight: 'var(--oc-screen)', background: t.bg }}>
         <PageHeader eyebrow="Visit" title="Outlets" onBack={onBack} />
         <div style={{ padding: '24px 20px', color: t.text3, fontSize: 14 }}>Loading…</div>
       </div>
@@ -586,7 +586,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
   // ── ADD AN OUTLET ─────────────────────────────────────────────────────────
   if (!visit && adding) {
     return (
-      <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 56 }}>
+      <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 56 }}>
         <PageHeader eyebrow="Visit" title="Add an outlet" onBack={() => setAdding(false)}
           subtitle="A new distributor or retailer, ready to visit straight away." />
         <div style={{ padding: '24px 20px' }}>
@@ -615,7 +615,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
       .slice(0, 40)
 
     return (
-      <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 56 }}>
+      <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 56 }}>
         <PageHeader eyebrow="Visit" title="Which outlet?" onBack={onBack}
           right={<GhostButton onClick={() => setAdding(true)}>Add an outlet</GhostButton>}
           subtitle={locating ? 'Finding your location…'
@@ -704,7 +704,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
               ? 'This outlet has no position on file yet, so there is nothing to measure you against. You can register one from inside the visit.'
               : `You are about ${geo!.distanceM} m from where this outlet is registered.`
           return (
-            <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex',
+            <div className="oc-overlay" style={{ zIndex: 2000, display: 'flex',
                           alignItems: 'flex-end', justifyContent: 'center' }}>
               <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)' }}
                 onClick={() => setPending(null)} />
@@ -734,7 +734,7 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
   const needsReason = category ? NO_ORDER_CATEGORIES.includes(category) : false
 
   return (
-    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 56 }}>
+    <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 56 }}>
       <PageHeader
         eyebrow={OUTLET_TYPE_LABEL[visit.outletType]}
         title={visit.partyName}

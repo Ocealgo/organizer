@@ -554,7 +554,7 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
 
     return (
       <>
-        <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
+        <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 40 }}>
           <PageHeader
             eyebrow={histParty.type === 'distributor' ? 'Distributor' : 'Retailer'}
             title={histParty.name}
@@ -678,7 +678,7 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
   const pageCount = Math.ceil(filtered.length / ALLOC_PAGE_SIZE)
 
   return (
-    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
+    <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 40 }}>
       <PageHeader
         eyebrow="Allocations"
         title="Stock allocations"
@@ -1488,7 +1488,7 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
 
       {/* Dispatch date confirmation */}
       {dispatchDateAlloc && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div className="oc-overlay" style={{ zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)' }}
             onClick={() => setDispatchDateAlloc(null)} />
           <div style={{ position: 'relative', zIndex: 1, background: t.bg2, borderRadius: 8,

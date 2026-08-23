@@ -356,7 +356,7 @@ export default function PartyManager({ onBack }: Props) {
   )
 
   return (
-    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
+    <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 40 }}>
       <PageHeader
         eyebrow="Network"
         title="Distributors and retailers"

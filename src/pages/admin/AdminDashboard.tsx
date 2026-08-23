@@ -329,7 +329,7 @@ export default function AdminDashboard() {
   });
 
   if (subScreen === "settings") return (
-    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
+    <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 40 }}>
       <PageHeader
         eyebrow="Super admin"
         title="Settings"
@@ -535,15 +535,17 @@ export default function AdminDashboard() {
 
               {/* Collection checkboxes */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', paddingBottom: 8, borderBottom: '1px solid rgba(220,38,38,0.15)' }}>
+                {/* The label wraps the box and the words, so the whole row is
+                    the target — it just has to be tall enough to be one. */}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', minHeight: 44, paddingBottom: 8, borderBottom: '1px solid rgba(220,38,38,0.15)' }}>
                   <input type="checkbox"
                     checked={dangerSelected.size === CLEARABLE.length}
                     onChange={e => toggleAll(e.target.checked)}
-                    style={{ width: 16, height: 16, accentColor: '#dc2626' }} />
+                    style={{ width: 20, height: 20, accentColor: '#dc2626' }} />
                   <span style={{ fontSize: 12, fontWeight: 500, color: '#dc2626' }}>Select all</span>
                 </label>
                 {CLEARABLE.map(c => (
-                  <label key={c.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  <label key={c.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, minHeight: 44, paddingTop: 2, cursor: 'pointer' }}>
                     <input type="checkbox"
                       checked={dangerSelected.has(c.id)}
                       onChange={e => {
@@ -553,7 +555,7 @@ export default function AdminDashboard() {
                         setDangerStep('idle')
                         setDangerDone([])
                       }}
-                      style={{ width: 16, height: 16, marginTop: 2, accentColor: '#dc2626' }} />
+                      style={{ width: 20, height: 20, marginTop: 2, accentColor: '#dc2626' }} />
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 500, color: '#e2e8f0' }}>{c.label}</div>
                       <div style={{ fontSize: 11, color: '#64748b' }}>{c.desc}</div>
@@ -581,7 +583,7 @@ export default function AdminDashboard() {
                     value={dangerConfirm}
                     onChange={e => setDangerConfirm(e.target.value)}
                     placeholder="Type DELETE to confirm"
-                    style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(220,38,38,0.4)', borderRadius: 10, padding: '12px 14px', fontSize: 14, color: '#fff', outline: 'none', marginBottom: 10 }}
+                    style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(220,38,38,0.4)', borderRadius: 10, padding: '12px 14px', fontSize: 16, minHeight: 44, color: '#fff', outline: 'none', marginBottom: 10 }}
                   />
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button
@@ -930,7 +932,7 @@ export default function AdminDashboard() {
   ] as { id: MainTab; label: string }[];
 
   return (
-    <div style={{ minHeight: "100vh", background: t.bg }}>
+    <div style={{ minHeight: "var(--oc-screen)", background: t.bg }}>
       {/* Attention line — what is actually waiting, in one sentence */}
       <div style={{ padding: "30px 20px 10px", maxWidth: 720 }}>
         <div

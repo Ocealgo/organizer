@@ -111,7 +111,7 @@ export default function OpportunitiesScreen({ onBack, uid, onVisit }: Props) {
   const total = ORDER.reduce((n, k) => n + grouped[k].length, 0)
 
   return (
-    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 56 }}>
+    <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 56 }}>
       <PageHeader
         eyebrow={uid ? 'Yours' : 'Reports'}
         title="Worth going back to"

@@ -104,7 +104,7 @@ export default function StockManager({ onBack }: Props) {
   const money = (n: number) => `₹${n.toLocaleString('en-IN')}`
 
   return (
-    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 40 }}>
+    <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 40 }}>
       <PageHeader
         eyebrow="Inventory"
         title="Stock"

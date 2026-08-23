@@ -210,7 +210,7 @@ export default function ReportsHome({ onBack, onOpenField, onOpenSales, onOpenOp
   const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
 
   return (
-    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 56 }}>
+    <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 56 }}>
       <PageHeader eyebrow="Reports" title="Reports" onBack={onBack}
         subtitle="How this period compares with the one before it, and the way in to the detail." />
 

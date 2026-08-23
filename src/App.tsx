@@ -3,7 +3,10 @@ import { signOut } from "firebase/auth";
 import { auth } from "./firebase";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { can, isManagement, ROLE_LABELS_PLAIN } from "./auth/permissions";
-import { ThemeProvider, useTheme } from "./context/ThemeContext";
+import {
+  ThemeProvider, useTheme,
+  TextScale, TEXT_SCALE_VALUE, TEXT_SCALE_LABEL,
+} from "./context/ThemeContext";
 import LoginPage from "./pages/auth/LoginPage";
 import SignupPage from "./pages/auth/SignupPage";
 import ForgotPasswordPage from "./pages/auth/ForgotPasswordPage";
@@ -83,7 +86,7 @@ function AppContent() {
     return (
       <div
         style={{
-          minHeight: "100vh",
+          minHeight: "var(--oc-screen)",
           background: t.bg,
           display: "flex",
           alignItems: "center",
@@ -122,7 +125,7 @@ function AppContent() {
   // inside the signed-in shell, so a new person never saw it at all.
   if (!firebaseUser || !appUser)
     return (
-      <div style={{ minHeight: "100vh", background: t.bg }}>
+      <div style={{ minHeight: "var(--oc-screen)", background: t.bg }}>
         <div className="oc-page" style={{ paddingTop: 16 }}><InstallHint /></div>
         <LoginPage
           onSwitch={() => setAuthScreen("signup")}
@@ -137,7 +140,7 @@ function AppContent() {
     return (
       <div
         style={{
-          minHeight: "100vh",
+          minHeight: "var(--oc-screen)",
           background: t.bg,
           display: "flex",
           flexDirection: "column",
@@ -219,7 +222,7 @@ function AppContent() {
     appUser.role === "sales_manager" && managerMode === "field";
 
   return (
-    <div style={{ background: t.bg, minHeight: "100vh" }}>
+    <div style={{ background: t.bg, minHeight: "var(--oc-screen)" }}>
       <TopBar
         roleLabel={ROLE_LABELS_PLAIN[appUser.role]}
         showUsers={canViewUsers}
@@ -421,6 +424,9 @@ function TopBar({
             <TextAction onClick={onThemeToggle}>
               {theme === "dark" ? "Light" : "Dark"}
             </TextAction>
+            {/* The three-way control lives in the menu, which wide screens do
+                not show — so here it cycles instead. Same setting either way. */}
+            <TextSizeCycle />
             <TextAction onClick={onSignOut}>Sign out</TextAction>
           </div>
 
@@ -544,9 +550,73 @@ function HeaderMenu({
           {showUsers && item("Team", onUsers)}
           {item("Account", onProfile)}
           {item(theme === "dark" ? "Light theme" : "Dark theme", onThemeToggle)}
+          <TextSizeRow />
           {item("Sign out", onSignOut)}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Wide screens have no menu to put the three-way control in, so it cycles. */
+function TextSizeCycle() {
+  const { scale, setScale } = useTheme();
+  const steps: TextScale[] = ["normal", "large", "larger"];
+  return (
+    <TextAction
+      onClick={() => setScale(steps[(steps.indexOf(scale) + 1) % steps.length])}
+    >
+      {`Text: ${TEXT_SCALE_LABEL[scale]}`}
+    </TextAction>
+  );
+}
+
+/**
+ * Text size, in the menu rather than buried in Account.
+ *
+ * It stays open when you press it, because choosing a size is something you do
+ * by looking at the result — closing the menu on the first tap would mean
+ * reopening it to try the next step. Every other row here closes on purpose;
+ * this one earns the exception.
+ *
+ * The three sizes are shown at their own scale, so the choice is legible
+ * before it is made rather than after.
+ */
+function TextSizeRow() {
+  const { t, scale, setScale } = useTheme();
+  const steps: TextScale[] = ["normal", "large", "larger"];
+  return (
+    <div style={{ borderTop: `0.5px solid ${t.border}`, padding: "11px 16px 13px" }}>
+      <div style={{ fontSize: 12, fontWeight: 400, color: t.text3, marginBottom: 8 }}>
+        Text size
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        {steps.map((s) => {
+          const on = scale === s;
+          return (
+            <button
+              key={s}
+              className="oc-action"
+              onClick={() => setScale(s)}
+              aria-pressed={on}
+              style={{
+                flex: 1,
+                background: on ? t.tint : "none",
+                border: `0.5px solid ${on ? t.text2 : t.border2}`,
+                borderRadius: 6,
+                padding: "7px 4px",
+                // Each option is drawn at the size it sets.
+                fontSize: 12 * TEXT_SCALE_VALUE[s],
+                fontWeight: on ? 500 : 400,
+                color: on ? t.text : t.text2,
+                cursor: "pointer",
+              }}
+            >
+              {TEXT_SCALE_LABEL[s]}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

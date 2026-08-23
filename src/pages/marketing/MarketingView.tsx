@@ -12,7 +12,7 @@ const PLANNED = [
 export default function MarketingView() {
   const { t } = useTheme()
   return (
-    <div style={{ minHeight: '100vh', background: t.bg }}>
+    <div style={{ minHeight: 'var(--oc-screen)', background: t.bg }}>
       <PageHeader
         eyebrow="Not built yet"
         title="Offline marketing"

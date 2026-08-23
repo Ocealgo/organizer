@@ -319,7 +319,7 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
            'The session this screen was showing has gone. Nothing you entered here was saved. Go back and start again.']
 
     return (
-      <div style={{ minHeight: '100vh', background: t.bg }}>
+      <div style={{ minHeight: 'var(--oc-screen)', background: t.bg }}>
         <PageHeader eyebrow="Duty" title={title} onBack={onBack} />
         <div style={{ padding: '24px 20px', maxWidth: 560 }}>
           <div style={{ fontSize: 14, color: t.text3, lineHeight: 1.6, marginBottom: 22 }}>{body}</div>
@@ -343,7 +343,7 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
     if (session.autoClosed) rows.push(['Closed', 'Automatically — the day was left open'])
 
     return (
-      <div style={{ minHeight: '100vh', background: t.bg }}>
+      <div style={{ minHeight: 'var(--oc-screen)', background: t.bg }}>
         <PageHeader eyebrow="Duty" title="Your day is finished" onBack={onBack} />
         <div style={{ padding: '24px 20px', maxWidth: 560 }}>
           <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
@@ -363,7 +363,7 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: t.bg, paddingBottom: 56 }}>
+    <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 56 }}>
       <PageHeader
         eyebrow="Duty"
         title={isIn ? 'Start your day' : 'End your day'}

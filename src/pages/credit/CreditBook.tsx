@@ -472,7 +472,7 @@ export default function CreditBook({ onBack, initialPartyId, focusPaymentId, sal
     const pendingPayments = partyPayments.filter((p) => p.status === "pending_approval");
 
     return (
-      <div style={{ minHeight: "100vh", background: t.bg, paddingBottom: 60 }}>
+      <div style={{ minHeight: "var(--oc-screen)", background: t.bg, paddingBottom: 60 }}>
         <PageHeader
           eyebrow={party.type === "distributor" ? "Distributor" : "Independent retailer"}
           title={party.name}
@@ -848,7 +848,7 @@ export default function CreditBook({ onBack, initialPartyId, focusPaymentId, sal
 
   // ── PARTY LIST VIEW ────────────────────────────────────────────────────────
   return (
-    <div style={{ minHeight: "100vh", background: t.bg, paddingBottom: 40 }}>
+    <div style={{ minHeight: "var(--oc-screen)", background: t.bg, paddingBottom: 40 }}>
       <PageHeader
         eyebrow="Finance"
         title="Credit book"

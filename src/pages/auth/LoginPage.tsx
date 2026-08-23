@@ -66,7 +66,7 @@ export default function LoginPage({ onSwitch, onForgot, notice }: Props) {
   return (
     <div
       style={{
-        minHeight: "100vh",
+        minHeight: "var(--oc-screen)",
         background: t.bg,
         display: "flex",
         flexDirection: "column",
