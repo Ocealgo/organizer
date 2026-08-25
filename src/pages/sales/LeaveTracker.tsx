@@ -4,6 +4,7 @@ import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import { LeaveRecord, AppUser, Holiday } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
+import { useAuth } from '../../context/AuthContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr, localMonthStr } from '../../utils/date'
 import DateInput from '../../components/DateInput'
@@ -41,6 +42,15 @@ const longDate = (d: string) =>
 
 export default function LeaveTracker({ onBack }: Props) {
   const { t } = useTheme()
+  /**
+   * Who is actually doing this.
+   *
+   * Every approval, rejection and holiday in here was stamped `by: 'admin',
+   * byName: 'Admin'` — a literal, not a lookup. So the audit log on a leave
+   * record said "Admin" whoever pressed the button, which is the one question
+   * an audit log exists to answer.
+   */
+  const { appUser } = useAuth()
   const { modal, showConfirm, showAlert } = useConfirm()
 
   const [leaveRecords, setLeaveRecords] = useState<LeaveRecord[]>([])
@@ -84,7 +94,7 @@ export default function LeaveTracker({ onBack }: Props) {
     await updateDoc(doc(db, 'leave_records', leave.id!), {
       status: 'active',
       auditLog: [...(leave.auditLog || []), {
-        action: 'leave_approved', by: 'admin', byName: 'Admin', at: Date.now()
+        action: 'leave_approved', by: appUser?.uid ?? '', byName: appUser?.name ?? 'Somebody', at: Date.now()
       }],
     })
     await addDoc(collection(db, 'alerts'), {
@@ -105,7 +115,7 @@ export default function LeaveTracker({ onBack }: Props) {
     await updateDoc(doc(db, 'leave_records', leave.id!), {
       status: 'rejected',
       auditLog: [...(leave.auditLog || []), {
-        action: 'leave_rejected', by: 'admin', byName: 'Admin', at: Date.now()
+        action: 'leave_rejected', by: appUser?.uid ?? '', byName: appUser?.name ?? 'Somebody', at: Date.now()
       }],
     })
   }
@@ -120,7 +130,7 @@ export default function LeaveTracker({ onBack }: Props) {
     await updateDoc(doc(db, 'leave_records', leave.id!), {
       status: 'removed',
       auditLog: [...(leave.auditLog || []), {
-        action: 'unmark_approved', by: 'admin', byName: 'Admin', at: Date.now()
+        action: 'unmark_approved', by: appUser?.uid ?? '', byName: appUser?.name ?? 'Somebody', at: Date.now()
       }],
     })
   }
@@ -135,7 +145,7 @@ export default function LeaveTracker({ onBack }: Props) {
     await updateDoc(doc(db, 'leave_records', leave.id!), {
       status: 'active',
       auditLog: [...(leave.auditLog || []), {
-        action: 'unmark_rejected', by: 'admin', byName: 'Admin', at: Date.now()
+        action: 'unmark_rejected', by: appUser?.uid ?? '', byName: appUser?.name ?? 'Somebody', at: Date.now()
       }],
     })
   }
@@ -150,7 +160,7 @@ export default function LeaveTracker({ onBack }: Props) {
     try {
       await addDoc(collection(db, 'holidays'), {
         name: newHolidayName.trim(), date: newHolidayDate,
-        createdBy: 'admin', createdByName: 'Admin', createdAt: Date.now(),
+        createdBy: appUser?.uid ?? '', createdByName: appUser?.name ?? 'Somebody', createdAt: Date.now(),
       })
       setNewHolidayName('')
       setNewHolidayDate(localDateStr())

@@ -13,10 +13,15 @@ import DateInput from '../../components/DateInput'
 import { PageHeader, Eyebrow, StatGrid, StatCard, EmptyState } from '../../components/ui'
 import LazyRouteMap from '../../components/LazyRouteMap'
 import { RouteStop, stopLabel } from '../../components/RouteMap'
+import { proximity } from '../../device/location'
 import { urlFor } from '../../device/photo'
 import { localDateStr, localMonthStr } from '../../utils/date'
 
-interface Props { onBack: () => void }
+interface Props {
+  onBack: () => void
+  /** Open already filtered to one person — used by the dashboard's day rows. */
+  initialWho?: string
+}
 
 type RangeMode = 'day' | 'week' | 'month' | 'custom'
 
@@ -72,7 +77,7 @@ function StoragePhoto({ path, label, unverified }: {
   )
 }
 
-export default function FieldReport({ onBack }: Props) {
+export default function FieldReport({ onBack, initialWho }: Props) {
   const { t } = useTheme()
 
   const [mode, setMode] = useState<RangeMode>('day')
@@ -81,7 +86,7 @@ export default function FieldReport({ onBack }: Props) {
   const [month, setMonth] = useState(localMonthStr())
   const [from, setFrom] = useState(addDays(localDateStr(), -7))
   const [to, setTo] = useState(localDateStr())
-  const [who, setWho] = useState('all')
+  const [who, setWho] = useState(initialWho ?? 'all')
   const [open, setOpen] = useState<Set<string>>(new Set())
 
   const range = useMemo(() => {
@@ -330,8 +335,8 @@ export default function FieldReport({ onBack }: Props) {
                           stops.push({
                             lat: v.punchInLocation.lat, lng: v.punchInLocation.lng,
                             title: v.partyName,
-                            detail: `${hhmm(v.punchInAt)}${v.distanceFromOutletM !== undefined
-                              ? ` · ${v.distanceFromOutletM} m from the shop` : ''}`,
+                            detail: `${hhmm(v.punchInAt)} · ${
+                              proximity(v.distanceFromOutletM, v.punchInLocation.accuracy).label}`,
                           })
                         })
                         if (!s.autoClosed && s.endLocation && s.endAt) stops.push({
@@ -450,15 +455,24 @@ export default function FieldReport({ onBack }: Props) {
                                     {` · ₹${v.paymentCollected.toLocaleString('en-IN')} collected`}
                                   </span>
                                 )}
-                                {v.distanceFromOutletM !== undefined && (
-                                  // Coloured only when it is outside the geofence. The
-                                  // number is on every line; the point of the colour is
-                                  // that a manager scanning forty visits sees the one
-                                  // logged from the next town without reading any of them.
-                                  <span style={{ color: v.withinGeofence === false ? t.warn : undefined }}>
-                                    {` · ${v.distanceFromOutletM} m from the shop's registered position`}
-                                  </span>
-                                )}
+                                {(() => {
+                                  // A verdict rather than a raw number. Coloured only
+                                  // for the one band that deserves a question — a
+                                  // manager scanning forty visits should see the one
+                                  // logged from the next town without reading any of
+                                  // them, and should not have that same colour thrown
+                                  // by a phone that could not get a fix.
+                                  const p = proximity(
+                                    v.distanceFromOutletM,
+                                    v.punchInLocation?.accuracy,
+                                  )
+                                  if (p.kind === 'no_pin') return null
+                                  return (
+                                    <span style={{ color: p.flag ? t.warn : undefined }}>
+                                      {` · ${p.label}`}
+                                    </span>
+                                  )
+                                })()}
                                 {v.orderPlaced && ' · order booked'}
                               </div>
 

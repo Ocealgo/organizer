@@ -75,6 +75,8 @@ export default function AdminDashboard() {
   const { modal: adminLeaveModal, showConfirm: showAdminLeaveConfirm } =
     useConfirm();
   const [subScreen, setSubScreen] = useState<SubScreen>("dashboard");
+  /** Set when Field activity is opened from a person's row, so it lands filtered. */
+  const [fieldReportWho, setFieldReportWho] = useState<string | undefined>();
   const [allocations, setAllocations] = useState<any[]>([]);
   const [visitLogs, setVisitLogs] = useState<any[]>([]);
   /**
@@ -800,7 +802,22 @@ export default function AdminDashboard() {
   if (subScreen === "reports")
     return <SalesReport onBack={() => setSubScreen("reportsHome")} />;
   if (subScreen === "field")
-    return <FieldReport onBack={() => setSubScreen("reportsHome")} />;
+    return (
+      <FieldReport
+        // Remounts when the person changes. initialWho seeds useState, which
+        // only runs on mount — without this, opening one rep and then another
+        // would leave the first one's filter in place.
+        key={fieldReportWho ?? "all"}
+        initialWho={fieldReportWho}
+        onBack={() => {
+          // Back to wherever it was opened from: the dashboard row, or the
+          // reports menu.
+          const to: SubScreen = fieldReportWho ? "dashboard" : "reportsHome";
+          setFieldReportWho(undefined);
+          setSubScreen(to);
+        }}
+      />
+    );
   if (subScreen === "products")
     return <ProductManager onBack={() => setSubScreen("dashboard")} />;
   if (subScreen === "parties")
@@ -1310,6 +1327,13 @@ export default function AdminDashboard() {
                * manager whose team had been round thirty shops.
                */
               const byRep = new Map<string, { name: string; visits: number; orders: number }>();
+              // Distance is claimed off the odometer, so it lives on the duty
+              // session rather than on any visit.
+              const kmByRep = new Map<string, number>();
+              todayDuty.forEach((s: any) => {
+                if (typeof s.claimedDistanceKm === "number")
+                  kmByRep.set(s.uid, (kmByRep.get(s.uid) ?? 0) + s.claimedDistanceKm);
+              });
               visitLogs
                 .filter((l: any) => l.date === todayStr && !l.isNoEntry)
                 .forEach((l: any) => {
@@ -1350,15 +1374,26 @@ export default function AdminDashboard() {
                     </div>
                   ) : (
                     todayLogs.map((log: any) => (
-                      <div
+                      // Opens the day it summarises. Everything a manager wants
+                      // next — the stops on a map, times, distances, remarks,
+                      // what was ordered — is already in Field activity, so this
+                      // points at it rather than growing a second copy here.
+                      <button
                         key={log.id}
+                        className="oc-row"
+                        onClick={() => { setFieldReportWho(log.id); setSubScreen("field"); }}
                         style={{
                           display: "flex",
                           alignItems: "baseline",
                           justifyContent: "space-between",
                           gap: 16,
+                          width: "100%",
+                          textAlign: "left",
+                          background: "none",
+                          border: "none",
                           padding: "11px 0",
                           borderTop: `0.5px solid ${t.border}`,
+                          cursor: "pointer",
                         }}
                       >
                         <span
@@ -1381,8 +1416,11 @@ export default function AdminDashboard() {
                           {log.orders > 0
                             ? `, ${log.orders} ${log.orders === 1 ? "order" : "orders"}`
                             : ""}
+                          {kmByRep.get(log.id)
+                            ? ` · ${kmByRep.get(log.id)} km`
+                            : ""}
                         </span>
-                      </div>
+                      </button>
                     ))
                   )}
                 </div>

@@ -177,3 +177,69 @@ export function checkGeofence(
   const d = distanceM(fix, outlet)
   return { within: d <= radiusM, distanceM: Math.round(d), radiusM }
 }
+
+/**
+ * Beyond this, "nearby" stops being a fair word for it. A market street or a
+ * wholesale complex easily spans a few hundred metres, so the middle band is
+ * wide on purpose — the point is to separate "plausibly at work" from "worth
+ * asking about", not to catch people out by a few paces.
+ */
+export const NEARBY_RADIUS_M = 500
+
+export type ProximityKind = 'at_shop' | 'nearby' | 'away' | 'unsure' | 'no_pin'
+
+export interface Proximity {
+  kind: ProximityKind
+  /** Ready to print. */
+  label: string
+  /** True only where somebody should actually look into it. */
+  flag: boolean
+}
+
+const metres = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`)
+
+/**
+ * Turn a raw distance into something a manager can act on.
+ *
+ * A bare "240 m from the shop" asks the reader to be a judge without giving
+ * them the evidence, because **distance means nothing without the accuracy it
+ * was measured at**. A fix that is 180 m out with ±8 m of error says the rep
+ * was up the road. The same 180 m with ±200 m of error says nothing whatsoever
+ * — the true position could be the doorstep. Reporting both the same way is
+ * how somebody gets accused of something a phone made up.
+ *
+ * So the uncertainty gets its own verdict rather than being folded in. When
+ * the error is as large as the finding, this says it cannot tell, which is the
+ * honest answer and stops a manager reading a GPS wobble as a fake visit.
+ *
+ * Nothing here blocks anything. It is the same bargain the app makes
+ * everywhere else with location: write down what was seen, name what was not,
+ * and leave the judgement to a person.
+ */
+export function proximity(
+  distanceM: number | null | undefined,
+  accuracyM?: number,
+  radiusM: number = DEFAULT_GEOFENCE_RADIUS_M,
+): Proximity {
+  if (distanceM === null || distanceM === undefined) {
+    return { kind: 'no_pin', label: 'No registered position', flag: false }
+  }
+
+  // The uncertainty swallows the finding: anything from the doorstep to well
+  // past it would produce this same reading, so there is no verdict to give.
+  // Compared against the radius as well as the distance, because a ±200 m fix
+  // cannot tell "at the shop" from "up the road" either.
+  if (accuracyM !== undefined && accuracyM >= Math.max(distanceM, radiusM)) {
+    return {
+      kind: 'unsure',
+      label: `Can't tell — GPS was ±${Math.round(accuracyM)} m`,
+      flag: false,
+    }
+  }
+
+  if (distanceM <= radiusM) return { kind: 'at_shop', label: 'At the shop', flag: false }
+  if (distanceM <= NEARBY_RADIUS_M) {
+    return { kind: 'nearby', label: `Nearby · ${metres(distanceM)}`, flag: false }
+  }
+  return { kind: 'away', label: `Away · ${metres(distanceM)}`, flag: true }
+}

@@ -16,7 +16,7 @@ import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
 import QuickAddParty from '../../components/QuickAddParty'
 import { PageHeader, Eyebrow, ChipGroup, GhostButton, PrimaryButton, EmptyState, Note, inputStyle } from '../../components/ui'
-import { getFixOrReason, checkGeofence, distanceM, DEFAULT_GEOFENCE_RADIUS_M } from '../../device/location'
+import { getFixOrReason, checkGeofence, distanceM, DEFAULT_GEOFENCE_RADIUS_M, proximity } from '../../device/location'
 import { setPartyPin, accurateEnoughForPin } from '../../data/partyPin'
 import { bookAllocation, cancelAllocation } from '../../data/bookAllocation'
 import { supplierOptions, defaultSupplierId } from '../../data/supplierOptions'
@@ -739,8 +739,15 @@ export default function OutletVisitScreen({ appUser, session, onBack }: Props) {
         eyebrow={OUTLET_TYPE_LABEL[visit.outletType]}
         title={visit.partyName}
         onBack={onBack}
+        // The rep sees the same words a manager will. Somebody who reads "Away
+        // · 1.2 km" while standing in the doorway knows the shop's pin is
+        // wrong and can fix it below, which is the only way a bad pin ever
+        // gets corrected.
         subtitle={`Punched in at ${new Date(visit.punchInAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}${
-          visit.distanceFromOutletM !== undefined ? ` · ${visit.distanceFromOutletM} m away` : ''}`}
+          (() => {
+            const p = proximity(visit.distanceFromOutletM, visit.punchInLocation?.accuracy)
+            return p.kind === 'no_pin' ? '' : ` · ${p.label}`
+          })()}`}
       />
 
       {/* A single-column form. Capped so it stays a readable column on a
