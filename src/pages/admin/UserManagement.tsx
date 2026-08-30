@@ -183,6 +183,26 @@ export default function UserManagement({ onBack }: Props) {
     run(uid, 'change that permission', { permissions: { ...current, [key]: value } })
 
   /**
+   * Grant the defaults this account never received.
+   *
+   * A manager's permission map is a snapshot of the defaults as they stood on
+   * the day they were approved, and nothing tops it up afterwards. So every
+   * permission added to the app after that date is silently absent — the
+   * feature is on by default for new managers and invisible to the ones who
+   * have been here longest, with nothing on screen saying why.
+   *
+   * Deliberately a button rather than a write on render. Permissions are not
+   * something a screen should hand out because somebody opened it.
+   */
+  const applyNewDefaults = async (uid: string, current: PermissionMap, keys: Permission[]) =>
+    run(uid, 'apply the new defaults', {
+      permissions: {
+        ...current,
+        ...Object.fromEntries(keys.map(k => [k, true])),
+      },
+    })
+
+  /**
    * Reset somebody's password and show what to read them.
    *
    * The password comes back once and is never stored anywhere this screen can
@@ -301,7 +321,8 @@ export default function UserManagement({ onBack }: Props) {
                   onDeactivate={deactivateUser}
                   onResetPassword={resetPassword}
                   onRoleChange={changeRole}
-                  onPermissionChange={setPermission} />
+                  onPermissionChange={setPermission}
+                  onApplyNewDefaults={applyNewDefaults} />
               ))}
             </div>
           )
@@ -412,9 +433,10 @@ function PendingCard({ user, updating, roles, onApprove, onReject }: {
 }
 
 // ── PERMISSION EDITOR ────────────────────────────────────────────────────────
-function PermissionEditor({ user, onChange }: {
+function PermissionEditor({ user, onChange, onApplyNewDefaults }: {
   user: AppUser
   onChange: (uid: string, current: PermissionMap, key: Permission, value: boolean) => void
+  onApplyNewDefaults: (uid: string, current: PermissionMap, keys: Permission[]) => void
 }) {
   const { t } = useTheme()
   const [open, setOpen] = useState(false)
@@ -422,12 +444,51 @@ function PermissionEditor({ user, onChange }: {
   const all = PERMISSION_GROUPS.flatMap(g => g.items)
   const granted = all.filter(i => perms[i.key] === true).length
 
+  /**
+   * Defaults that are on for a new manager and simply absent here.
+   *
+   * Absent, not off. Somebody who unticked a permission has an explicit
+   * `false` and is left alone — the only thing this catches is a key that did
+   * not exist yet when the account was set up. Defaults that are off are
+   * ignored, because granting them would change nothing and listing them would
+   * be noise.
+   */
+  const missingDefaults = all
+    .map(i => i.key)
+    .filter(k => DEFAULT_SALES_MANAGER_PERMISSIONS[k] === true && !(k in perms))
+  const missingLabels = all
+    .filter(i => missingDefaults.includes(i.key))
+    .map(i => i.label)
+
   return (
     <div style={{ marginTop: 14 }}>
       <button className="oc-action" onClick={() => setOpen(o => !o)}
         style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, color: t.text2, cursor: 'pointer' }}>
         {open ? 'Hide' : 'Show'} permissions ({granted} of {all.length})
       </button>
+
+      {missingDefaults.length > 0 && (
+        <div style={{
+          marginTop: 10, background: t.tint, borderRadius: 6, padding: '11px 13px',
+          fontSize: 13, color: t.text2, lineHeight: 1.55,
+        }}>
+          <strong style={{ color: t.text, fontWeight: 500 }}>
+            {missingDefaults.length} permission{missingDefaults.length > 1 ? 's were' : ' was'} added
+            since this account was set up
+          </strong>
+          {' — '}{missingLabels.join(', ')}. New managers get {missingDefaults.length > 1 ? 'them' : 'it'} by
+          default; this account predates {missingDefaults.length > 1 ? 'them' : 'it'}.
+          <div style={{ marginTop: 9 }}>
+            <button className="oc-action" onClick={() => onApplyNewDefaults(user.uid, perms, missingDefaults)}
+              style={{
+                background: 'none', border: `0.5px solid ${t.border2}`, borderRadius: 6,
+                padding: '8px 13px', fontSize: 13, color: t.text, cursor: 'pointer', minHeight: 44,
+              }}>
+              Grant {missingDefaults.length > 1 ? 'them' : 'it'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {open && (
         <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -481,13 +542,14 @@ function PermissionEditor({ user, onChange }: {
 }
 
 // ── ACTIVE ───────────────────────────────────────────────────────────────────
-function UserCard({ user, updating, currentUser, viewerIsAdmin, roles, onDeactivate, onResetPassword, onRoleChange, onPermissionChange }: {
+function UserCard({ user, updating, currentUser, viewerIsAdmin, roles, onDeactivate, onResetPassword, onRoleChange, onPermissionChange, onApplyNewDefaults }: {
   user: AppUser; updating: string | null; currentUser: AppUser
   viewerIsAdmin: boolean; roles: UserRole[]
   onDeactivate: (uid: string, name: string) => void
   onResetPassword: (uid: string, name: string) => void
   onRoleChange: (uid: string, role: UserRole, current?: PermissionMap) => void
   onPermissionChange: (uid: string, current: PermissionMap, key: Permission, value: boolean) => void
+  onApplyNewDefaults: (uid: string, current: PermissionMap, keys: Permission[]) => void
 }) {
   const { t } = useTheme()
   const chip = useChip()
@@ -569,7 +631,8 @@ function UserCard({ user, updating, currentUser, viewerIsAdmin, roles, onDeactiv
 
       {/* Only admins tune a manager's access — a manager cannot edit their own */}
       {viewerIsAdmin && user.role === 'sales_manager' && user.status === 'approved' && (
-        <PermissionEditor user={user} onChange={onPermissionChange} />
+        <PermissionEditor user={user} onChange={onPermissionChange}
+          onApplyNewDefaults={onApplyNewDefaults} />
       )}
     </CardShell>
   )
