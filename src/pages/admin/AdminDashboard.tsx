@@ -27,6 +27,7 @@ import ReportsHome from "../reports/ReportsHome";
 import OpportunitiesScreen from "../reports/OpportunitiesScreen";
 import FieldReport from "./FieldReport";
 import BeatManager from "../planner/BeatManager";
+import Planner from "../planner/Planner";
 import {
   Eyebrow, PageHeader, Section, StatGrid, StatCard, EmptyState,
   Field, GhostButton, PrimaryButton, inputStyle,
@@ -64,7 +65,8 @@ type SubScreen =
   | "reportsHome"
   | "opportunities"
   | "settings"
-  | "beats";
+  | "beats"
+  | "planner";
 
 function isValidUrl(url: string): boolean {
   try { return ['http:', 'https:'].includes(new URL(url).protocol) }
@@ -101,6 +103,7 @@ export default function AdminDashboard() {
   const [parties, setParties] = useState<Party[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [routeCount, setRouteCount] = useState(0);
+  const [plannedThisWeek, setPlannedThisWeek] = useState(0);
   const [mainTab, setMainTab] = useState<MainTab>("overview");
   const [salesTab, setSalesTab] = useState<SalesTab>("offline");
   const [marketingTab, setMarketingTab] = useState<MarketingTab>("offline");
@@ -193,8 +196,23 @@ export default function AdminDashboard() {
     const u10 = onSnapshot(collection(db, "sales_routes"), (snap) =>
       setRouteCount(snap.docs.length)
     );
+    // This week's assignments, for the tile's count. Monday to Saturday —
+    // Sunday cannot be worked, so it is never planned.
+    const mon = new Date();
+    mon.setDate(mon.getDate() - (mon.getDay() === 0 ? 6 : mon.getDay() - 1));
+    const monStr = localDateStr(mon);
+    const sat = new Date(mon); sat.setDate(sat.getDate() + 5);
+    const u11 = onSnapshot(
+      query(
+        collection(db, "work_plans"),
+        where("date", ">=", monStr),
+        where("date", "<=", localDateStr(sat)),
+      ),
+      (snap) => setPlannedThisWeek(snap.docs.length),
+      () => setPlannedThisWeek(0),
+    );
     return () => {
-      u0(); u3(); u4(); u4b(); u5(); u5b(); u6(); u7(); u8(); u9(); u10();
+      u0(); u3(); u4(); u4b(); u5(); u5b(); u6(); u7(); u8(); u9(); u10(); u11();
     };
   }, []);
 
@@ -845,6 +863,9 @@ export default function AdminDashboard() {
   if (subScreen === "beats")
     return <BeatManager onBack={() => setSubScreen("dashboard")} />;
 
+  if (subScreen === "planner")
+    return <Planner onBack={() => setSubScreen("dashboard")} />;
+
   const handleAdminMarkLeave = async (
     uid: string,
     name: string,
@@ -968,6 +989,7 @@ export default function AdminDashboard() {
     reportsHome: "view_reports",
     opportunities: "view_reports",
     beats: "assign_work",
+    planner: "assign_work",
   };
 
   // The nav doubles as a status board: every row carries its own live number,
@@ -1016,6 +1038,13 @@ export default function AdminDashboard() {
       desc: "The areas your team works, and the shops in each",
       screen: "beats" as SubScreen,
       value: routeCount > 0 ? `${routeCount} beats` : "None yet",
+    },
+    {
+      name: "The week",
+      desc: "Give each rep their beats for the days ahead",
+      screen: "planner" as SubScreen,
+      value: plannedThisWeek > 0 ? `${plannedThisWeek} days planned` : "Nothing planned",
+      warn: plannedThisWeek === 0 && routeCount > 0,
     },
     {
       name: "Leave tracker",
