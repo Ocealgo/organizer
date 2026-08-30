@@ -949,6 +949,12 @@ export default function AdminDashboard() {
 
   // Which permission each module row requires. Admins hold all of them;
   // a sales_manager only sees the rows they have been granted.
+  //
+  // A tile with no entry here is dropped for managers and shown to admins,
+  // because can() returns true for an admin whatever it is handed — including
+  // undefined. Whoever adds a tile is usually an admin, so it looks like it
+  // works and is invisible to exactly the people it was built for. Add the row
+  // here at the same time as the tile.
   const SCREEN_PERMISSION: Record<string, Permission> = {
     stock: "view_stock",
     parties: "view_parties",
@@ -961,6 +967,7 @@ export default function AdminDashboard() {
     field: "view_reports",
     reportsHome: "view_reports",
     opportunities: "view_reports",
+    beats: "assign_work",
   };
 
   // The nav doubles as a status board: every row carries its own live number,
@@ -1004,14 +1011,12 @@ export default function AdminDashboard() {
       screen: "expenses" as SubScreen,
       value: `${inr(monthSpend)} this month`,
     },
-    ...(can(appUser, "assign_work")
-      ? [{
-          name: "Beats",
-          desc: "The areas your team works, and the shops in each",
-          screen: "beats" as SubScreen,
-          value: routeCount > 0 ? `${routeCount} beats` : "None yet",
-        }]
-      : []),
+    {
+      name: "Beats",
+      desc: "The areas your team works, and the shops in each",
+      screen: "beats" as SubScreen,
+      value: routeCount > 0 ? `${routeCount} beats` : "None yet",
+    },
     {
       name: "Leave tracker",
       desc: "Approve time off and see who is out",
