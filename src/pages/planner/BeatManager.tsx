@@ -6,6 +6,7 @@ import { Party, SalesRoute, routePlaces } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { useConfirm } from '../../hooks/useConfirm'
+import CustomSelect from '../../components/CustomSelect'
 import {
   PageHeader, Section, EmptyState, Field, Note, ChipGroup,
   GhostButton, PrimaryButton, inputStyle,
@@ -195,34 +196,27 @@ export default function BeatManager({ onBack }: Props) {
               placeholder="Kozhikode North" style={inputStyle(t)} />
           </Field>
 
-          <Section label={`Areas · ${places.size} chosen`}>
-            <div style={{ fontSize: 13, color: t.text3, lineHeight: 1.6, marginBottom: 10 }}>
-              Pick as many as the beat covers. Ticking one brings its shops in; unticking it takes
-              only its own back out.
-            </div>
+          <Field
+            label={`Areas · ${places.size} chosen`}
+            hint="Pick as many as the beat covers. Ticking one brings its shops in; unticking it takes only its own back out."
+          >
             {allPlaces.length === 0 ? (
               <Note>No shops have an area on file yet.</Note>
             ) : (
-              <div className="oc-wrap" style={{ gap: 8 }}>
-                {allPlaces.map(([place, count]) => {
-                  const on = places.has(place)
-                  return (
-                    <button key={place} className="oc-action" onClick={() => toggleArea(place)}
-                      aria-pressed={on}
-                      style={{
-                        background: on ? t.tint : 'none',
-                        border: `0.5px solid ${on ? t.text2 : t.border2}`,
-                        borderRadius: 6, padding: '8px 13px', fontSize: 13,
-                        fontWeight: on ? 500 : 400, color: on ? t.text : t.text2,
-                        cursor: 'pointer',
-                      }}>
-                      {place} · {count}
-                    </button>
-                  )
-                })}
-              </div>
+              <CustomSelect
+                values={[...places]}
+                onToggle={toggleArea}
+                value=""
+                onChange={() => {}}
+                options={allPlaces.map(([place, count]) => ({
+                  value: place,
+                  label: place,
+                  sub: `${count} shop${count === 1 ? '' : 's'}`,
+                }))}
+                placeholder="Choose areas"
+              />
             )}
-          </Section>
+          </Field>
 
           {places.size > 0 && (
             <Section label={`Shops · ${picked.size} of ${inAreas.length} chosen`}>

@@ -15,9 +15,23 @@ interface Props {
   placeholder?: string
   error?: boolean
   searchable?: boolean
+  /**
+   * Turns this into a multi-select.
+   *
+   * Passing `values` switches the mode: options gain checkboxes, choosing one
+   * toggles it instead of replacing the selection, and the menu stays open so
+   * several can be picked in a row. `value`/`onChange` are ignored in that
+   * mode and every existing caller is untouched, which is the point — this is
+   * one component with two behaviours rather than two components that drift.
+   */
+  values?: string[]
+  onToggle?: (val: string) => void
 }
 
-export default function CustomSelect({ value, onChange, options, placeholder = 'Choose...', error, searchable = true }: Props) {
+export default function CustomSelect({
+  value, onChange, options, placeholder = "Choose...", error, searchable = true,
+  values, onToggle,
+}: Props) {
   const { t } = useTheme()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -42,7 +56,16 @@ export default function CustomSelect({ value, onChange, options, placeholder = '
     if (open && searchable) setTimeout(() => inputRef.current?.focus(), 50)
   }, [open, searchable])
 
+  const multi = Array.isArray(values)
+  const chosen = new Set(values ?? [])
   const selected = options.find(o => o.value === value)
+  /** What the closed control reads. Names, not a count — a count hides which. */
+  const triggerLabel = multi
+    ? (chosen.size === 0
+        ? placeholder
+        : options.filter(o => chosen.has(o.value)).map(o => o.label).join(', '))
+    : (selected ? selected.label : placeholder)
+  const hasValue = multi ? chosen.size > 0 : !!selected
 
   const filtered = search.trim()
     ? options.filter(o =>
@@ -61,20 +84,47 @@ export default function CustomSelect({ value, onChange, options, placeholder = '
   })
 
   const renderOptions = (opts: SelectOption[]) =>
-    opts.map(o => (
-      <div key={o.value} className="oc-row"
-        onClick={() => { onChange(o.value); setOpen(false); setSearch('') }}
-        style={{
-          padding: '12px 14px', minHeight: 44, display: 'flex',
-          flexDirection: 'column', justifyContent: 'center', cursor: 'pointer',
-          background: value === o.value ? t.tint : 'transparent',
-          color: t.text,
-        }}>
-        <div style={{ fontSize: 14, fontWeight: value === o.value ? 500 : 400 }}>{o.label}</div>
-        {o.sub && <div style={{ fontSize: 12, fontWeight: 400, color: t.text3, marginTop: 2 }}>{o.sub}</div>}
-      </div>
-    ))
-
+    opts.map(o => {
+      const on = multi ? chosen.has(o.value) : value === o.value
+      return (
+        <div key={o.value} className="oc-row"
+          role={multi ? 'checkbox' : undefined}
+          aria-checked={multi ? on : undefined}
+          onClick={() => {
+            if (multi) {
+              // Stays open. Picking three areas should be three taps, not three
+              // round trips through the menu.
+              onToggle?.(o.value)
+            } else {
+              onChange(o.value); setOpen(false); setSearch('')
+            }
+          }}
+          style={{
+            padding: '12px 14px', minHeight: 44, display: 'flex',
+            alignItems: 'center', gap: 11, cursor: 'pointer',
+            background: on ? t.tint : 'transparent',
+            color: t.text,
+          }}>
+          {multi && (
+            <span style={{
+              width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+              border: `0.5px solid ${on ? t.text2 : t.border2}`,
+              background: on ? t.text2 : 'transparent',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 12, color: t.bg,
+            }}>{on ? '✓' : ''}</span>
+          )}
+          <span style={{ minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 14, fontWeight: on ? 500 : 400 }}>{o.label}</span>
+            {o.sub && (
+              <span style={{ display: 'block', fontSize: 12, fontWeight: 400, color: t.text3, marginTop: 2 }}>
+                {o.sub}
+              </span>
+            )}
+          </span>
+        </div>
+      )
+    })
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       <div onClick={() => { setOpen(!open); setSearch('') }}
@@ -82,12 +132,12 @@ export default function CustomSelect({ value, onChange, options, placeholder = '
           width: '100%', background: 'transparent',
           border: `0.5px solid ${error ? t.warn : open ? t.text2 : t.border2}`,
           borderRadius: 6, padding: '12px 13px', fontSize: 16, minHeight: 44, fontWeight: 400,
-          color: selected ? t.text : t.text3, cursor: 'pointer',
+          color: hasValue ? t.text : t.text3, cursor: "pointer",
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
           boxSizing: 'border-box',
         }}>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {selected ? selected.label : placeholder}
+          {triggerLabel}
         </span>
         <span aria-hidden style={{
           color: t.text3, fontSize: 9, flexShrink: 0,
