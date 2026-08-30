@@ -34,6 +34,7 @@ export const PERMISSION_GROUPS: {
       { key: 'edit_parties',         label: 'Add & edit parties' },
       { key: 'approve_leave',        label: 'Approve leave requests' },
       { key: 'approve_sales_users',  label: 'Approve offline sales signups', hint: 'Cannot create admins or managers' },
+      { key: 'assign_work',          label: 'Plan beats & assign the week', hint: 'Advisory — never blocks a rep' },
       { key: 'manage_products',      label: 'Create & edit products' },
       { key: 'edit_stock',           label: 'Edit company stock levels' },
       { key: 'dispatch_allocations', label: 'Dispatch stock & fulfil indents', hint: 'Moves real inventory' },
@@ -67,6 +68,9 @@ export const DEFAULT_SALES_MANAGER_PERMISSIONS: PermissionMap = {
   edit_parties: true,
   approve_leave: true,
   approve_sales_users: true,
+  // Planning the week is the manager's job and nobody else's, so it is on by
+  // default rather than something an admin has to remember to grant.
+  assign_work: true,
 
   manage_products: false,
   edit_stock: false,

@@ -629,10 +629,30 @@ service cloud.firestore {
       allow delete: if isSuperAdmin();
     }
 
-    // ── ROUTES / BEATS ──────────────────────────────────────────────────────
+
+    // ── WORK PLANNING ───────────────────────────────────────────────────────
+    // A beat is a named area and the shops in it. A plan is one person's day.
+    // Neither blocks anything a rep does — the plan is what was intended, the
+    // visits are what happened, and the comparison is drawn at read time.
     match /sales_routes/{id} {
       allow read: if approved();
-      allow write: if isAdmin();
+      allow write: if hasPerm('assign_work');
+    }
+
+    match /work_plans/{id} {
+      // The first three branches stand alone on purpose. Firestore checks a
+      // list query against the rule rather than each document, so a manager
+      // asking for "everyone, this week" needs a branch that does not mention
+      // resource.data — otherwise the query is denied outright rather than
+      // filtered, which is exactly how the share-requests read broke.
+      allow read: if isAdmin()
+        || hasPerm('assign_work')
+        || hasPerm('view_reports')
+        || resource.data.uid == request.auth.uid;
+
+      // Reps never write their own plan. A day a rep could assign themselves
+      // is not a plan, it is a diary.
+      allow write: if hasPerm('assign_work');
     }
 
     // ── ALERTS ──────────────────────────────────────────────────────────────

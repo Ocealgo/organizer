@@ -26,6 +26,7 @@ import SalesReport from "../reports/SalesReport";
 import ReportsHome from "../reports/ReportsHome";
 import OpportunitiesScreen from "../reports/OpportunitiesScreen";
 import FieldReport from "./FieldReport";
+import BeatManager from "../planner/BeatManager";
 import {
   Eyebrow, PageHeader, Section, StatGrid, StatCard, EmptyState,
   Field, GhostButton, PrimaryButton, inputStyle,
@@ -62,7 +63,8 @@ type SubScreen =
   | "field"
   | "reportsHome"
   | "opportunities"
-  | "settings";
+  | "settings"
+  | "beats";
 
 function isValidUrl(url: string): boolean {
   try { return ['http:', 'https:'].includes(new URL(url).protocol) }
@@ -98,6 +100,7 @@ export default function AdminDashboard() {
   const [leaveRecords, setLeaveRecords] = useState<LeaveRecord[]>([]);
   const [parties, setParties] = useState<Party[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [routeCount, setRouteCount] = useState(0);
   const [mainTab, setMainTab] = useState<MainTab>("overview");
   const [salesTab, setSalesTab] = useState<SalesTab>("offline");
   const [marketingTab, setMarketingTab] = useState<MarketingTab>("offline");
@@ -187,8 +190,11 @@ export default function AdminDashboard() {
           .filter((p) => p.active),
       )
     );
+    const u10 = onSnapshot(collection(db, "sales_routes"), (snap) =>
+      setRouteCount(snap.docs.length)
+    );
     return () => {
-      u0(); u3(); u4(); u4b(); u5(); u5b(); u6(); u7(); u8(); u9();
+      u0(); u3(); u4(); u4b(); u5(); u5b(); u6(); u7(); u8(); u9(); u10();
     };
   }, []);
 
@@ -836,6 +842,9 @@ export default function AdminDashboard() {
   if (subScreen === "leaves")
     return <LeaveTracker onBack={() => setSubScreen("dashboard")} />;
 
+  if (subScreen === "beats")
+    return <BeatManager onBack={() => setSubScreen("dashboard")} />;
+
   const handleAdminMarkLeave = async (
     uid: string,
     name: string,
@@ -995,6 +1004,14 @@ export default function AdminDashboard() {
       screen: "expenses" as SubScreen,
       value: `${inr(monthSpend)} this month`,
     },
+    ...(can(appUser, "assign_work")
+      ? [{
+          name: "Beats",
+          desc: "The areas your team works, and the shops in each",
+          screen: "beats" as SubScreen,
+          value: routeCount > 0 ? `${routeCount} beats` : "None yet",
+        }]
+      : []),
     {
       name: "Leave tracker",
       desc: "Approve time off and see who is out",
