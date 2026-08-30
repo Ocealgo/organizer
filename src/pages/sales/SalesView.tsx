@@ -13,7 +13,10 @@ import AllocationManager from '../distributors/AllocationManager'
 import VisitLogger from './VisitLogger'
 import ActivityScreen from './ActivityScreen'
 import LeaveHistory from './LeaveHistory'
-import { Party, DailyVisitLog, LeaveRecord, Holiday } from '../../types'
+import {
+  Party, DailyVisitLog, LeaveRecord, Holiday,
+  WorkPlan, SalesRoute, workPlanId,
+} from '../../types'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr, localMonthStr, isSunday } from '../../utils/date'
 import { Eyebrow, StatGrid, StatCard, RowGroup, ListRow, EmptyState, GhostButton } from '../../components/ui'
@@ -47,6 +50,11 @@ export default function SalesView({ name }: Props) {
   const [collectedThisMonth, setCollectedThisMonth] = useState(0)
   const [outletVisitsToday, setOutletVisitsToday] = useState(0)
   const [outletVisitsLoaded, setOutletVisitsLoaded] = useState(false)
+  /** Shops reached today, for measuring the day against the beat. */
+  const [visitedTodayIds, setVisitedTodayIds] = useState<Set<string>>(new Set())
+  const [todayPlan, setTodayPlan] = useState<WorkPlan | null>(null)
+  const [routes, setRoutes] = useState<SalesRoute[]>([])
+  const [planOpen, setPlanOpen] = useState(false)
   const [holidaysLoaded, setHolidaysLoaded] = useState(false)
   const [leaveLoaded, setLeaveLoaded] = useState(false)
   const [ordersToday, setOrdersToday] = useState(0)
@@ -170,9 +178,33 @@ export default function SalesView({ name }: Props) {
     )
     return onSnapshot(q, snap => {
       setOutletVisitsToday(snap.docs.filter(d => d.data().status === 'closed').length)
+      // Coverage counts anywhere they have been today, an open visit included —
+      // a rep standing inside a shop has covered it whether or not the form is
+      // finished. The count above is completed logs, a different and
+      // deliberately stricter question.
+      setVisitedTodayIds(new Set(
+        snap.docs
+          .filter(d => d.data().status !== 'abandoned')
+          .map(d => d.data().partyId as string),
+      ))
       setOutletVisitsLoaded(true)
     })
   }, [appUser])
+
+  // What the office asked of today.
+  useEffect(() => {
+    if (!appUser) return
+    return onSnapshot(
+      doc(db, 'work_plans', workPlanId(appUser.uid, todayStr())),
+      snap => setTodayPlan(snap.exists() ? ({ id: snap.id, ...snap.data() } as WorkPlan) : null),
+      // No plan is the ordinary case, not a fault worth reporting.
+      () => setTodayPlan(null),
+    )
+  }, [appUser])
+
+  // The beats themselves, for the shop list behind today's plan.
+  useEffect(() => onSnapshot(collection(db, 'sales_routes'), s =>
+    setRoutes(s.docs.map(d => ({ id: d.id, ...d.data() } as SalesRoute)))), [])
 
   useEffect(() => {
     return onSnapshot(collection(db, 'holidays'), snap => {
@@ -307,6 +339,25 @@ export default function SalesView({ name }: Props) {
   const isOnFullLeave = isTodayHoliday || !!(todayLeave && todayLeave.leaveType === 'full_day' && todayLeave.status === 'active')
   /** Sunday blocks starting a day, the same way the older visit logger always has. */
   const isSundayToday = isSunday(todayStr())
+
+  /**
+   * Today's beat, and how far through it they are.
+   *
+   * Derived every render from the plan and the visits rather than stored, so
+   * it corrects itself the moment a visit is logged and cannot drift from what
+   * actually happened.
+   *
+   * Only what is left is listed. A rep does not need to be shown the eight
+   * shops they have already walked into; they need the four they have not.
+   */
+  const todayBeat = todayPlan?.routeId
+    ? routes.find(r => r.id === todayPlan.routeId)
+    : undefined
+  const beatShops = (todayBeat?.outletIds ?? [])
+    .map(id => parties.find(p => p.id === id))
+    .filter(Boolean) as Party[]
+  const beatDone = beatShops.filter(p => visitedTodayIds.has(p.id!)).length
+  const beatLeft = beatShops.filter(p => !visitedTodayIds.has(p.id!))
   const pendingLeavesCount = allLeaveRecords.filter(l => l.status === 'pending_approval').length
   // Both flows count. The outlet screen is what an officer uses now and it
   // writes `outlet_visits`; `visit_logs` is the older screen, still reachable
@@ -404,6 +455,87 @@ export default function SalesView({ name }: Props) {
             label="Collected today"
             context={`₹${collectedThisMonth.toLocaleString('en-IN')} this month`} />
         </StatGrid>
+
+        {/* What the office asked of today. Sits above the day's controls
+            because it is the answer to "what am I doing", which comes before
+            "start". Absent for a rep nobody has planned for, rather than
+            occupying the space to say so. */}
+        {todayPlan && !isSundayToday && (
+          <div>
+            <div style={{ marginBottom: 12 }}><Eyebrow>Your beat today</Eyebrow></div>
+            <div style={{ background: t.tint, borderRadius: 6, padding: 16 }}>
+              <div style={{
+                display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16,
+              }}>
+                <span style={{ fontSize: 15, fontWeight: 500, color: t.text }}>
+                  {todayPlan.routeName}
+                </span>
+                {beatShops.length > 0 && (
+                  <span style={{
+                    fontSize: 13, whiteSpace: 'nowrap',
+                    color: beatDone === beatShops.length ? t.accent : t.text2,
+                  }}>
+                    {beatDone} of {beatShops.length}
+                  </span>
+                )}
+              </div>
+
+              {todayPlan.note && (
+                <div style={{ fontSize: 13, color: t.text2, marginTop: 8, lineHeight: 1.6 }}>
+                  {todayPlan.note}
+                </div>
+              )}
+
+              {todayPlan.targets && (
+                <div style={{ fontSize: 12, color: t.text3, marginTop: 8, lineHeight: 1.6 }}>
+                  {[
+                    todayPlan.targets.visits ? `${todayPlan.targets.visits} shops` : null,
+                    todayPlan.targets.orderValue
+                      ? `₹${todayPlan.targets.orderValue.toLocaleString('en-IN')} of orders`
+                      : null,
+                  ].filter(Boolean).join(' · ')} asked for today
+                </div>
+              )}
+
+              {beatLeft.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <button className="oc-action" onClick={() => setPlanOpen(o => !o)}
+                    style={{
+                      background: 'none', border: 'none', padding: 0,
+                      fontSize: 13, color: t.text2, cursor: 'pointer',
+                    }}>
+                    {planOpen ? 'Hide' : 'Show'} the {beatLeft.length} still to go
+                  </button>
+                  {planOpen && (
+                    <div style={{ marginTop: 10, borderTop: `0.5px solid ${t.border}` }}>
+                      {beatLeft.map(p => (
+                        <div key={p.id} style={{
+                          fontSize: 13, color: t.text2, padding: '9px 0',
+                          borderBottom: `0.5px solid ${t.border}`, lineHeight: 1.5,
+                        }}>
+                          {p.name}
+                          <span style={{ color: t.text3 }}>
+                            {p.place ? ` · ${p.place}` : ''}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {beatShops.length > 0 && beatLeft.length === 0 && (
+                <div style={{ fontSize: 13, color: t.accent, marginTop: 10 }}>
+                  Every shop on the beat has been visited.
+                </div>
+              )}
+
+              <div style={{ fontSize: 12, color: t.text3, marginTop: 12, lineHeight: 1.6 }}>
+                A guide, not a limit. Anywhere else you go today still counts.
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Today's work */}
         <div>
