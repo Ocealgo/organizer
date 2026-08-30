@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { collection, query, where, writeBatch, doc, deleteDoc } from 'firebase/firestore'
+import { collection, query, where, writeBatch, doc, deleteDoc, updateDoc } from 'firebase/firestore'
 import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
@@ -78,6 +78,10 @@ export default function Planner({ onBack }: Props) {
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [blocked, setBlocked] = useState<string | null>(null)
+
+  /** Which single day's note is open for editing, keyed `${uid}_${date}`. */
+  const [noteFor, setNoteFor] = useState<string | null>(null)
+  const [noteDraft, setNoteDraft] = useState('')
 
   /** Monday to Saturday. Sunday is a day off and cannot be worked, so it is never offered. */
   const week = useMemo(
@@ -183,6 +187,42 @@ export default function Planner({ onBack }: Props) {
     } finally { setSaving(false) }
   }
 
+  /**
+   * A note on one day, after the fact.
+   *
+   * The note in the assign panel is written to every day that was ticked,
+   * which is right for "start at the far end" and wrong for "collect from
+   * Anand Stores" — an errand belongs to one day, not to the whole week. This
+   * is how a single day gets its own without reassigning it.
+   */
+  const saveNote = async (p: WorkPlan) => {
+    await updateDoc(doc(db, 'work_plans', workPlanId(p.uid, p.date)), {
+      note: noteDraft.trim(),
+      updatedAt: Date.now(),
+    })
+    setNoteFor(null); setNoteDraft('')
+  }
+
+  const openNote = (p: WorkPlan) => {
+    setNoteFor(workPlanId(p.uid, p.date))
+    setNoteDraft(p.note ?? '')
+  }
+
+  const noteEditor = (p: WorkPlan) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+      <input
+        value={noteDraft}
+        onChange={e => setNoteDraft(e.target.value)}
+        placeholder="Collect payment from Anand Stores"
+        style={inputStyle(t)}
+      />
+      <div className="oc-wrap" style={{ gap: 10 }}>
+        <GhostButton onClick={() => saveNote(p)}>Save note</GhostButton>
+        <GhostButton onClick={() => { setNoteFor(null); setNoteDraft('') }}>Cancel</GhostButton>
+      </div>
+    </div>
+  )
+
   const clearDay = async (p: WorkPlan) => {
     const ok = await showConfirm(
       'Clear this day?',
@@ -252,6 +292,7 @@ export default function Planner({ onBack }: Props) {
               {plan.note && (
                 <span style={{ display: 'block', fontSize: 12, color: t.text3, marginTop: 2 }}>{plan.note}</span>
               )}
+              {noteFor === workPlanId(plan.uid, plan.date) && noteEditor(plan)}
             </>
           ) : (
             <span style={{ fontSize: 14, color: leave ? t.warn : t.text3 }}>
@@ -262,10 +303,16 @@ export default function Planner({ onBack }: Props) {
           )}
         </span>
         {plan && (
-          <button className="oc-action" onClick={() => clearDay(plan)}
-            style={{ background: 'none', border: 'none', fontSize: 13, color: t.text3, cursor: 'pointer' }}>
-            Clear
-          </button>
+          <>
+            <button className="oc-action" onClick={() => openNote(plan)}
+              style={{ background: 'none', border: 'none', fontSize: 13, color: t.text3, cursor: 'pointer' }}>
+              {plan.note ? 'Edit note' : 'Note'}
+            </button>
+            <button className="oc-action" onClick={() => clearDay(plan)}
+              style={{ background: 'none', border: 'none', fontSize: 13, color: t.text3, cursor: 'pointer' }}>
+              Clear
+            </button>
+          </>
         )}
       </div>
     )
@@ -470,7 +517,12 @@ export default function Planner({ onBack }: Props) {
                                   On {leave.leaveType === 'full_day' ? 'full day' : 'half day'} leave
                                 </span>
                               )}
+                              {noteFor === workPlanId(p.uid, p.date) && noteEditor(p)}
                             </span>
+                            <button className="oc-action" onClick={() => openNote(p)}
+                              style={{ background: 'none', border: 'none', fontSize: 13, color: t.text3, cursor: 'pointer' }}>
+                              {p.note ? 'Edit note' : 'Note'}
+                            </button>
                             <button className="oc-action" onClick={() => clearDay(p)}
                               style={{ background: 'none', border: 'none', fontSize: 13, color: t.text3, cursor: 'pointer' }}>
                               Clear
