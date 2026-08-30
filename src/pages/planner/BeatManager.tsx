@@ -2,26 +2,27 @@ import { useState, useEffect, useMemo } from 'react'
 import { collection, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore'
 import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
-import { Party, SalesRoute } from '../../types'
+import { Party, SalesRoute, routePlaces } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { useConfirm } from '../../hooks/useConfirm'
-import CustomSelect from '../../components/CustomSelect'
 import {
-  PageHeader, Section, EmptyState, Field, Note,
+  PageHeader, Section, EmptyState, Field, Note, ChipGroup,
   GhostButton, PrimaryButton, inputStyle,
 } from '../../components/ui'
 
 interface Props { onBack: () => void }
 
+type TypeFilter = 'all' | 'retailer' | 'distributor'
+
 /**
- * Beats — a named area and the shops in it.
+ * Beats — the areas a rep works, and the shops in them.
  *
- * A beat is an area before it is a list. Picking the place seeds the shops and
- * the manager trims from there: the stored list stays explicit, so nothing
- * shifts under them, but the screen can still notice when a shop turns up in
- * that area later and offer it. A frozen list of ids assumes the world is
- * already in the database, and reps add shops all week.
+ * A beat is areas before it is a list. Ticking a place offers its shops and
+ * the manager trims from there, which keeps the stored list explicit — nothing
+ * shifts under them — while letting the screen notice that a shop turned up in
+ * one of those areas later and offer it by name. A frozen list of ids assumes
+ * the world is already in the database, and reps add shops all week.
  *
  * Nothing here binds anybody. A beat says what a day is meant to cover; where
  * the rep actually went is the visits, and the two are compared afterwards.
@@ -35,8 +36,10 @@ export default function BeatManager({ onBack }: Props) {
   const [routes, setRoutes] = useState<SalesRoute[]>([])
   const [editing, setEditing] = useState<SalesRoute | 'new' | null>(null)
   const [name, setName] = useState('')
-  const [place, setPlace] = useState('')
+  const [places, setPlaces] = useState<Set<string>>(new Set())
   const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
+  const [search, setSearch] = useState('')
   const [targetVisits, setTargetVisits] = useState('')
   const [targetOrderValue, setTargetOrderValue] = useState('')
   const [saving, setSaving] = useState(false)
@@ -50,50 +53,88 @@ export default function BeatManager({ onBack }: Props) {
     return () => { u1(); u2() }
   }, [])
 
-  /** Every distinct place on a party record — the areas a beat can cover. */
-  const places = useMemo(() => {
-    const set = new Set<string>()
-    parties.forEach(p => { if (p.place?.trim()) set.add(p.place.trim()) })
-    return [...set].sort((a, b) => a.localeCompare(b))
+  const norm = (s?: string) => (s || '').trim().toLowerCase()
+
+  /** Every distinct place on a party record, with how many shops sit in it. */
+  const allPlaces = useMemo(() => {
+    const counts = new Map<string, number>()
+    parties.forEach(p => {
+      const k = (p.place || '').trim()
+      if (k) counts.set(k, (counts.get(k) ?? 0) + 1)
+    })
+    return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]))
   }, [parties])
 
-  const inPlace = useMemo(
-    () => parties.filter(p => (p.place || '').trim().toLowerCase() === place.trim().toLowerCase()),
-    [parties, place],
-  )
+  const shopsIn = (place: string) => parties.filter(p => norm(p.place) === norm(place))
+
+  /** Everything inside the chosen areas — the pool this beat draws from. */
+  const inAreas = useMemo(() => {
+    const keys = new Set([...places].map(norm))
+    return parties
+      .filter(p => keys.has(norm(p.place)))
+      .sort((a, b) => (a.place || '').localeCompare(b.place || '') || a.name.localeCompare(b.name))
+  }, [parties, places])
+
+  /** What the list actually shows right now. Filters narrow the view, never the selection. */
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return inAreas.filter(p =>
+      (typeFilter === 'all' || p.type === typeFilter)
+      && (!q || p.name.toLowerCase().includes(q)))
+  }, [inAreas, typeFilter, search])
 
   const openNew = () => {
-    setEditing('new'); setName(''); setPlace('')
-    setPicked(new Set()); setTargetVisits(''); setTargetOrderValue('')
-    setBlocked(null)
+    setEditing('new'); setName(''); setPlaces(new Set()); setPicked(new Set())
+    setTypeFilter('all'); setSearch('')
+    setTargetVisits(''); setTargetOrderValue(''); setBlocked(null)
   }
 
   const openEdit = (r: SalesRoute) => {
-    setEditing(r); setName(r.name); setPlace(r.place || '')
+    setEditing(r); setName(r.name)
+    setPlaces(new Set(routePlaces(r)))
     setPicked(new Set(r.outletIds || []))
+    setTypeFilter('all'); setSearch('')
     setTargetVisits(r.defaultTargets?.visits?.toString() ?? '')
     setTargetOrderValue(r.defaultTargets?.orderValue?.toString() ?? '')
     setBlocked(null)
   }
 
-  /** Choosing a place offers everything in it; the manager takes things out. */
-  const choosePlace = (v: string) => {
-    setPlace(v)
-    setPicked(new Set(
-      parties
-        .filter(p => (p.place || '').trim().toLowerCase() === v.trim().toLowerCase())
-        .map(p => p.id!),
-    ))
+  /**
+   * Adding an area brings its shops in; removing one takes only its own back
+   * out. A shop the manager unticked by hand stays unticked — toggling a
+   * different area must not resurrect it.
+   */
+  const toggleArea = (place: string) => {
+    const ids = shopsIn(place).map(p => p.id!)
+    setPlaces(prev => {
+      const next = new Set(prev)
+      const removing = next.has(place)
+      removing ? next.delete(place) : next.add(place)
+      setPicked(cur => {
+        const p = new Set(cur)
+        ids.forEach(id => (removing ? p.delete(id) : p.add(id)))
+        return p
+      })
+      return next
+    })
   }
 
-  const toggle = (id: string) =>
+  const toggleShop = (id: string) =>
     setPicked(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+
+  /** Applies to what is on screen, so a filter plus this is how you take a whole type out. */
+  const setAllVisible = (on: boolean) =>
+    setPicked(prev => {
+      const n = new Set(prev)
+      visible.forEach(p => (on ? n.add(p.id!) : n.delete(p.id!)))
+      return n
+    })
 
   const save = async () => {
     // Echoed at the button rather than thrown away. A save that quietly does
     // nothing is the most confusing thing a form can do.
     if (!name.trim()) { setBlocked('Give the beat a name.'); return }
-    if (!place.trim()) { setBlocked('Pick the area it covers.'); return }
+    if (places.size === 0) { setBlocked('Pick at least one area.'); return }
     if (picked.size === 0) { setBlocked('A beat with no shops cannot be assigned.'); return }
     setBlocked(null); setSaving(true)
     try {
@@ -103,7 +144,7 @@ export default function BeatManager({ onBack }: Props) {
       }
       const payload = {
         name: name.trim(),
-        place: place.trim(),
+        places: [...places],
         outletIds: [...picked],
         ...(Object.keys(targets).length ? { defaultTargets: targets } : {}),
         active: true,
@@ -136,67 +177,130 @@ export default function BeatManager({ onBack }: Props) {
 
   // ── FORM ──────────────────────────────────────────────────────────────────
   if (editing) {
-    // Shops that turned up in this area after the beat was built.
-    const missing = inPlace.filter(p => !picked.has(p.id!))
+    const missing = inAreas.filter(p => !picked.has(p.id!))
+    const shownPicked = visible.filter(p => picked.has(p.id!)).length
+
     return (
       <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 56 }}>
         {modal}
         <PageHeader
           eyebrow="Planner"
           title={editing === 'new' ? 'New beat' : editing.name}
-          subtitle="An area, and the shops in it."
+          subtitle="The areas it covers, and the shops in them."
           onBack={() => setEditing(null)}
         />
-        <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
+        <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 620 }}>
           <Field label="Name">
             <input value={name} onChange={e => setName(e.target.value)}
               placeholder="Kozhikode North" style={inputStyle(t)} />
           </Field>
 
-          <Field label="Area" hint="Shops here are offered automatically. Take out anything that does not belong.">
-            <CustomSelect
-              value={place}
-              onChange={choosePlace}
-              options={places.map(p => ({
-                value: p,
-                label: p,
-                sub: `${parties.filter(x => (x.place || '').trim() === p).length} shops`,
-              }))}
-              placeholder="Choose an area"
-            />
-          </Field>
-
-          {place && (
-            <Section label={`Shops · ${picked.size} of ${inPlace.length} in ${place}`}>
-              {inPlace.length === 0 ? (
-                <Note>No shops are registered in {place} yet.</Note>
-              ) : (
-                <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
-                  {inPlace.map(p => (
-                    <button key={p.id} className="oc-row" onClick={() => toggle(p.id!)}
+          <Section label={`Areas · ${places.size} chosen`}>
+            <div style={{ fontSize: 13, color: t.text3, lineHeight: 1.6, marginBottom: 10 }}>
+              Pick as many as the beat covers. Ticking one brings its shops in; unticking it takes
+              only its own back out.
+            </div>
+            {allPlaces.length === 0 ? (
+              <Note>No shops have an area on file yet.</Note>
+            ) : (
+              <div className="oc-wrap" style={{ gap: 8 }}>
+                {allPlaces.map(([place, count]) => {
+                  const on = places.has(place)
+                  return (
+                    <button key={place} className="oc-action" onClick={() => toggleArea(place)}
+                      aria-pressed={on}
                       style={{
-                        display: 'flex', alignItems: 'center', gap: 12, width: '100%',
-                        textAlign: 'left', background: 'none', border: 'none',
-                        borderTop: `0.5px solid ${t.border}`, padding: '13px 4px',
-                        cursor: 'pointer', minHeight: 44,
+                        background: on ? t.tint : 'none',
+                        border: `0.5px solid ${on ? t.text2 : t.border2}`,
+                        borderRadius: 6, padding: '8px 13px', fontSize: 13,
+                        fontWeight: on ? 500 : 400, color: on ? t.text : t.text2,
+                        cursor: 'pointer',
                       }}>
-                      <span style={{
-                        width: 18, height: 18, borderRadius: 4, flexShrink: 0,
-                        border: `0.5px solid ${picked.has(p.id!) ? t.text2 : t.border2}`,
-                        background: picked.has(p.id!) ? t.text2 : 'transparent',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 12, color: t.bg,
-                      }}>{picked.has(p.id!) ? '✓' : ''}</span>
-                      <span style={{ flex: 1, minWidth: 0 }}>
-                        <span style={{ display: 'block', fontSize: 14, color: t.text }}>{p.name}</span>
-                        <span style={{ display: 'block', fontSize: 12, color: t.text3, marginTop: 2 }}>
-                          {p.type === 'distributor' ? 'Distributor' : 'Retailer'}
-                        </span>
-                      </span>
+                      {place} · {count}
                     </button>
-                  ))}
+                  )
+                })}
+              </div>
+            )}
+          </Section>
+
+          {places.size > 0 && (
+            <Section label={`Shops · ${picked.size} of ${inAreas.length} chosen`}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <ChipGroup
+                  value={typeFilter}
+                  onChange={setTypeFilter}
+                  options={[
+                    { id: 'all' as const, label: `All ${inAreas.length}` },
+                    { id: 'retailer' as const, label: `Retailers ${inAreas.filter(p => p.type === 'retailer').length}` },
+                    { id: 'distributor' as const, label: `Distributors ${inAreas.filter(p => p.type === 'distributor').length}` },
+                  ]}
+                />
+
+                <input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search these shops by name"
+                  style={inputStyle(t)}
+                />
+
+                {/* Fixed height: several areas together run to hundreds of shops,
+                    and a list that long buries the save button off the bottom of
+                    the page. */}
+                <div style={{
+                  maxHeight: 340, overflowY: 'auto',
+                  border: `0.5px solid ${t.border}`, borderRadius: 6,
+                }}>
+                  {visible.length === 0 ? (
+                    <div style={{ padding: '16px 13px', fontSize: 13, color: t.text3 }}>
+                      Nothing matches that.
+                    </div>
+                  ) : visible.map((p, i) => {
+                    const on = picked.has(p.id!)
+                    return (
+                      <button key={p.id} className="oc-row" onClick={() => toggleShop(p.id!)}
+                        aria-pressed={on}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 12, width: '100%',
+                          textAlign: 'left', background: 'none', border: 'none',
+                          borderTop: i === 0 ? 'none' : `0.5px solid ${t.border}`,
+                          padding: '11px 13px', cursor: 'pointer', minHeight: 44,
+                        }}>
+                        <span style={{
+                          width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+                          border: `0.5px solid ${on ? t.text2 : t.border2}`,
+                          background: on ? t.text2 : 'transparent',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: 12, color: t.bg,
+                        }}>{on ? '✓' : ''}</span>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: 'block', fontSize: 14, color: t.text }}>{p.name}</span>
+                          <span style={{ display: 'block', fontSize: 12, color: t.text3, marginTop: 2 }}>
+                            {p.type === 'distributor' ? 'Distributor' : 'Retailer'}
+                            {p.place ? ` · ${p.place}` : ''}
+                          </span>
+                        </span>
+                      </button>
+                    )
+                  })}
                 </div>
-              )}
+
+                {visible.length > 0 && (
+                  <div className="oc-wrap" style={{ gap: 10, alignItems: 'baseline' }}>
+                    <span style={{ fontSize: 12, color: t.text3 }}>
+                      {shownPicked} of the {visible.length} shown
+                    </span>
+                    <button className="oc-action" onClick={() => setAllVisible(true)}
+                      style={{ background: 'none', border: 'none', fontSize: 13, color: t.text2, cursor: 'pointer' }}>
+                      Select shown
+                    </button>
+                    <button className="oc-action" onClick={() => setAllVisible(false)}
+                      style={{ background: 'none', border: 'none', fontSize: 13, color: t.text2, cursor: 'pointer' }}>
+                      Clear shown
+                    </button>
+                  </div>
+                )}
+              </div>
             </Section>
           )}
 
@@ -231,10 +335,11 @@ export default function BeatManager({ onBack }: Props) {
 
           {editing !== 'new' && missing.length > 0 && (
             <Note>
-              {missing.length} shop{missing.length > 1 ? 's' : ''} in {place}{' '}
-              {missing.length > 1 ? 'are' : 'is'} not on this beat:{' '}
-              {missing.map(p => p.name).join(', ')}. Tick {missing.length > 1 ? 'them' : 'it'} above
-              if {missing.length > 1 ? 'they' : 'it'} should be.
+              {missing.length} shop{missing.length > 1 ? 's' : ''} in these areas{' '}
+              {missing.length > 1 ? 'are' : 'is'} not on the beat:{' '}
+              {missing.slice(0, 8).map(p => p.name).join(', ')}
+              {missing.length > 8 ? `, and ${missing.length - 8} more` : ''}. Tick above if they
+              should be.
             </Note>
           )}
         </div>
@@ -259,7 +364,7 @@ export default function BeatManager({ onBack }: Props) {
         {sorted.length === 0 ? (
           <EmptyState
             title="No beats yet"
-            body="A beat is an area and the shops in it. Build one, then assign it to a day."
+            body="A beat is the areas a rep works and the shops in them. Build one, then assign it to a day."
           />
         ) : (
           <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
@@ -277,7 +382,7 @@ export default function BeatManager({ onBack }: Props) {
                     {r.name}
                   </span>
                   <span style={{ display: 'block', fontSize: 13, color: t.text3, marginTop: 3 }}>
-                    {r.place} · {(r.outletIds || []).length} shops
+                    {routePlaces(r).join(', ') || 'No area'} · {(r.outletIds || []).length} shops
                     {r.defaultTargets?.visits ? ` · target ${r.defaultTargets.visits} visits` : ''}
                   </span>
                 </button>

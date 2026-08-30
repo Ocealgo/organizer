@@ -1009,15 +1009,24 @@ export interface SalesRoute {
   name: string
   description?: string
   /**
-   * The area this beat covers, matching `Party.place`.
+   * The areas this beat covers, matching `Party.place`.
    *
-   * A beat is an area before it is a list. Shops are seeded from the place and
+   * A beat is areas before it is a list. Shops are seeded from the places and
    * then trimmed, which keeps the list explicit — nothing changes under the
    * manager's feet — while giving the screen a way to notice that a shop was
-   * added in this area later and offer it. A frozen list of ids assumes the
-   * world is already in the database, and reps add shops all week.
+   * added in one of those areas later and offer it. A frozen list of ids
+   * assumes the world is already in the database, and reps add shops all week.
+   *
+   * Plural because a real beat crosses boundaries: a rep working the north of
+   * town covers three named places on a Tuesday, and nobody calls that three
+   * beats.
    */
-  place: string
+  places: string[]
+  /**
+   * Superseded by `places`. Beats written during the first day of this feature
+   * have it; read as a single-entry list wherever it is all there is.
+   */
+  place?: string
   outletIds: string[]
   /**
    * Copied onto each day when the beat is assigned, never read from here
@@ -1034,6 +1043,12 @@ export interface SalesRoute {
   createdBy: string
   createdByName: string
   createdAt: number
+}
+
+/** A beat's areas, however old the document is. */
+export function routePlaces(r: SalesRoute): string[] {
+  if (r.places?.length) return r.places
+  return r.place ? [r.place] : []
 }
 
 // ── VISIT OUTCOME TAXONOMY (spec §5.1) ───────────────────────────────────────
