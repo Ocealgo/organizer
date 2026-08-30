@@ -15,7 +15,7 @@ import ActivityScreen from './ActivityScreen'
 import LeaveHistory from './LeaveHistory'
 import { Party, DailyVisitLog, LeaveRecord, Holiday } from '../../types'
 import { useConfirm } from '../../hooks/useConfirm'
-import { localDateStr, localMonthStr } from '../../utils/date'
+import { localDateStr, localMonthStr, isSunday } from '../../utils/date'
 import { Eyebrow, StatGrid, StatCard, RowGroup, ListRow, EmptyState, GhostButton } from '../../components/ui'
 import { useDutySession, closeAbandonedSessions } from '../../hooks/useDutySession'
 import { REMINDER_HOUR, AUTO_CLOSE_HOUR } from '../../device/notify'
@@ -305,6 +305,8 @@ export default function SalesView({ name }: Props) {
 
   const isTodayHoliday = holidays.some(h => h.date === todayStr())
   const isOnFullLeave = isTodayHoliday || !!(todayLeave && todayLeave.leaveType === 'full_day' && todayLeave.status === 'active')
+  /** Sunday blocks starting a day, the same way the older visit logger always has. */
+  const isSundayToday = isSunday(todayStr())
   const pendingLeavesCount = allLeaveRecords.filter(l => l.status === 'pending_approval').length
   // Both flows count. The outlet screen is what an officer uses now and it
   // writes `outlet_visits`; `visit_logs` is the older screen, still reachable
@@ -413,7 +415,7 @@ export default function SalesView({ name }: Props) {
                 somebody already punched in is how they end up on the wrong form
                 with the wrong button under their thumb. */}
             <ListRow
-              title={dutyLoading ? 'Your day' : isDayClosed ? 'Day finished' : isOnDuty ? 'End the day' : 'Start the day'}
+              title={dutyLoading ? 'Your day' : isDayClosed ? 'Day finished' : isOnDuty ? 'End the day' : isSundayToday ? 'Sunday — day off' : 'Start the day'}
               desc={dutyLoading
                 ? 'Checking today’s record…'
                 : isDayClosed
@@ -422,10 +424,14 @@ export default function SalesView({ name }: Props) {
                     : `${dutySession?.claimedDistanceKm ?? 0} km recorded`
                   : isOnDuty
                     ? `Started at ${new Date(dutySession!.startAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} · closing reading and photo`
-                    : 'Meter reading, photo and location'}
+                    : isSundayToday
+                      ? 'Nothing to log today. Your next day starts tomorrow.'
+                      : 'Meter reading, photo and location'}
               value={!dutyLoading && isOnDuty ? `${dutySession?.startOdometerKm} km` : undefined}
-              warn={!dutyLoading && !isOnDuty && !isDayClosed && !isOnFullLeave}
-              disabled={isOnFullLeave || dutyLoading}
+              warn={!dutyLoading && !isOnDuty && !isDayClosed && !isOnFullLeave && !isSundayToday}
+              // A day already open stays openable so it can be closed — the
+              // block is on starting one, not on finishing one that exists.
+              disabled={isOnFullLeave || dutyLoading || (isSundayToday && !isOnDuty && !isDayClosed)}
               onClick={() => setScreen('duty')}
             />
             <ListRow

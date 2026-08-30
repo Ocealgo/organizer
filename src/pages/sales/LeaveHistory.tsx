@@ -5,7 +5,7 @@ import { LeaveRecord, LeaveReason, LEAVE_REASONS } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { useConfirm } from '../../hooks/useConfirm'
-import { localMonthStr, localDateStr } from '../../utils/date'
+import { localMonthStr, localDateStr, isSunday } from '../../utils/date'
 import DateInput from '../../components/DateInput'
 import {
   PageHeader, Section, EmptyState, ChipGroup, Note,
@@ -111,7 +111,7 @@ export default function LeaveHistory({ leaveRecords, onBack }: Props) {
     })
   }
 
-  const sunday = leaveDate >= today && new Date(leaveDate + 'T00:00:00').getDay() === 0
+  const sunday = leaveDate >= today && isSunday(leaveDate)
   const past = leaveDate < today
   const duplicate = leaveRecords.some(l =>
     l.date === leaveDate && l.status !== 'removed' && l.status !== 'rejected')

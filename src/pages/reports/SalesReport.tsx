@@ -11,7 +11,7 @@ import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
 import { PageHeader, PrimaryButton, Eyebrow, EmptyState } from '../../components/ui'
-import { localDateStr, localMonthStr } from '../../utils/date'
+import { localDateStr, localMonthStr, isSunday } from '../../utils/date'
 
 interface Props { onBack: () => void }
 
@@ -252,7 +252,7 @@ export default function SalesReport({ onBack }: Props) {
     const holidaySet = new Set(holidays.map(h => h.date))
     const working = eachDay(from, to).filter(d => {
       if (holidaySet.has(d)) return false
-      return new Date(d + 'T00:00:00').getDay() !== 0   // Sundays off
+      return !isSunday(d)   // Sundays off
     }).length
 
     const list = Array.from(byUid.values()).sort((a, b) => b.visits - a.visits)

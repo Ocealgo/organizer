@@ -23,7 +23,7 @@ import { useAuth } from '../../context/AuthContext'
 import { can, maySignOffFor } from '../../auth/permissions'
 import { useTheme } from '../../context/ThemeContext'
 import { useConfirm } from '../../hooks/useConfirm'
-import { localDateStr } from '../../utils/date'
+import { localDateStr, isSunday } from '../../utils/date'
 import DateInput from '../../components/DateInput'
 import {
   PageHeader, TabBar, StatGrid, StatCard, Section, EmptyState,
@@ -55,7 +55,7 @@ function fmtDate(s: string): string {
 }
 
 function isWeekend(s: string): boolean {
-  return new Date(s + 'T00:00:00').getDay() === 0 // Sunday only
+  return isSunday(s)
 }
 
 function weekLabel(ws: string): string {
