@@ -301,16 +301,19 @@ export default function BeatManager({ onBack }: Props) {
           <Section label="Targets for a day on this beat">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <Note>
-                Copied onto each day when the beat is assigned, and left alone after that.
-                Editing them later changes what future days aim at, never what past days
-                were measured against.
+                Both optional — leave them blank and days on this beat simply have nothing
+                to hit. Whatever is set here is copied onto each day when the beat is
+                assigned and left alone after that, so editing these changes what future
+                days aim at, never what past days were measured against.
               </Note>
-              <Field label="Shops visited" hint="All visits that day, not only the ones on this beat.">
+              <Field label="Shops visited"
+                hint="Optional. All visits that day, not only the ones on this beat.">
                 <input type="number" inputMode="numeric" value={targetVisits}
                   onChange={e => setTargetVisits(e.target.value)}
                   placeholder={String(picked.size || 12)} style={inputStyle(t)} />
               </Field>
-              <Field label="Order value" hint="Rupees of orders raised. Raised, not dispatched or paid.">
+              <Field label="Order value"
+                hint="Optional. Rupees of orders raised — raised, not dispatched or paid.">
                 <input type="number" inputMode="numeric" value={targetOrderValue}
                   onChange={e => setTargetOrderValue(e.target.value)}
                   placeholder="50000" style={inputStyle(t)} />
