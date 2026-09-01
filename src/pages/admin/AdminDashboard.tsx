@@ -131,8 +131,14 @@ export default function AdminDashboard() {
   const [attHalf, setAttHalf] = useState('10:00');
   const [attFull, setAttFull] = useState('14:00');
   const [attWarn, setAttWarn] = useState('10');
+  // Which roles are swept, and who is individually let off. Exemptions are
+  // stored as the people excluded rather than included, so somebody hired next
+  // month is covered from their first day instead of quietly escaping.
+  const [attRoles, setAttRoles] = useState<string[]>(['offline_sales', 'online_sales', 'sales_manager']);
+  const [attExempt, setAttExempt] = useState<string[]>([]);
   const [attSaving, setAttSaving] = useState(false);
   const [attSaved, setAttSaved] = useState(false);
+  const [allUsers, setAllUsers] = useState<AppUser[]>([]);
   const [dangerSelected, setDangerSelected] = useState<Set<string>>(new Set())
   const [dangerConfirm, setDangerConfirm] = useState('')
   const [dangerClearing, setDangerClearing] = useState(false)
@@ -203,15 +209,17 @@ export default function AdminDashboard() {
   useEffect(() => {
     // Fetch offline sales users
     const unsub = onSnapshot(collection(db, "users"), (snap) => {
+      const approved = snap.docs
+        .map((d) => ({ uid: d.id, ...d.data() }) as AppUser)
+        .filter((u) => u.status === "approved");
       setSalesUsers(
-        snap.docs
-          .map((d) => ({ uid: d.id, ...d.data() }) as AppUser)
-          .filter(
-            (u) =>
-              u.status === "approved" &&
-              (u.role === "offline_sales" || u.role === "online_sales"),
-          ),
+        approved.filter(
+          (u) => u.role === "offline_sales" || u.role === "online_sales",
+        ),
       );
+      // Everybody, for the attendance exemption list — which has to be able to
+      // name people the sales screens never mention.
+      setAllUsers(approved);
     });
     return unsub;
   }, []);
@@ -248,6 +256,8 @@ export default function AdminDashboard() {
       if (a.halfDayAt) setAttHalf(a.halfDayAt);
       if (a.fullDayAt) setAttFull(a.fullDayAt);
       if (typeof a.warnMinutes === 'number') setAttWarn(String(a.warnMinutes));
+      if (Array.isArray(a.roles) && a.roles.length) setAttRoles(a.roles);
+      if (Array.isArray(a.exemptUids)) setAttExempt(a.exemptUids);
     }).catch(() => {});
   }, [appUser?.role]);
 
@@ -466,6 +476,104 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
+                <Field
+                  label="Roles this applies to"
+                  hint="Admins and super admins are never marked, whatever is chosen here."
+                >
+                  <div className="oc-wrap" style={{ gap: 8 }}>
+                    {([
+                      ['offline_sales', 'Sales officer'],
+                      ['online_sales', 'Online sales'],
+                      ['sales_manager', 'Sales manager'],
+                      ['offline_marketing', 'Marketing'],
+                      ['online_marketing', 'Online marketing'],
+                    ] as [string, string][]).map(([role, label]) => {
+                      const on = attRoles.includes(role);
+                      // Marketing has no punch-in screen at all, so anyone in
+                      // those roles can never comply — only appeal, every day.
+                      // Selectable, because that is a business call, but not
+                      // silently.
+                      const cannotPunchIn = role.endsWith('_marketing');
+                      return (
+                        <button key={role} className="oc-action"
+                          onClick={() => {
+                            setAttRoles(on ? attRoles.filter(r => r !== role) : [...attRoles, role]);
+                            setAttSaved(false);
+                          }}
+                          aria-pressed={on}
+                          style={{
+                            background: on ? t.tint : 'none',
+                            border: `0.5px solid ${on ? (cannotPunchIn ? t.warn : t.text2) : t.border2}`,
+                            borderRadius: 6, padding: '8px 13px', fontSize: 13,
+                            fontWeight: on ? 500 : 400,
+                            color: on ? (cannotPunchIn ? t.warn : t.text) : t.text2,
+                            cursor: 'pointer',
+                          }}>
+                          {label}{cannotPunchIn ? ' · cannot punch in' : ''}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Field>
+
+                {attRoles.some(r => r.endsWith('_marketing')) && (
+                  <Note tone="warn">
+                    Marketing roles have no Start the day screen. Anyone in them will be marked
+                    absent every working day and can only ever appeal it.
+                  </Note>
+                )}
+
+                <Field
+                  label={`People · ${allUsers.filter(u => attRoles.includes(u.role) && !attExempt.includes(u.uid)).length} covered`}
+                  hint="Untick anybody this should not apply to. Somebody hired later is covered from their first day."
+                >
+                  <div style={{
+                    maxHeight: 260, overflowY: 'auto',
+                    border: `0.5px solid ${t.border}`, borderRadius: 6,
+                  }}>
+                    {allUsers.filter(u => attRoles.includes(u.role)).length === 0 ? (
+                      <div style={{ padding: '16px 13px', fontSize: 13, color: t.text3 }}>
+                        Nobody holds the roles chosen above.
+                      </div>
+                    ) : allUsers
+                      .filter(u => attRoles.includes(u.role))
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((u, i) => {
+                        const on = !attExempt.includes(u.uid);
+                        return (
+                          <button key={u.uid} className="oc-row"
+                            onClick={() => {
+                              setAttExempt(on
+                                ? [...attExempt, u.uid]
+                                : attExempt.filter(x => x !== u.uid));
+                              setAttSaved(false);
+                            }}
+                            aria-pressed={on}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 12, width: '100%',
+                              textAlign: 'left', background: 'none', border: 'none',
+                              borderTop: i === 0 ? 'none' : `0.5px solid ${t.border}`,
+                              padding: '11px 13px', cursor: 'pointer', minHeight: 44,
+                            }}>
+                            <span style={{
+                              width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+                              border: `0.5px solid ${on ? t.text2 : t.border2}`,
+                              background: on ? t.text2 : 'transparent',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: 12, color: t.bg,
+                            }}>{on ? '✓' : ''}</span>
+                            <span style={{ flex: 1, minWidth: 0 }}>
+                              <span style={{ display: 'block', fontSize: 14, color: t.text }}>{u.name}</span>
+                              <span style={{ display: 'block', fontSize: 12, color: t.text3, marginTop: 2 }}>
+                                {ROLE_LABELS_PLAIN[u.role]}{on ? '' : ' · not marked'}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                  </div>
+                </Field>
+
                 {problem && <Note tone="warn">{problem}</Note>}
 
                 <div>
@@ -480,6 +588,8 @@ export default function AdminDashboard() {
                             halfDayAt: attHalf,
                             fullDayAt: attFull,
                             warnMinutes: warnN,
+                            roles: attRoles,
+                            exemptUids: attExempt,
                           },
                         }, { merge: true });
                         setAttSaved(true);

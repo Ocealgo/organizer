@@ -30,14 +30,29 @@ const { getFirestore } = require('firebase-admin/firestore')
 const REGION = 'asia-south1'
 const TZ = 'Asia/Kolkata'
 
+/**
+ * Everyone who can actually punch in.
+ *
+ * Not everyone who is not an admin. `offline_marketing` and `online_marketing`
+ * are routed to their own screens and never see a duty form, so sweeping them
+ * in would mark them absent every day of their working lives with no way to
+ * comply — only to appeal, daily, forever. A rule somebody cannot obey is not
+ * an accountability measure, it is a broken app.
+ *
+ * A super admin can widen this in Settings if that ever changes. The default is
+ * the set of people the app gives a punch-in button to.
+ */
+const CAN_PUNCH_IN = ['offline_sales', 'online_sales', 'sales_manager']
+
+/** Never swept, whatever the settings say. Somebody has to be able to fix this. */
+const NEVER = ['admin', 'super_admin']
+
 /** Used until a super admin says otherwise, in Settings. */
 const DEFAULTS = {
   halfDayAt: '10:00',
   fullDayAt: '14:00',
   warnMinutes: 10,
 }
-
-const SALES_ROLES = ['offline_sales', 'online_sales']
 
 /** Local date in IST, as YYYY-MM-DD. */
 function istDate() {
@@ -77,9 +92,18 @@ async function settings(db) {
       warnMinutes: Number.isFinite(a.warnMinutes) && a.warnMinutes >= 0 && a.warnMinutes <= 120
         ? a.warnMinutes : DEFAULTS.warnMinutes,
       enabled: a.enabled !== false,
+      // Which roles are swept, and who is let off individually. An admin can
+      // never be swept whatever this says.
+      roles: Array.isArray(a.roles) && a.roles.length
+        ? a.roles.filter(r => !NEVER.includes(r))
+        : CAN_PUNCH_IN,
+      // Exemptions are stored as the people let OFF rather than the people
+      // included, so somebody hired next month is covered from their first day
+      // instead of quietly escaping until a super admin remembers to tick them.
+      exemptUids: Array.isArray(a.exemptUids) ? a.exemptUids : [],
     }
   } catch {
-    return { ...DEFAULTS, enabled: true }
+    return { ...DEFAULTS, enabled: true, roles: CAN_PUNCH_IN, exemptUids: [] }
   }
 }
 
@@ -89,7 +113,7 @@ async function settings(db) {
  * Anything not dismissed counts as accounted for: leave the officer asked for,
  * leave a manager marked, and leave this sweep wrote earlier today.
  */
-async function outstanding(db, date) {
+async function outstanding(db, date, cfg) {
   const [users, sessions, leaves] = await Promise.all([
     db.collection('users').where('status', '==', 'approved').get(),
     db.collection('duty_sessions').where('date', '==', date).get(),
@@ -106,7 +130,9 @@ async function outstanding(db, date) {
 
   const reps = users.docs
     .map(d => ({ uid: d.id, ...d.data() }))
-    .filter(u => SALES_ROLES.includes(u.role))
+    .filter(u => !NEVER.includes(u.role))
+    .filter(u => cfg.roles.includes(u.role))
+    .filter(u => !cfg.exemptUids.includes(u.uid))
 
   return { reps, started, leaveByUid }
 }
@@ -119,8 +145,8 @@ async function outstanding(db, date) {
  * directly, because that is already the queue: `pushOnAlert` sends the push and
  * the bell reads the same row. Nothing here needs to know what FCM is.
  */
-async function warn(db, date, stage, deadline) {
-  const { reps, started, leaveByUid } = await outstanding(db, date)
+async function warn(db, date, stage, deadline, cfg) {
+  const { reps, started, leaveByUid } = await outstanding(db, date, cfg)
   let sent = 0
   for (const rep of reps) {
     if (started.has(rep.uid) || leaveByUid.has(rep.uid)) continue
@@ -149,8 +175,8 @@ async function warn(db, date, stage, deadline) {
  * somebody absent all day was absent once, not twice. It only ever edits its
  * own: a leave a person marked, or one already under appeal, is not ours.
  */
-async function mark(db, date, stage, deadline) {
-  const { reps, started, leaveByUid } = await outstanding(db, date)
+async function mark(db, date, stage, deadline, cfg) {
+  const { reps, started, leaveByUid } = await outstanding(db, date, cfg)
   let written = 0
 
   for (const rep of reps) {
@@ -254,19 +280,19 @@ exports.attendanceSweep = onSchedule(
     // start, a deploy, an outage — still does the right thing rather than
     // nothing. Each stage is claimed once per day.
     if (now >= cfg.fullDayAt) {
-      if (await claim(db, date, 'full')) await mark(db, date, 'full', cfg.fullDayAt)
+      if (await claim(db, date, 'full')) await mark(db, date, 'full', cfg.fullDayAt, cfg)
       return
     }
     if (now >= warnFull) {
-      if (await claim(db, date, 'warnFull')) await warn(db, date, 'full', cfg.fullDayAt)
+      if (await claim(db, date, 'warnFull')) await warn(db, date, 'full', cfg.fullDayAt, cfg)
       return
     }
     if (now >= cfg.halfDayAt) {
-      if (await claim(db, date, 'half')) await mark(db, date, 'half', cfg.halfDayAt)
+      if (await claim(db, date, 'half')) await mark(db, date, 'half', cfg.halfDayAt, cfg)
       return
     }
     if (now >= warnHalf) {
-      if (await claim(db, date, 'warnHalf')) await warn(db, date, 'half', cfg.halfDayAt)
+      if (await claim(db, date, 'warnHalf')) await warn(db, date, 'half', cfg.halfDayAt, cfg)
     }
   },
 )
