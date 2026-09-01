@@ -198,6 +198,19 @@ export default function LeaveTracker({ onBack }: Props) {
             {longDate(leave.date)} · {leave.leaveType === 'half_day' ? 'Half day' : 'Full day'}
             {leave.reason ? ` · ${leave.reason}` : ''}
           </div>
+          {leave.autoMarked && (
+            // The difference that decides this: a leave somebody asked for is
+            // a request, and one the app wrote is a guess about a person who
+            // was not there to argue with it.
+            <div style={{ fontSize: 12, color: t.warn, marginTop: 4, lineHeight: 1.5 }}>
+              Marked automatically — no punch-in was received that day.
+            </div>
+          )}
+          {leave.unmarkReason && (
+            <div style={{ fontSize: 13, color: t.text2, marginTop: 6, lineHeight: 1.55 }}>
+              {leave.name.split(' ')[0]} says: {leave.unmarkReason}
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 14, flexShrink: 0 }}>
           <button className="oc-action" onClick={onYes}
