@@ -370,6 +370,12 @@ export default function AdminDashboard() {
 
   if (subScreen === "settings") return (
     <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 40 }}>
+      {/* The confirm dialog lives wherever it might be asked for. It was
+          rendered only in the dashboard branch, which this screen returns
+          before ever reaching — so asking a question here awaited an answer
+          from a dialog that was not on the page, and the modal appeared later
+          on the way back. */}
+      {adminLeaveModal}
       <PageHeader
         eyebrow="Super admin"
         title="Settings"
