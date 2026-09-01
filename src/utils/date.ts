@@ -11,3 +11,8 @@ export function localDateOffset(days: number): string {
   d.setDate(d.getDate() + days)
   return localDateStr(d)
 }
+
+/** Local wall-clock as "HH:MM", zero-padded so string comparison is time comparison. */
+export function localTimeStr(d: Date = new Date()): string {
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}

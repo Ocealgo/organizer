@@ -118,6 +118,32 @@ export default function LeaveTracker({ onBack }: Props) {
         action: 'leave_rejected', by: appUser?.uid ?? '', byName: appUser?.name ?? 'Somebody', at: Date.now()
       }],
     })
+    await tellOfficer(leave,
+      `Your ${dayWord(leave)} leave on ${leave.date} was not approved by ${who()}.`)
+  }
+
+  const who = () => appUser?.name ?? 'A manager'
+  const dayWord = (l: LeaveRecord) => (l.leaveType === 'full_day' ? 'full day' : 'half day')
+
+  /**
+   * Tell the officer what was decided.
+   *
+   * Only approval used to say anything. A rejection, and both answers to a
+   * cancellation request, were silent — so somebody who appealed an absence
+   * the app had marked against them waited for a reply that was never coming,
+   * and found out by noticing the record had or had not moved. The whole point
+   * of letting them argue is that somebody answers.
+   */
+  const tellOfficer = async (leave: LeaveRecord, message: string) => {
+    await addDoc(collection(db, 'alerts'), {
+      type: 'leave_approved',
+      message,
+      relatedId: leave.id!,
+      toUid: leave.uid,
+      url: '/?go=leaves',
+      read: false,
+      createdAt: Date.now(),
+    })
   }
 
   const handleApproveUnmark = async (leave: LeaveRecord) => {
@@ -133,6 +159,9 @@ export default function LeaveTracker({ onBack }: Props) {
         action: 'unmark_approved', by: appUser?.uid ?? '', byName: appUser?.name ?? 'Somebody', at: Date.now()
       }],
     })
+    await tellOfficer(leave,
+      `${who()} removed the ${dayWord(leave)} leave on ${leave.date}. `
+      + (leave.autoMarked ? 'The day is yours again.' : 'Nothing is recorded against that day.'))
   }
 
   const handleRejectUnmark = async (leave: LeaveRecord) => {
@@ -148,6 +177,9 @@ export default function LeaveTracker({ onBack }: Props) {
         action: 'unmark_rejected', by: appUser?.uid ?? '', byName: appUser?.name ?? 'Somebody', at: Date.now()
       }],
     })
+    await tellOfficer(leave,
+      `${who()} kept the ${dayWord(leave)} leave on ${leave.date}. `
+      + 'Speak to them if you think that is wrong.')
   }
 
   const handleAddHoliday = async () => {

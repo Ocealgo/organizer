@@ -52,6 +52,9 @@ const DEFAULTS = {
   halfDayAt: '10:00',
   fullDayAt: '14:00',
   warnMinutes: 10,
+  // When a half day ends and the afternoon may be worked. Read by the app, not
+  // by this sweep — it decides who is marked, not who may start.
+  halfDayResumeAt: '13:00',
 }
 
 /** Local date in IST, as YYYY-MM-DD. */
@@ -101,6 +104,7 @@ async function settings(db) {
       // included, so somebody hired next month is covered from their first day
       // instead of quietly escaping until a super admin remembers to tick them.
       exemptUids: Array.isArray(a.exemptUids) ? a.exemptUids : [],
+      halfDayResumeAt: VALID.test(a.halfDayResumeAt) ? a.halfDayResumeAt : DEFAULTS.halfDayResumeAt,
     }
   } catch {
     return { ...DEFAULTS, enabled: true, roles: CAN_PUNCH_IN, exemptUids: [] }

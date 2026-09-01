@@ -131,6 +131,7 @@ export default function AdminDashboard() {
   const [attHalf, setAttHalf] = useState('10:00');
   const [attFull, setAttFull] = useState('14:00');
   const [attWarn, setAttWarn] = useState('10');
+  const [attResume, setAttResume] = useState('13:00');
   // Which roles are swept, and who is individually let off. Exemptions are
   // stored as the people excluded rather than included, so somebody hired next
   // month is covered from their first day instead of quietly escaping.
@@ -256,6 +257,7 @@ export default function AdminDashboard() {
       if (a.halfDayAt) setAttHalf(a.halfDayAt);
       if (a.fullDayAt) setAttFull(a.fullDayAt);
       if (typeof a.warnMinutes === 'number') setAttWarn(String(a.warnMinutes));
+      if (a.halfDayResumeAt) setAttResume(a.halfDayResumeAt);
       if (Array.isArray(a.roles) && a.roles.length) setAttRoles(a.roles);
       if (Array.isArray(a.exemptUids)) setAttExempt(a.exemptUids);
     }).catch(() => {});
@@ -424,6 +426,8 @@ export default function AdminDashboard() {
             !time.test(attHalf) ? 'The half-day time needs to look like 10:00.'
             : !time.test(attFull) ? 'The full-day time needs to look like 14:00.'
             : attFull <= attHalf ? 'The full-day cutoff has to come after the half-day one.'
+            : !time.test(attResume) ? 'The half-day end time needs to look like 13:00.'
+            : attResume <= attHalf ? 'A half day cannot end before the cutoff that created it.'
             : !Number.isFinite(warnN) || warnN < 0 || warnN > 120
               ? 'The warning has to be between 0 and 120 minutes.'
               : null;
@@ -471,6 +475,14 @@ export default function AdminDashboard() {
                     <Field label="Warn this many minutes before">
                       <input type="number" inputMode="numeric" value={attWarn}
                         onChange={e => { setAttWarn(e.target.value); setAttSaved(false); }}
+                        style={inputStyle(t)} />
+                    </Field>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 150 }}>
+                    <Field label="Half day ends at"
+                      hint="A rep on half a day cannot start before this.">
+                      <input type="time" value={attResume}
+                        onChange={e => { setAttResume(e.target.value); setAttSaved(false); }}
                         style={inputStyle(t)} />
                     </Field>
                   </div>
@@ -588,6 +600,7 @@ export default function AdminDashboard() {
                             halfDayAt: attHalf,
                             fullDayAt: attFull,
                             warnMinutes: warnN,
+                            halfDayResumeAt: attResume,
                             roles: attRoles,
                             exemptUids: attExempt,
                           },

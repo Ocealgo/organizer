@@ -15,7 +15,7 @@ import ActivityScreen from './ActivityScreen'
 import LeaveHistory from './LeaveHistory'
 import { Party, DailyVisitLog, LeaveRecord, Holiday } from '../../types'
 import { useConfirm } from '../../hooks/useConfirm'
-import { localDateStr, localMonthStr } from '../../utils/date'
+import { localDateStr, localMonthStr, localTimeStr } from '../../utils/date'
 import { Eyebrow, StatGrid, StatCard, RowGroup, ListRow, EmptyState, GhostButton } from '../../components/ui'
 import { useDutySession, closeAbandonedSessions } from '../../hooks/useDutySession'
 import { REMINDER_HOUR, AUTO_CLOSE_HOUR } from '../../device/notify'
@@ -59,6 +59,10 @@ export default function SalesView({ name }: Props) {
   const [creditReturnScreen, setCreditReturnScreen] = useState<SubScreen>('home')
   const [expenseDefaultToDay, setExpenseDefaultToDay] = useState(false)
   const [holidays, setHolidays] = useState<Holiday[]>([])
+  /** When a half day ends and the afternoon may be worked. From config/settings. */
+  const [halfDayResumeAt, setHalfDayResumeAt] = useState('13:00')
+  /** Ticks every minute so a time-based block lifts without a reload. */
+  const [now, setNow] = useState(localTimeStr())
   const { modal: leaveModal, showConfirm: showLeaveConfirm } = useConfirm()
   // Spec §2.3 — the outlet list stays locked until the day is punched in.
   //
@@ -73,6 +77,16 @@ export default function SalesView({ name }: Props) {
       setParties(snap.docs.map(d => ({ id: d.id, ...d.data() } as Party)))
     })
   }, [])
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(localTimeStr()), 60_000)
+    return () => clearInterval(id)
+  }, [])
+
+  useEffect(() => onSnapshot(doc(db, 'config', 'settings'), snap => {
+    const at = (snap.data() as any)?.attendance?.halfDayResumeAt
+    if (typeof at === 'string' && /^([01]\d|2[0-3]):([0-5]\d)$/.test(at)) setHalfDayResumeAt(at)
+  }, () => {}), [])
 
   /**
    * Land where a notification said it would.
@@ -297,6 +311,36 @@ export default function SalesView({ name }: Props) {
       }],
     })
   }
+  /**
+   * A half day off is half a day off.
+   *
+   * Leave that changed nothing was not leave — a rep marked half a day for
+   * missing the morning cutoff could punch in at 10:05 and work a full day,
+   * which makes the record a fiction and the deduction meaningless. The morning
+   * is closed and the afternoon is theirs.
+   *
+   * `now` ticks every minute so the block lifts on its own. Computed once at
+   * render, somebody waiting for one o'clock would sit looking at a locked
+   * screen until they thought to reload — the app appearing broken at exactly
+   * the moment they are trying to comply.
+   *
+   * Declared above the routing because the duty screen is handed it on the way
+   * in, not only shown it on the way past.
+   */
+  /**
+   * A leave under appeal still stands.
+   *
+   * `unmark_requested` counts as much as `active`. Otherwise asking to cancel
+   * is itself the way out — appeal at ten past ten, work the morning, and it
+   * never mattered whether the manager agreed. The block holds until somebody
+   * decides, and the moment they do it lifts on the next tick.
+   */
+  const leaveStands = (l: LeaveRecord | null) =>
+    !!l && (l.status === 'active' || l.status === 'unmark_requested')
+
+  const halfDayLeave = !!todayLeave && todayLeave.leaveType === 'half_day' && leaveStands(todayLeave)
+  const inHalfDayMorning = halfDayLeave && now < halfDayResumeAt
+
 
   // Route to sub-screens — hooks are above so this is safe
   //
@@ -310,7 +354,8 @@ export default function SalesView({ name }: Props) {
         Checking where your day stands…
       </div>
     )
-    : <DutyScreen appUser={appUser} session={dutySession} onBack={() => setScreen('home')} />
+    : <DutyScreen appUser={appUser} session={dutySession} onBack={() => setScreen('home')}
+        blockedUntil={inHalfDayMorning ? halfDayResumeAt : undefined} />
   // `isOnDuty`, not "a session exists". A closed day still has one, and this is
   // the gate that is supposed to stop visits being filed against a day that is
   // already finished — including one that closes while this screen is open.
@@ -338,7 +383,9 @@ export default function SalesView({ name }: Props) {
   )
 
   const isTodayHoliday = holidays.some(h => h.date === todayStr())
-  const isOnFullLeave = isTodayHoliday || !!(todayLeave && todayLeave.leaveType === 'full_day' && todayLeave.status === 'active')
+  const isOnFullLeave = isTodayHoliday
+    || (!!todayLeave && todayLeave.leaveType === 'full_day' && leaveStands(todayLeave))
+
   const pendingLeavesCount = allLeaveRecords.filter(l => l.status === 'pending_approval').length
   // Both flows count. The outlet screen is what an officer uses now and it
   // writes `outlet_visits`; `visit_logs` is the older screen, still reachable
@@ -447,7 +494,11 @@ export default function SalesView({ name }: Props) {
                 somebody already punched in is how they end up on the wrong form
                 with the wrong button under their thumb. */}
             <ListRow
-              title={dutyLoading ? 'Your day' : isDayClosed ? 'Day finished' : isOnDuty ? 'End the day' : 'Start the day'}
+              title={dutyLoading ? 'Your day'
+                : isDayClosed ? 'Day finished'
+                : isOnDuty ? 'End the day'
+                : inHalfDayMorning ? `Half day — starts at ${halfDayResumeAt}`
+                : 'Start the day'}
               desc={dutyLoading
                 ? 'Checking today’s record…'
                 : isDayClosed
@@ -456,10 +507,12 @@ export default function SalesView({ name }: Props) {
                     : `${dutySession?.claimedDistanceKm ?? 0} km recorded`
                   : isOnDuty
                     ? `Started at ${new Date(dutySession!.startAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} · closing reading and photo`
-                    : 'Meter reading, photo and location'}
+                    : inHalfDayMorning
+                      ? `Half a day is recorded against this morning. You can start at ${halfDayResumeAt}.`
+                      : 'Meter reading, photo and location'}
               value={!dutyLoading && isOnDuty ? `${dutySession?.startOdometerKm} km` : undefined}
-              warn={!dutyLoading && !isOnDuty && !isDayClosed && !isOnFullLeave}
-              disabled={isOnFullLeave || dutyLoading}
+              warn={!dutyLoading && !isOnDuty && !isDayClosed && !isOnFullLeave && !inHalfDayMorning}
+              disabled={isOnFullLeave || dutyLoading || inHalfDayMorning}
               onClick={() => setScreen('duty')}
             />
             <ListRow

@@ -20,6 +20,8 @@ interface Props {
   appUser: AppUser
   session: DutySession | null
   onBack: () => void
+  /** Set when leave closes the morning: the time the afternoon opens. */
+  blockedUntil?: string
 }
 
 type Mode = 'punch_in' | 'punch_out' | 'done'
@@ -29,7 +31,7 @@ const MIN_NOTE = 5
 const modeFor = (s: DutySession | null): Mode =>
   !s ? 'punch_in' : s.status === 'active' ? 'punch_out' : 'done'
 
-export default function DutyScreen({ appUser, session, onBack }: Props) {
+export default function DutyScreen({ appUser, session, onBack, blockedUntil }: Props) {
   const { t } = useTheme()
   const { modal: confirmModal, showConfirm } = useConfirm()
 
@@ -356,6 +358,31 @@ export default function DutyScreen({ appUser, session, onBack }: Props) {
           </div>
           <div style={{ fontSize: 13, color: t.text3, marginTop: 20, lineHeight: 1.6 }}>
             Nothing more can be logged today. Your next day starts with a fresh punch-in.
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  /**
+   * A half day off is half a day off.
+   *
+   * Punch-in only. A session already running has to stay closeable, or somebody
+   * is stranded with an open day and no way to claim the distance. Checked here
+   * as well as on the row that leads here, so the rule does not depend on that
+   * row staying the only way in.
+   */
+  if (isIn && blockedUntil) {
+    return (
+      <div style={{ minHeight: '100vh', background: t.bg }}>
+        <PageHeader eyebrow="Duty" title="Half day" onBack={onBack} />
+        <div style={{ padding: '24px 20px', maxWidth: 560 }}>
+          <div style={{ fontSize: 14, color: t.text2, lineHeight: 1.7 }}>
+            Half a day is recorded against this morning, so your day starts at {blockedUntil}.
+          </div>
+          <div style={{ fontSize: 13, color: t.text3, lineHeight: 1.7, marginTop: 14 }}>
+            If that half day is wrong, open Leave, ask for it to be cancelled and say what
+            happened. Your manager decides, and the morning comes back if they agree.
           </div>
         </div>
       </div>
