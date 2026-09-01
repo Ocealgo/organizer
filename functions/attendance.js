@@ -126,9 +126,26 @@ async function outstanding(db, date, cfg) {
 
   const started = new Set(sessions.docs.map(d => d.data().uid))
   const leaveByUid = new Map()
+  /**
+   * People whose automatic leave a manager has already thrown out today.
+   *
+   * Without this the sweep undoes the appeal it invited. The morning marks a
+   * half day, the officer explains their phone was dead, the manager agrees
+   * and removes it — and at the afternoon cutoff the sweep finds no leave,
+   * concludes nobody started, and writes a full day instead. The officer
+   * watches a decision in their favour turn into a worse one four hours later.
+   *
+   * A manager's answer settles the day. Only leave this sweep wrote counts:
+   * somebody who cancelled their own ordinary leave is a different case and is
+   * fair game.
+   */
+  const cleared = new Set()
   leaves.docs.forEach(d => {
     const l = d.data()
-    if (l.status === 'removed' || l.status === 'rejected') return
+    if (l.status === 'removed' || l.status === 'rejected') {
+      if (l.autoMarked === true) cleared.add(l.uid)
+      return
+    }
     leaveByUid.set(l.uid, { id: d.id, ...l })
   })
 
@@ -137,6 +154,7 @@ async function outstanding(db, date, cfg) {
     .filter(u => !NEVER.includes(u.role))
     .filter(u => cfg.roles.includes(u.role))
     .filter(u => !cfg.exemptUids.includes(u.uid))
+    .filter(u => !cleared.has(u.uid))
 
   return { reps, started, leaveByUid }
 }
@@ -255,11 +273,16 @@ async function tell(db, rep, date, leaveType, deadline) {
  * warning is not, and without this the same person is told every five minutes
  * for ten minutes.
  */
-async function claim(db, date, stage) {
+async function claim(db, date, stage, at) {
+  // Keyed by the time as well as the stage. Claiming on the stage alone meant
+  // a cutoff moved after it had already fired never fired again that day: the
+  // setting silently stopped working until midnight, which is exactly when
+  // somebody is most likely to be adjusting it. A new time is a new claim.
+  const key = `${stage}@${at}`
   const ref = db.doc(`attendance_runs/${date}`)
   const snap = await ref.get()
-  if ((snap.data() || {})[stage]) return false
-  await ref.set({ [stage]: Date.now(), date }, { merge: true })
+  if ((snap.data() || {})[key]) return false
+  await ref.set({ [key]: Date.now(), date }, { merge: true })
   return true
 }
 
@@ -282,21 +305,22 @@ exports.attendanceSweep = onSchedule(
 
     // Latest applicable stage first, so a sweep that missed its slot — a cold
     // start, a deploy, an outage — still does the right thing rather than
-    // nothing. Each stage is claimed once per day.
+    // nothing. Each stage is claimed once per day per configured time, so
+    // moving a cutoff lets it fire again rather than being locked out.
     if (now >= cfg.fullDayAt) {
-      if (await claim(db, date, 'full')) await mark(db, date, 'full', cfg.fullDayAt, cfg)
+      if (await claim(db, date, 'full', cfg.fullDayAt)) await mark(db, date, 'full', cfg.fullDayAt, cfg)
       return
     }
     if (now >= warnFull) {
-      if (await claim(db, date, 'warnFull')) await warn(db, date, 'full', cfg.fullDayAt, cfg)
+      if (await claim(db, date, 'warnFull', warnFull)) await warn(db, date, 'full', cfg.fullDayAt, cfg)
       return
     }
     if (now >= cfg.halfDayAt) {
-      if (await claim(db, date, 'half')) await mark(db, date, 'half', cfg.halfDayAt, cfg)
+      if (await claim(db, date, 'half', cfg.halfDayAt)) await mark(db, date, 'half', cfg.halfDayAt, cfg)
       return
     }
     if (now >= warnHalf) {
-      if (await claim(db, date, 'warnHalf')) await warn(db, date, 'half', cfg.halfDayAt, cfg)
+      if (await claim(db, date, 'warnHalf', warnHalf)) await warn(db, date, 'half', cfg.halfDayAt, cfg)
     }
   },
 )
