@@ -360,3 +360,92 @@ exports.attendanceSweep = onSchedule(
     idle(`nothing due yet · ${plan}`)
   },
 )
+
+/**
+ * Close a day nobody ended.
+ *
+ * The app has always swept these up, but only on the officer's own device and
+ * only when they next opened it — which misses precisely the person it is for.
+ * Somebody who forgets to punch out and does not open the app again leaves a
+ * session `active` indefinitely: it never appears as a finished day, the 6pm
+ * reminder finds them "still out" every evening after, and nothing ever says
+ * why. The comment on that sweep said there was no backend to run it at a fixed
+ * hour. There is one now.
+ *
+ * Nothing is invented. No closing reading is written and no distance is
+ * claimed, because none was ever taken — the day is marked `autoClosed` so a
+ * report can tell "went nowhere" from "never told us". That is the same bargain
+ * the client sweep made and it is worth keeping.
+ *
+ * The device-side sweep stays as a backstop: it catches days from before this
+ * existed, and it is harmless once the server has already closed them.
+ */
+exports.closeOpenDays = onSchedule(
+  { schedule: '59 23 * * *', timeZone: TZ, region: REGION },
+  async () => {
+    const db = getFirestore()
+    const date = istDate()
+
+    const open = await db.collection('duty_sessions')
+      .where('date', '==', date)
+      .where('status', '==', 'active')
+      .get()
+
+    if (open.empty) {
+      console.log(`[attendance] ${date} nothing left open`)
+      return
+    }
+
+    let closed = 0
+    for (const d of open.docs) {
+      const session = d.data()
+
+      // Visits first, session last. `active` is what makes a day findable, so
+      // if this dies halfway the next run picks it up and finishes. Closing the
+      // session first would strand an open visit for good.
+      const visits = await db.collection('outlet_visits')
+        .where('sessionId', '==', d.id)
+        .where('status', '==', 'open')
+        .get()
+      for (const v of visits.docs) {
+        // Punched into and never out of: it never collected an outcome or
+        // remarks, so it is abandoned rather than closed.
+        await v.ref.update({ status: 'abandoned', abandonedAt: Date.now() })
+      }
+
+      await d.ref.update({
+        endAt: Date.now(),
+        status: 'closed',
+        autoClosed: true,
+        autoClosedAt: Date.now(),
+      })
+
+      await db.collection('alerts').add({
+        type: 'duty_auto_closed',
+        message: `${session.name || 'Somebody'} did not end their day on ${date} `
+          + '— closed automatically, no distance claimed',
+        relatedId: d.id,
+        toRole: 'admin_group',
+        read: false,
+        createdAt: Date.now(),
+      })
+
+      // The officer is the one who forgot, and the one who loses the distance.
+      // Telling only the office means they find out from their manager.
+      await db.collection('alerts').add({
+        type: 'duty_auto_closed',
+        message: 'Your day was closed automatically because no closing meter reading was given. '
+          + 'No distance is claimed for it, so no allowance either.',
+        relatedId: d.id,
+        toUid: session.uid,
+        url: '/?go=duty',
+        read: false,
+        createdAt: Date.now(),
+      })
+
+      closed++
+    }
+
+    console.log(`[attendance] ${date} auto-closed ${closed} open day(s)`)
+  },
+)
