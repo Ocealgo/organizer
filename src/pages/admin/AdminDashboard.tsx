@@ -27,7 +27,7 @@ import ReportsHome from "../reports/ReportsHome";
 import OpportunitiesScreen from "../reports/OpportunitiesScreen";
 import FieldReport from "./FieldReport";
 import {
-  Eyebrow, PageHeader, Section, StatGrid, StatCard, EmptyState,
+  Eyebrow, PageHeader, Section, StatGrid, StatCard, EmptyState, Note, ChipGroup,
   Field, GhostButton, PrimaryButton, inputStyle,
 } from "../../components/ui";
 import StockManager from "../stock/StockManager";
@@ -125,6 +125,20 @@ export default function AdminDashboard() {
   const [settingsMapperLink, setSettingsMapperLink] = useState('');
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
+  // Missed punch-in. The sweep reads these every five minutes, so a change
+  // takes effect the same day without anything being redeployed.
+  const [attEnabled, setAttEnabled] = useState(true);
+  const [attHalf, setAttHalf] = useState('10:00');
+  const [attFull, setAttFull] = useState('14:00');
+  const [attWarn, setAttWarn] = useState('10');
+  // Which roles are swept, and who is individually let off. Exemptions are
+  // stored as the people excluded rather than included, so somebody hired next
+  // month is covered from their first day instead of quietly escaping.
+  const [attRoles, setAttRoles] = useState<string[]>(['offline_sales', 'online_sales', 'sales_manager']);
+  const [attExempt, setAttExempt] = useState<string[]>([]);
+  const [attSaving, setAttSaving] = useState(false);
+  const [attSaved, setAttSaved] = useState(false);
+  const [allUsers, setAllUsers] = useState<AppUser[]>([]);
   const [dangerSelected, setDangerSelected] = useState<Set<string>>(new Set())
   const [dangerConfirm, setDangerConfirm] = useState('')
   const [dangerClearing, setDangerClearing] = useState(false)
@@ -195,15 +209,17 @@ export default function AdminDashboard() {
   useEffect(() => {
     // Fetch offline sales users
     const unsub = onSnapshot(collection(db, "users"), (snap) => {
+      const approved = snap.docs
+        .map((d) => ({ uid: d.id, ...d.data() }) as AppUser)
+        .filter((u) => u.status === "approved");
       setSalesUsers(
-        snap.docs
-          .map((d) => ({ uid: d.id, ...d.data() }) as AppUser)
-          .filter(
-            (u) =>
-              u.status === "approved" &&
-              (u.role === "offline_sales" || u.role === "online_sales"),
-          ),
+        approved.filter(
+          (u) => u.role === "offline_sales" || u.role === "online_sales",
+        ),
       );
+      // Everybody, for the attendance exemption list — which has to be able to
+      // name people the sales screens never mention.
+      setAllUsers(approved);
     });
     return unsub;
   }, []);
@@ -233,7 +249,15 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (appUser?.role !== 'super_admin') return;
     getDoc(doc(db, 'config', 'settings')).then(snap => {
-      if (snap.exists()) setSettingsMapperLink(snap.data().mapperLink || '');
+      if (!snap.exists()) return;
+      setSettingsMapperLink(snap.data().mapperLink || '');
+      const a = snap.data().attendance || {};
+      setAttEnabled(a.enabled !== false);
+      if (a.halfDayAt) setAttHalf(a.halfDayAt);
+      if (a.fullDayAt) setAttFull(a.fullDayAt);
+      if (typeof a.warnMinutes === 'number') setAttWarn(String(a.warnMinutes));
+      if (Array.isArray(a.roles) && a.roles.length) setAttRoles(a.roles);
+      if (Array.isArray(a.exemptUids)) setAttExempt(a.exemptUids);
     }).catch(() => {});
   }, [appUser?.role]);
 
@@ -391,6 +415,193 @@ export default function AdminDashboard() {
             </div>
           </div>
         </Section>
+
+        {/* ── Missed punch-in ── */}
+        {(() => {
+          const time = /^([01]\d|2[0-3]):([0-5]\d)$/;
+          const warnN = Number(attWarn);
+          const problem =
+            !time.test(attHalf) ? 'The half-day time needs to look like 10:00.'
+            : !time.test(attFull) ? 'The full-day time needs to look like 14:00.'
+            : attFull <= attHalf ? 'The full-day cutoff has to come after the half-day one.'
+            : !Number.isFinite(warnN) || warnN < 0 || warnN > 120
+              ? 'The warning has to be between 0 and 120 minutes.'
+              : null;
+
+          return (
+            <Section label="Missed punch-in">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 560 }}>
+                <div style={{ fontSize: 14, fontWeight: 400, color: t.text3, lineHeight: 1.6 }}>
+                  A rep who has not started their day by the first time gets half a day of leave
+                  recorded, and by the second, a full day. Both are marked automatically, both say
+                  so, and a rep can ask their manager to remove one by explaining what happened.
+                  <br /><br />
+                  Everyone is warned a few minutes before each cutoff — but only the people who
+                  have not started, and never on a Sunday, a holiday, or to somebody already on
+                  leave.
+                </div>
+
+                <Field label="Automatic marking">
+                  <ChipGroup
+                    value={attEnabled ? 'on' : 'off'}
+                    onChange={(v: string) => { setAttEnabled(v === 'on'); setAttSaved(false); }}
+                    options={[
+                      { id: 'on', label: 'On' },
+                      { id: 'off', label: 'Off — nothing is marked' },
+                    ]}
+                  />
+                </Field>
+
+                <div className="oc-wrap" style={{ gap: 16 }}>
+                  <div style={{ flex: 1, minWidth: 150 }}>
+                    <Field label="Half day after">
+                      <input type="time" value={attHalf}
+                        onChange={e => { setAttHalf(e.target.value); setAttSaved(false); }}
+                        style={inputStyle(t)} />
+                    </Field>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 150 }}>
+                    <Field label="Full day after">
+                      <input type="time" value={attFull}
+                        onChange={e => { setAttFull(e.target.value); setAttSaved(false); }}
+                        style={inputStyle(t)} />
+                    </Field>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 150 }}>
+                    <Field label="Warn this many minutes before">
+                      <input type="number" inputMode="numeric" value={attWarn}
+                        onChange={e => { setAttWarn(e.target.value); setAttSaved(false); }}
+                        style={inputStyle(t)} />
+                    </Field>
+                  </div>
+                </div>
+
+                <Field
+                  label="Roles this applies to"
+                  hint="Admins and super admins are never marked, whatever is chosen here."
+                >
+                  <div className="oc-wrap" style={{ gap: 8 }}>
+                    {([
+                      ['offline_sales', 'Sales officer'],
+                      ['online_sales', 'Online sales'],
+                      ['sales_manager', 'Sales manager'],
+                      ['offline_marketing', 'Marketing'],
+                      ['online_marketing', 'Online marketing'],
+                    ] as [string, string][]).map(([role, label]) => {
+                      const on = attRoles.includes(role);
+                      // Marketing has no punch-in screen at all, so anyone in
+                      // those roles can never comply — only appeal, every day.
+                      // Selectable, because that is a business call, but not
+                      // silently.
+                      const cannotPunchIn = role.endsWith('_marketing');
+                      return (
+                        <button key={role} className="oc-action"
+                          onClick={() => {
+                            setAttRoles(on ? attRoles.filter(r => r !== role) : [...attRoles, role]);
+                            setAttSaved(false);
+                          }}
+                          aria-pressed={on}
+                          style={{
+                            background: on ? t.tint : 'none',
+                            border: `0.5px solid ${on ? (cannotPunchIn ? t.warn : t.text2) : t.border2}`,
+                            borderRadius: 6, padding: '8px 13px', fontSize: 13,
+                            fontWeight: on ? 500 : 400,
+                            color: on ? (cannotPunchIn ? t.warn : t.text) : t.text2,
+                            cursor: 'pointer',
+                          }}>
+                          {label}{cannotPunchIn ? ' · cannot punch in' : ''}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Field>
+
+                {attRoles.some(r => r.endsWith('_marketing')) && (
+                  <Note tone="warn">
+                    Marketing roles have no Start the day screen. Anyone in them will be marked
+                    absent every working day and can only ever appeal it.
+                  </Note>
+                )}
+
+                <Field
+                  label={`People · ${allUsers.filter(u => attRoles.includes(u.role) && !attExempt.includes(u.uid)).length} covered`}
+                  hint="Untick anybody this should not apply to. Somebody hired later is covered from their first day."
+                >
+                  <div style={{
+                    maxHeight: 260, overflowY: 'auto',
+                    border: `0.5px solid ${t.border}`, borderRadius: 6,
+                  }}>
+                    {allUsers.filter(u => attRoles.includes(u.role)).length === 0 ? (
+                      <div style={{ padding: '16px 13px', fontSize: 13, color: t.text3 }}>
+                        Nobody holds the roles chosen above.
+                      </div>
+                    ) : allUsers
+                      .filter(u => attRoles.includes(u.role))
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((u, i) => {
+                        const on = !attExempt.includes(u.uid);
+                        return (
+                          <button key={u.uid} className="oc-row"
+                            onClick={() => {
+                              setAttExempt(on
+                                ? [...attExempt, u.uid]
+                                : attExempt.filter(x => x !== u.uid));
+                              setAttSaved(false);
+                            }}
+                            aria-pressed={on}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 12, width: '100%',
+                              textAlign: 'left', background: 'none', border: 'none',
+                              borderTop: i === 0 ? 'none' : `0.5px solid ${t.border}`,
+                              padding: '11px 13px', cursor: 'pointer', minHeight: 44,
+                            }}>
+                            <span style={{
+                              width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+                              border: `0.5px solid ${on ? t.text2 : t.border2}`,
+                              background: on ? t.text2 : 'transparent',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: 12, color: t.bg,
+                            }}>{on ? '✓' : ''}</span>
+                            <span style={{ flex: 1, minWidth: 0 }}>
+                              <span style={{ display: 'block', fontSize: 14, color: t.text }}>{u.name}</span>
+                              <span style={{ display: 'block', fontSize: 12, color: t.text3, marginTop: 2 }}>
+                                {ROLE_LABELS_PLAIN[u.role]}{on ? '' : ' · not marked'}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                  </div>
+                </Field>
+
+                {problem && <Note tone="warn">{problem}</Note>}
+
+                <div>
+                  <PrimaryButton
+                    disabled={!!problem || attSaving}
+                    onClick={async () => {
+                      setAttSaving(true);
+                      try {
+                        await setDoc(doc(db, 'config', 'settings'), {
+                          attendance: {
+                            enabled: attEnabled,
+                            halfDayAt: attHalf,
+                            fullDayAt: attFull,
+                            warnMinutes: warnN,
+                            roles: attRoles,
+                            exemptUids: attExempt,
+                          },
+                        }, { merge: true });
+                        setAttSaved(true);
+                      } finally { setAttSaving(false); }
+                    }}>
+                    {attSaving ? 'Saving' : attSaved ? 'Saved' : 'Save'}
+                  </PrimaryButton>
+                </div>
+              </div>
+            </Section>
+          );
+        })()}
 
         {/* ── Reset one person ── */}
         {(() => {

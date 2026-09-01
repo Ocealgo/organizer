@@ -180,3 +180,4 @@ exports.requestPasswordReset = requestPasswordReset
  * telling people things.
  */
 Object.assign(exports, require('./push'))
+Object.assign(exports, require('./attendance'))

@@ -9,7 +9,7 @@ import { localMonthStr, localDateStr } from '../../utils/date'
 import DateInput from '../../components/DateInput'
 import {
   PageHeader, Section, EmptyState, ChipGroup, Note,
-  GhostButton, PrimaryButton,
+  GhostButton, PrimaryButton, inputStyle,
 } from '../../components/ui'
 
 interface Props { leaveRecords: LeaveRecord[]; onBack: () => void }
@@ -29,6 +29,10 @@ export default function LeaveHistory({ leaveRecords, onBack }: Props) {
   const [pendingLeaveType, setPendingLeaveType] = useState<'full_day' | 'half_day' | null>(null)
   const [leaveReason, setLeaveReason] = useState<LeaveReason | ''>('')
   const [markingLeave, setMarkingLeave] = useState(false)
+  /** Which leave the officer is appealing, and what they say happened. */
+  const [revokeFor, setRevokeFor] = useState<string | null>(null)
+  const [revokeReason, setRevokeReason] = useState('')
+  const [revokeBlocked, setRevokeBlocked] = useState<string | null>(null)
 
   const today = localDateStr()
 
@@ -88,24 +92,35 @@ export default function LeaveHistory({ leaveRecords, onBack }: Props) {
     } finally { setMarkingLeave(false) }
   }
 
-  // Request revocation of an approved leave (today or future) — admin must approve
+  /**
+   * Ask for a leave to be taken off, saying why.
+   *
+   * The reason is the whole point when the leave was marked automatically. The
+   * app wrote that record because no punch-in arrived, which it cannot tell
+   * apart from a dead battery, a godown with no signal, or a meeting somebody
+   * arranged by phone. The officer is the only person who knows which, and a
+   * manager deciding without that is guessing twice.
+   */
   const handleRequestRevoke = async (leave: LeaveRecord) => {
-    const confirmed = await showConfirm(
-      'Ask to cancel this leave?',
-      `${leave.date} · ${leave.leaveType === 'full_day' ? 'Full day' : 'Half day'}\n\nAn admin has to approve the cancellation.`,
-      'Ask to cancel',
-    )
-    if (!confirmed) return
+    const why = revokeReason.trim()
+    if (leave.autoMarked && !why) {
+      setRevokeBlocked('Say what happened — your manager decides on this.')
+      return
+    }
+    setRevokeBlocked(null)
     await updateDoc(doc(db, 'leave_records', leave.id!), {
       status: 'unmark_requested',
       unmarkRequestedAt: Date.now(),
+      ...(why ? { unmarkReason: why } : {}),
       auditLog: [...((leave as any).auditLog || []), {
         action: 'unmark_requested', by: appUser!.uid, byName: appUser!.name, at: Date.now()
       }],
     })
+    setRevokeFor(null); setRevokeReason('')
     await addDoc(collection(db, 'alerts'), {
       type: 'leave_requested',
-      message: `${appUser!.name} asked to cancel ${leave.leaveType === 'full_day' ? 'a full day' : 'a half day'} of leave on ${leave.date}`,
+      message: `${appUser!.name} asked to cancel ${leave.leaveType === 'full_day' ? 'a full day' : 'a half day'} of leave on ${leave.date}`
+        + (why ? ` — ${why}` : ''),
       relatedId: leave.id!, read: false, createdAt: Date.now(),
       toRole: 'admin_group',
     })
@@ -172,6 +187,20 @@ export default function LeaveHistory({ leaveRecords, onBack }: Props) {
                           {l.leaveType === 'full_day' ? 'Full day' : 'Half day'}
                           {l.reason ? ` · ${l.reason}` : ''}
                         </div>
+                        {l.autoMarked && (
+                          // Said plainly, because this is the app's conclusion
+                          // rather than anybody's decision, and the officer is
+                          // the only one who can correct it.
+                          <div style={{ fontSize: 12, color: t.warn, marginTop: 4, lineHeight: 1.5 }}>
+                            Marked automatically — no punch-in was received.
+                            {l.status === 'active' && ' If that is wrong, cancel it and say what happened.'}
+                          </div>
+                        )}
+                        {l.unmarkReason && (
+                          <div style={{ fontSize: 12, color: t.text3, marginTop: 4, lineHeight: 1.5 }}>
+                            You said: {l.unmarkReason}
+                          </div>
+                        )}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexShrink: 0 }}>
                         <span style={{ fontSize: 14, fontWeight: 400, whiteSpace: 'nowrap',
@@ -185,13 +214,45 @@ export default function LeaveHistory({ leaveRecords, onBack }: Props) {
                           </button>
                         )}
                         {l.status === 'active' && isFutureOrToday && (
-                          <button className="oc-action" onClick={() => handleRequestRevoke(l)}
+                          <button className="oc-action"
+                            onClick={() => {
+                              // An automatic one needs an explanation, so it
+                              // opens a box. One the officer asked for
+                              // themselves does not, and goes straight through.
+                              if (l.autoMarked) {
+                                setRevokeFor(l.id!); setRevokeReason(''); setRevokeBlocked(null)
+                              } else {
+                                void handleRequestRevoke(l)
+                              }
+                            }}
                             style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, fontWeight: 400, color: t.text3, cursor: 'pointer' }}>
                             Cancel
                           </button>
                         )}
                       </div>
                     </div>
+
+                    {revokeFor === l.id && (
+                      <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        <input
+                          value={revokeReason}
+                          onChange={e => setRevokeReason(e.target.value)}
+                          placeholder="Phone battery died · no signal at the godown · meeting arranged by phone"
+                          style={inputStyle(t)}
+                        />
+                        {revokeBlocked && (
+                          <div style={{ fontSize: 13, color: t.warn }}>{revokeBlocked}</div>
+                        )}
+                        <div className="oc-wrap" style={{ gap: 10 }}>
+                          <GhostButton onClick={() => void handleRequestRevoke(l)}>
+                            Send to my manager
+                          </GhostButton>
+                          <GhostButton onClick={() => { setRevokeFor(null); setRevokeBlocked(null) }}>
+                            Cancel
+                          </GhostButton>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )
               })}

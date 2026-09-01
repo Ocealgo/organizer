@@ -493,7 +493,7 @@ export interface Alert {
     | 'new_party' | 'credit_settlement' | 'low_stock' | 'stock_dispatched'
     | 'new_allocation' | 'visit_log_submitted' | 'leave_requested'
     | 'leave_approved' | 'visit_share_requested' | 'expense_submitted'
-    | 'duty_auto_closed' | 'party_pin_moved'
+    | 'duty_auto_closed' | 'party_pin_moved' | 'duty_not_started'
   message: string; relatedId: string; read: boolean; createdAt: number
 
   /**
@@ -777,6 +777,25 @@ export interface LeaveRecord {
   markedByName: string
   status: LeaveStatus
   unmarkRequestedAt?: number
+  /**
+   * Why the officer says this leave should not stand.
+   *
+   * Mandatory when the leave was marked automatically, because that record is
+   * the app's guess and the officer is the only one who knows what actually
+   * happened — a flat battery, no signal in a godown, a meeting the manager
+   * arranged by phone. Kept apart from `note`, which belongs to whoever marked
+   * the leave in the first place.
+   */
+  unmarkReason?: string
+  /**
+   * Marked by the missed-punch-in sweep rather than by a person.
+   *
+   * Worth its own field rather than inferring it from `markedBy`. A manager
+   * looking at a day off should be able to tell "somebody decided this" from
+   * "nobody started their day and the app drew a conclusion", because only one
+   * of those is evidence.
+   */
+  autoMarked?: boolean
   auditLog?: LeaveAuditEntry[]
 }
 
