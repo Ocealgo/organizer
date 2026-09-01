@@ -170,8 +170,11 @@ async function outstanding(db, date, cfg) {
 async function warn(db, date, stage, deadline, cfg) {
   const { reps, started, leaveByUid } = await outstanding(db, date, cfg)
   let sent = 0
+  let already = 0
+  let onLeave = 0
   for (const rep of reps) {
-    if (started.has(rep.uid) || leaveByUid.has(rep.uid)) continue
+    if (started.has(rep.uid)) { already++; continue }
+    if (leaveByUid.has(rep.uid)) { onLeave++; continue }
     await db.collection('alerts').add({
       type: 'duty_not_started',
       message:
@@ -187,7 +190,11 @@ async function warn(db, date, stage, deadline, cfg) {
     })
     sent++
   }
-  console.log(`[attendance] ${date} warn-${stage}: ${sent} warned`)
+  // "0 warned" has three quite different causes and used to look like one.
+  console.log(
+    `[attendance] ${date} warn-${stage}: ${sent} warned · `
+    + `${reps.length} in scope, ${already} already started, ${onLeave} on leave`,
+  )
 }
 
 /**
@@ -291,15 +298,30 @@ exports.attendanceSweep = onSchedule(
   async () => {
     const db = getFirestore()
     const cfg = await settings(db)
-    if (!cfg.enabled) return
 
     const date = istDate()
-    if (isSunday(date)) return
+    const now = istTime()
+
+    /**
+     * Say why nothing happened.
+     *
+     * Every decision to do nothing used to be a silent `return`, so a sweep
+     * that ran three hundred times and did nothing looked identical to one
+     * that never ran — and there was no way to tell "switched off" from "wrong
+     * day" from "already done" from "not time yet" without reading the
+     * settings by hand. An unattended job that will not say why it is idle
+     * cannot be debugged, only guessed at.
+     *
+     * One line per tick is a few hundred a day, which is nothing next to the
+     * cost of not knowing.
+     */
+    const idle = (why) => console.log(`[attendance] ${date} ${now} idle — ${why}`)
+
+    if (!cfg.enabled) return idle('switched off in Settings')
+    if (isSunday(date)) return idle('Sunday')
 
     const holiday = await db.collection('holidays').where('date', '==', date).limit(1).get()
-    if (!holiday.empty) return
-
-    const now = istTime()
+    if (!holiday.empty) return idle(`holiday: ${holiday.docs[0].data().name}`)
     const warnHalf = minus(cfg.halfDayAt, cfg.warnMinutes)
     const warnFull = minus(cfg.fullDayAt, cfg.warnMinutes)
 
@@ -307,20 +329,28 @@ exports.attendanceSweep = onSchedule(
     // start, a deploy, an outage — still does the right thing rather than
     // nothing. Each stage is claimed once per day per configured time, so
     // moving a cutoff lets it fire again rather than being locked out.
+    const plan = `warn ${warnHalf} → half ${cfg.halfDayAt} → warn ${warnFull} → full ${cfg.fullDayAt}`
+
     if (now >= cfg.fullDayAt) {
       if (await claim(db, date, 'full', cfg.fullDayAt)) await mark(db, date, 'full', cfg.fullDayAt, cfg)
+      else idle(`full day already handled at ${cfg.fullDayAt}`)
       return
     }
     if (now >= warnFull) {
       if (await claim(db, date, 'warnFull', warnFull)) await warn(db, date, 'full', cfg.fullDayAt, cfg)
+      else idle(`full-day warning already sent at ${warnFull}`)
       return
     }
     if (now >= cfg.halfDayAt) {
       if (await claim(db, date, 'half', cfg.halfDayAt)) await mark(db, date, 'half', cfg.halfDayAt, cfg)
+      else idle(`half day already handled at ${cfg.halfDayAt}`)
       return
     }
     if (now >= warnHalf) {
       if (await claim(db, date, 'warnHalf', warnHalf)) await warn(db, date, 'half', cfg.halfDayAt, cfg)
+      else idle(`half-day warning already sent at ${warnHalf}`)
+      return
     }
+    idle(`nothing due yet · ${plan}`)
   },
 )
