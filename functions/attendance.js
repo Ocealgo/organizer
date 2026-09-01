@@ -92,7 +92,13 @@ async function settings(db) {
       // every five minutes; a typo in a settings field must not stop the sweep.
       halfDayAt: VALID.test(a.halfDayAt) ? a.halfDayAt : DEFAULTS.halfDayAt,
       fullDayAt: VALID.test(a.fullDayAt) ? a.fullDayAt : DEFAULTS.fullDayAt,
-      warnMinutes: Number.isFinite(a.warnMinutes) && a.warnMinutes >= 0 && a.warnMinutes <= 120
+      // Zero means no warning, and five is the floor for one that works: this
+      // sweep ticks every five minutes, so a window narrower than that can sit
+      // entirely between two ticks and never be seen. A value in between is
+      // somebody expecting a warning that would silently never arrive, so it
+      // falls back to the default rather than being honoured.
+      warnMinutes: Number.isFinite(a.warnMinutes)
+        && (a.warnMinutes === 0 || (a.warnMinutes >= 5 && a.warnMinutes <= 120))
         ? a.warnMinutes : DEFAULTS.warnMinutes,
       enabled: a.enabled !== false,
       // Which roles are swept, and who is let off individually. An admin can

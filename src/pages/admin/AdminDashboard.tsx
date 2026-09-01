@@ -431,8 +431,14 @@ export default function AdminDashboard() {
             : attFull <= attHalf ? 'The full-day cutoff has to come after the half-day one.'
             : !time.test(attResume) ? 'The half-day end time needs to look like 13:00.'
             : attResume <= attHalf ? 'A half day cannot end before the cutoff that created it.'
+            // Anything from 1 to 4 minutes is the trap: the sweep ticks every
+            // five, so a window narrower than that can sit entirely between two
+            // ticks and the warning is simply never sent. Zero is honest — it
+            // means no warning — and five or more always catches a tick.
             : !Number.isFinite(warnN) || warnN < 0 || warnN > 120
               ? 'The warning has to be between 0 and 120 minutes.'
+            : warnN > 0 && warnN < 5
+              ? 'Use 5 minutes or more, or 0 for none. The check runs every 5 minutes, so a shorter warning can fall between two checks and never be sent.'
               : null;
 
           return (
@@ -475,7 +481,8 @@ export default function AdminDashboard() {
                     </Field>
                   </div>
                   <div style={{ flex: 1, minWidth: 150 }}>
-                    <Field label="Warn this many minutes before">
+                    <Field label="Warn this many minutes before"
+                      hint="5 or more, or 0 for no warning. The check runs every 5 minutes, so a shorter window falls between two of them and the warning never goes out.">
                       <input type="number" inputMode="numeric" value={attWarn}
                         onChange={e => { setAttWarn(e.target.value); setAttSaved(false); }}
                         style={inputStyle(t)} />
@@ -629,8 +636,20 @@ export default function AdminDashboard() {
                   </div>
                   {attResetNote && <Note>{attResetNote}</Note>}
                   <div style={{ marginTop: 10 }}>
-                    <GhostButton
+                    <button
                       disabled={attResetting}
+                      style={{
+                        background: 'none',
+                        border: `1px solid ${t.border2}`,
+                        borderRadius: 6,
+                        padding: '12px 18px',
+                        minHeight: 44,
+                        fontSize: 14,
+                        fontWeight: 500,
+                        color: t.text,
+                        cursor: attResetting ? 'default' : 'pointer',
+                        opacity: attResetting ? 0.6 : 1,
+                      }}
                       onClick={async () => {
                         const today = localDateStr();
                         const ok = await showAdminLeaveConfirm(
@@ -664,7 +683,7 @@ export default function AdminDashboard() {
                         } finally { setAttResetting(false); }
                       }}>
                       {attResetting ? 'Clearing…' : 'Run it again today'}
-                    </GhostButton>
+                    </button>
                   </div>
                 </div>
               </div>
