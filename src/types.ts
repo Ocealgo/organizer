@@ -493,7 +493,7 @@ export interface Alert {
     | 'new_party' | 'credit_settlement' | 'low_stock' | 'stock_dispatched'
     | 'new_allocation' | 'visit_log_submitted' | 'leave_requested'
     | 'leave_approved' | 'visit_share_requested' | 'expense_submitted'
-    | 'duty_auto_closed' | 'party_pin_moved'
+    | 'duty_auto_closed' | 'party_pin_moved' | 'duty_not_started'
   message: string; relatedId: string; read: boolean; createdAt: number
 
   /**

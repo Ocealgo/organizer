@@ -27,7 +27,7 @@ import ReportsHome from "../reports/ReportsHome";
 import OpportunitiesScreen from "../reports/OpportunitiesScreen";
 import FieldReport from "./FieldReport";
 import {
-  Eyebrow, PageHeader, Section, StatGrid, StatCard, EmptyState,
+  Eyebrow, PageHeader, Section, StatGrid, StatCard, EmptyState, Note, ChipGroup,
   Field, GhostButton, PrimaryButton, inputStyle,
 } from "../../components/ui";
 import StockManager from "../stock/StockManager";
@@ -125,6 +125,14 @@ export default function AdminDashboard() {
   const [settingsMapperLink, setSettingsMapperLink] = useState('');
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
+  // Missed punch-in. The sweep reads these every five minutes, so a change
+  // takes effect the same day without anything being redeployed.
+  const [attEnabled, setAttEnabled] = useState(true);
+  const [attHalf, setAttHalf] = useState('10:00');
+  const [attFull, setAttFull] = useState('14:00');
+  const [attWarn, setAttWarn] = useState('10');
+  const [attSaving, setAttSaving] = useState(false);
+  const [attSaved, setAttSaved] = useState(false);
   const [dangerSelected, setDangerSelected] = useState<Set<string>>(new Set())
   const [dangerConfirm, setDangerConfirm] = useState('')
   const [dangerClearing, setDangerClearing] = useState(false)
@@ -233,7 +241,13 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (appUser?.role !== 'super_admin') return;
     getDoc(doc(db, 'config', 'settings')).then(snap => {
-      if (snap.exists()) setSettingsMapperLink(snap.data().mapperLink || '');
+      if (!snap.exists()) return;
+      setSettingsMapperLink(snap.data().mapperLink || '');
+      const a = snap.data().attendance || {};
+      setAttEnabled(a.enabled !== false);
+      if (a.halfDayAt) setAttHalf(a.halfDayAt);
+      if (a.fullDayAt) setAttFull(a.fullDayAt);
+      if (typeof a.warnMinutes === 'number') setAttWarn(String(a.warnMinutes));
     }).catch(() => {});
   }, [appUser?.role]);
 
@@ -391,6 +405,93 @@ export default function AdminDashboard() {
             </div>
           </div>
         </Section>
+
+        {/* ── Missed punch-in ── */}
+        {(() => {
+          const time = /^([01]\d|2[0-3]):([0-5]\d)$/;
+          const warnN = Number(attWarn);
+          const problem =
+            !time.test(attHalf) ? 'The half-day time needs to look like 10:00.'
+            : !time.test(attFull) ? 'The full-day time needs to look like 14:00.'
+            : attFull <= attHalf ? 'The full-day cutoff has to come after the half-day one.'
+            : !Number.isFinite(warnN) || warnN < 0 || warnN > 120
+              ? 'The warning has to be between 0 and 120 minutes.'
+              : null;
+
+          return (
+            <Section label="Missed punch-in">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 560 }}>
+                <div style={{ fontSize: 14, fontWeight: 400, color: t.text3, lineHeight: 1.6 }}>
+                  A rep who has not started their day by the first time gets half a day of leave
+                  recorded, and by the second, a full day. Both are marked automatically, both say
+                  so, and a rep can ask their manager to remove one by explaining what happened.
+                  <br /><br />
+                  Everyone is warned a few minutes before each cutoff — but only the people who
+                  have not started, and never on a Sunday, a holiday, or to somebody already on
+                  leave.
+                </div>
+
+                <Field label="Automatic marking">
+                  <ChipGroup
+                    value={attEnabled ? 'on' : 'off'}
+                    onChange={(v: string) => { setAttEnabled(v === 'on'); setAttSaved(false); }}
+                    options={[
+                      { id: 'on', label: 'On' },
+                      { id: 'off', label: 'Off — nothing is marked' },
+                    ]}
+                  />
+                </Field>
+
+                <div className="oc-wrap" style={{ gap: 16 }}>
+                  <div style={{ flex: 1, minWidth: 150 }}>
+                    <Field label="Half day after">
+                      <input type="time" value={attHalf}
+                        onChange={e => { setAttHalf(e.target.value); setAttSaved(false); }}
+                        style={inputStyle(t)} />
+                    </Field>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 150 }}>
+                    <Field label="Full day after">
+                      <input type="time" value={attFull}
+                        onChange={e => { setAttFull(e.target.value); setAttSaved(false); }}
+                        style={inputStyle(t)} />
+                    </Field>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 150 }}>
+                    <Field label="Warn this many minutes before">
+                      <input type="number" inputMode="numeric" value={attWarn}
+                        onChange={e => { setAttWarn(e.target.value); setAttSaved(false); }}
+                        style={inputStyle(t)} />
+                    </Field>
+                  </div>
+                </div>
+
+                {problem && <Note tone="warn">{problem}</Note>}
+
+                <div>
+                  <PrimaryButton
+                    disabled={!!problem || attSaving}
+                    onClick={async () => {
+                      setAttSaving(true);
+                      try {
+                        await setDoc(doc(db, 'config', 'settings'), {
+                          attendance: {
+                            enabled: attEnabled,
+                            halfDayAt: attHalf,
+                            fullDayAt: attFull,
+                            warnMinutes: warnN,
+                          },
+                        }, { merge: true });
+                        setAttSaved(true);
+                      } finally { setAttSaving(false); }
+                    }}>
+                    {attSaving ? 'Saving' : attSaved ? 'Saved' : 'Save'}
+                  </PrimaryButton>
+                </div>
+              </div>
+            </Section>
+          );
+        })()}
 
         {/* ── Reset one person ── */}
         {(() => {

@@ -73,7 +73,16 @@ self.addEventListener('notificationclick', event => {
   event.waitUntil((async () => {
     const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
     const open = all.find(c => 'focus' in c)
-    if (open) { await open.focus(); return }
+    if (open) {
+      await open.focus()
+      // Focusing alone dropped the link on the floor: a notification saying
+      // "start your day" put the rep back on whatever screen they had left
+      // open, which is the one place the button is not. The app listens for
+      // this and goes where the notification promised.
+      open.postMessage({ type: 'NAVIGATE', url })
+      return
+    }
+    // Nothing open — the URL carries it, and the app reads it on boot.
     await self.clients.openWindow(url)
   })())
 })

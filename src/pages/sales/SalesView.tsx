@@ -74,6 +74,40 @@ export default function SalesView({ name }: Props) {
     })
   }, [])
 
+  /**
+   * Land where a notification said it would.
+   *
+   * "Start your day or it is marked absent" that opens the home screen is a
+   * notification asking somebody to go and find the thing it was about. Two
+   * routes in, because a phone has two cases: the app was closed, so the URL
+   * carries it; or the app was already open, so the service worker focuses the
+   * window and posts the same URL through.
+   *
+   * The parameter is scrubbed once used. Left in place it survives a refresh
+   * and drags the rep back to the same screen every time they reload.
+   */
+  useEffect(() => {
+    const go = (raw: string | null) => {
+      if (!raw) return
+      const allowed: SubScreen[] = ['duty', 'outlet', 'leaves', 'expenses', 'credits', 'visits']
+      if ((allowed as string[]).includes(raw)) setScreen(raw as SubScreen)
+    }
+
+    go(new URLSearchParams(window.location.search).get('go'))
+    if (window.location.search) {
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+
+    const onMessage = (e: MessageEvent) => {
+      if (e.data?.type !== 'NAVIGATE' || typeof e.data.url !== 'string') return
+      try {
+        go(new URL(e.data.url, window.location.origin).searchParams.get('go'))
+      } catch { /* a malformed link is not worth breaking the screen over */ }
+    }
+    navigator.serviceWorker?.addEventListener('message', onMessage)
+    return () => navigator.serviceWorker?.removeEventListener('message', onMessage)
+  }, [])
+
   // There is no server to run this at 23:00, so the officer's own device — the
   // only party the rules let close their session — sweeps up on app open. A day
   // forgotten last night is tidied this morning.

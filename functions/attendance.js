@@ -2,18 +2,27 @@
  * A day nobody started.
  *
  * A rep who never punches in produces silence: no session, no visits, nothing
- * to look at and nobody told. This turns that silence into a record.
+ * to look at and nobody told. This turns that silence into a record — a warning
+ * first, then half a day, then the whole day.
  *
- * It marks leave automatically, which is a real decision and worth being
- * honest about: the app does not know the officer was absent. It knows no
- * punch-in arrived, and a flat battery looks exactly like a lie-in. So every
- * record it writes carries `autoMarked: true`, says so on screen, and can be
- * appealed by the officer with a reason their manager then approves or
- * refuses. The automation has teeth; the last word belongs to a person.
+ * It marks leave automatically, which is a real decision and worth being honest
+ * about: the app does not know the officer was absent. It knows no punch-in
+ * arrived, and a flat battery looks exactly like a lie-in. So every record it
+ * writes carries `autoMarked`, says so on screen, and can be appealed by the
+ * officer with a reason their manager approves or refuses. The automation has
+ * teeth; the last word belongs to a person.
  *
  * Runs on the server rather than on the officer's device, unlike the
  * abandoned-session sweep. It has to fire whether or not the app is ever
  * opened — an officer who does not open the app is the entire subject.
+ *
+ * WHY IT TICKS EVERY FIVE MINUTES
+ * A cron expression is baked into a Cloud Scheduler job at deploy time, so a
+ * function scheduled for 10:00 cannot be moved by editing a setting — only by
+ * redeploying. The times belong to whoever runs the business, not to whoever
+ * last deployed, so the schedule is dumb and frequent and the decision lives in
+ * `config/settings`. A change takes effect the same day. The cost is around 288
+ * near-empty invocations a day against a two-million monthly allowance.
  */
 const { onSchedule } = require('firebase-functions/v2/scheduler')
 const { getFirestore } = require('firebase-admin/firestore')
@@ -21,50 +30,66 @@ const { getFirestore } = require('firebase-admin/firestore')
 const REGION = 'asia-south1'
 const TZ = 'Asia/Kolkata'
 
-/**
- * When the day is judged.
- *
- * Late enough that a slow morning is not an absence, early enough that the
- * answer arrives while somebody can still do something about it. Change these
- * two lines and the schedules below together — the cron and the label have to
- * agree or the message tells the officer the wrong deadline.
- */
-const MORNING = { cron: '0 11 * * *', label: '11am' }
-const AFTERNOON = { cron: '0 15 * * *', label: '3pm' }
+/** Used until a super admin says otherwise, in Settings. */
+const DEFAULTS = {
+  halfDayAt: '10:00',
+  fullDayAt: '14:00',
+  warnMinutes: 10,
+}
 
 const SALES_ROLES = ['offline_sales', 'online_sales']
 
 /** Local date in IST, as YYYY-MM-DD. */
-function today() {
+function istDate() {
   return new Date().toLocaleDateString('en-CA', { timeZone: TZ })
 }
 
-/** Sunday in IST. Nobody is expected in the field, so nothing is judged. */
+/** Local time in IST as "HH:MM", zero-padded so string comparison is time comparison. */
+function istTime() {
+  return new Date().toLocaleTimeString('en-GB', {
+    timeZone: TZ, hour12: false, hour: '2-digit', minute: '2-digit',
+  })
+}
+
+/** Sunday in IST. */
 function isSunday(date) {
   return new Date(date + 'T00:00:00+05:30').getUTCDay() === 0
 }
 
+/** "10:00" minus 10 → "09:50". Clamped at midnight; a cutoff that early is nonsense anyway. */
+function minus(hhmm, minutes) {
+  const [h, m] = hhmm.split(':').map(Number)
+  const total = Math.max(0, h * 60 + m - minutes)
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
+}
+
+const VALID = /^([01]\d|2[0-3]):([0-5]\d)$/
+
+async function settings(db) {
+  try {
+    const snap = await db.doc('config/settings').get()
+    const a = (snap.data() || {}).attendance || {}
+    return {
+      // A malformed value falls back rather than throwing. This runs unattended
+      // every five minutes; a typo in a settings field must not stop the sweep.
+      halfDayAt: VALID.test(a.halfDayAt) ? a.halfDayAt : DEFAULTS.halfDayAt,
+      fullDayAt: VALID.test(a.fullDayAt) ? a.fullDayAt : DEFAULTS.fullDayAt,
+      warnMinutes: Number.isFinite(a.warnMinutes) && a.warnMinutes >= 0 && a.warnMinutes <= 120
+        ? a.warnMinutes : DEFAULTS.warnMinutes,
+      enabled: a.enabled !== false,
+    }
+  } catch {
+    return { ...DEFAULTS, enabled: true }
+  }
+}
+
 /**
- * The sweep, at whichever cutoff called it.
+ * Reps who have not punched in, and are not already accounted for.
  *
- * `full` upgrades the morning's half day rather than adding a second record —
- * a rep who missed both cutoffs was absent once, not twice.
+ * Anything not dismissed counts as accounted for: leave the officer asked for,
+ * leave a manager marked, and leave this sweep wrote earlier today.
  */
-async function sweep(kind) {
-  const db = getFirestore()
-  const date = today()
-
-  if (isSunday(date)) {
-    console.log(`[attendance] ${date} is a Sunday — nothing to judge`)
-    return
-  }
-
-  const holiday = await db.collection('holidays').where('date', '==', date).limit(1).get()
-  if (!holiday.empty) {
-    console.log(`[attendance] ${date} is ${holiday.docs[0].data().name} — nothing to judge`)
-    return
-  }
-
+async function outstanding(db, date) {
   const [users, sessions, leaves] = await Promise.all([
     db.collection('users').where('status', '==', 'approved').get(),
     db.collection('duty_sessions').where('date', '==', date).get(),
@@ -72,8 +97,6 @@ async function sweep(kind) {
   ])
 
   const started = new Set(sessions.docs.map(d => d.data().uid))
-  // Anything not already dismissed counts as covered: a leave the officer
-  // asked for, one a manager marked, or one this sweep wrote earlier today.
   const leaveByUid = new Map()
   leaves.docs.forEach(d => {
     const l = d.data()
@@ -85,31 +108,70 @@ async function sweep(kind) {
     .map(d => ({ uid: d.id, ...d.data() }))
     .filter(u => SALES_ROLES.includes(u.role))
 
+  return { reps, started, leaveByUid }
+}
+
+/**
+ * Ten minutes' notice, to the people it applies to.
+ *
+ * Only those who have not started — nobody should be told to do a thing they
+ * did at nine o'clock. Written as an `alerts` document rather than sent
+ * directly, because that is already the queue: `pushOnAlert` sends the push and
+ * the bell reads the same row. Nothing here needs to know what FCM is.
+ */
+async function warn(db, date, stage, deadline) {
+  const { reps, started, leaveByUid } = await outstanding(db, date)
+  let sent = 0
+  for (const rep of reps) {
+    if (started.has(rep.uid) || leaveByUid.has(rep.uid)) continue
+    await db.collection('alerts').add({
+      type: 'duty_not_started',
+      message:
+        `Start your day by ${deadline} or today is recorded as `
+        + `${stage === 'half' ? 'a half day off' : 'a full day off'}. `
+        + 'Open the app and punch in — it takes a moment.',
+      relatedId: rep.uid,
+      toUid: rep.uid,
+      // Taps straight through to the punch-in form rather than the home screen.
+      url: '/?go=duty',
+      read: false,
+      createdAt: Date.now(),
+    })
+    sent++
+  }
+  console.log(`[attendance] ${date} warn-${stage}: ${sent} warned`)
+}
+
+/**
+ * Mark the day.
+ *
+ * `full` upgrades the morning's half day rather than adding a second record —
+ * somebody absent all day was absent once, not twice. It only ever edits its
+ * own: a leave a person marked, or one already under appeal, is not ours.
+ */
+async function mark(db, date, stage, deadline) {
+  const { reps, started, leaveByUid } = await outstanding(db, date)
   let written = 0
+
   for (const rep of reps) {
     if (started.has(rep.uid)) continue
-
     const existing = leaveByUid.get(rep.uid)
-    const leaveType = kind === 'full' ? 'full_day' : 'half_day'
+    const leaveType = stage === 'full' ? 'full_day' : 'half_day'
 
     if (existing) {
-      // Only ever upgrade our own half day. A leave a person marked, or one
-      // the officer is already appealing, is not ours to overwrite.
       const ours = existing.autoMarked === true
       const isHalf = existing.leaveType === 'half_day'
       const untouched = existing.status === 'active'
-      if (!(kind === 'full' && ours && isHalf && untouched)) continue
+      if (!(stage === 'full' && ours && isHalf && untouched)) continue
 
       await db.doc(`leave_records/${existing.id}`).update({
         leaveType: 'full_day',
+        note: `No punch-in by ${deadline}.`,
         auditLog: [...(existing.auditLog || []), {
-          action: 'admin_marked',
-          by: 'system',
-          byName: 'Automatic',
-          at: Date.now(),
+          action: 'admin_marked', by: 'system', byName: 'Automatic', at: Date.now(),
         }],
       })
-      await notify(db, rep, date, 'full_day', AFTERNOON.label)
+      await tell(db, rep, date, 'full_day', deadline)
       written++
       continue
     }
@@ -120,49 +182,91 @@ async function sweep(kind) {
       role: rep.role,
       date,
       leaveType,
-      note: `No punch-in by ${kind === 'full' ? AFTERNOON.label : MORNING.label}.`,
+      note: `No punch-in by ${deadline}.`,
       markedAt: Date.now(),
       markedBy: 'system',
       markedByName: 'Automatic',
       status: 'active',
       autoMarked: true,
-      auditLog: [{
-        action: 'admin_marked', by: 'system', byName: 'Automatic', at: Date.now(),
-      }],
+      auditLog: [{ action: 'admin_marked', by: 'system', byName: 'Automatic', at: Date.now() }],
     })
-    await notify(db, rep, date, leaveType, kind === 'full' ? AFTERNOON.label : MORNING.label)
+    await tell(db, rep, date, leaveType, deadline)
     written++
   }
 
-  console.log(`[attendance] ${date} ${kind}: ${reps.length} reps, ${written} marked`)
+  console.log(`[attendance] ${date} ${stage}: ${written} marked of ${reps.length} reps`)
 }
 
 /**
  * Tell the officer, not the office.
  *
  * They are the one who can explain it, and they cannot appeal something they
- * were never told about. Management sees it in the leave tracker either way.
+ * were never told about. Management sees it in the leave tracker regardless.
  */
-async function notify(db, rep, date, leaveType, by) {
+async function tell(db, rep, date, leaveType, deadline) {
   await db.collection('alerts').add({
-    type: 'leave_approved',
+    type: 'duty_not_started',
     message:
-      `No punch-in by ${by} on ${date}, so ${leaveType === 'full_day' ? 'a full day' : 'a half day'} `
-      + 'of leave was marked automatically. If that is wrong, open Leave and ask for it to be '
-      + 'cancelled — say what happened and your manager will decide.',
+      `No punch-in by ${deadline}, so ${leaveType === 'full_day' ? 'a full day' : 'a half day'} `
+      + 'of leave was recorded automatically. If that is wrong, open Leave, cancel it and say '
+      + 'what happened — your manager decides.',
     relatedId: rep.uid,
     toUid: rep.uid,
+    url: '/?go=leaves',
     read: false,
     createdAt: Date.now(),
   })
 }
 
-exports.markMissingDutyMorning = onSchedule(
-  { schedule: MORNING.cron, timeZone: TZ, region: REGION },
-  async () => { await sweep('half') },
-)
+/**
+ * One document per day holding which stages have already fired.
+ *
+ * Marking is naturally idempotent — a rep who already has leave is skipped — but
+ * warning is not, and without this the same person is told every five minutes
+ * for ten minutes.
+ */
+async function claim(db, date, stage) {
+  const ref = db.doc(`attendance_runs/${date}`)
+  const snap = await ref.get()
+  if ((snap.data() || {})[stage]) return false
+  await ref.set({ [stage]: Date.now(), date }, { merge: true })
+  return true
+}
 
-exports.markMissingDutyAfternoon = onSchedule(
-  { schedule: AFTERNOON.cron, timeZone: TZ, region: REGION },
-  async () => { await sweep('full') },
+exports.attendanceSweep = onSchedule(
+  { schedule: 'every 5 minutes', timeZone: TZ, region: REGION },
+  async () => {
+    const db = getFirestore()
+    const cfg = await settings(db)
+    if (!cfg.enabled) return
+
+    const date = istDate()
+    if (isSunday(date)) return
+
+    const holiday = await db.collection('holidays').where('date', '==', date).limit(1).get()
+    if (!holiday.empty) return
+
+    const now = istTime()
+    const warnHalf = minus(cfg.halfDayAt, cfg.warnMinutes)
+    const warnFull = minus(cfg.fullDayAt, cfg.warnMinutes)
+
+    // Latest applicable stage first, so a sweep that missed its slot — a cold
+    // start, a deploy, an outage — still does the right thing rather than
+    // nothing. Each stage is claimed once per day.
+    if (now >= cfg.fullDayAt) {
+      if (await claim(db, date, 'full')) await mark(db, date, 'full', cfg.fullDayAt)
+      return
+    }
+    if (now >= warnFull) {
+      if (await claim(db, date, 'warnFull')) await warn(db, date, 'full', cfg.fullDayAt)
+      return
+    }
+    if (now >= cfg.halfDayAt) {
+      if (await claim(db, date, 'half')) await mark(db, date, 'half', cfg.halfDayAt)
+      return
+    }
+    if (now >= warnHalf) {
+      if (await claim(db, date, 'warnHalf')) await warn(db, date, 'half', cfg.halfDayAt)
+    }
+  },
 )

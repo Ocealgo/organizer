@@ -34,6 +34,16 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // ── ATTENDANCE SWEEP MARKERS ────────────────────────────────────────────
+    // One document per day recording which stages of the missed-punch-in sweep
+    // have already fired, so a warning is sent once rather than every five
+    // minutes. Written only by the scheduled function, which runs with admin
+    // credentials and does not consult these rules. Nothing on a client has any
+    // business reading or writing it.
+    match /attendance_runs/{date} {
+      allow read, write: if false;
+    }
+
     function isSelf(uid) {
       return signedIn() && request.auth.uid == uid;
     }

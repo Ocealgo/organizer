@@ -123,6 +123,7 @@ function titleFor(alert) {
     case 'expense_submitted': return 'Expenses'
     case 'credit_settlement': return 'Cash collected'
     case 'duty_auto_closed': return 'A day was left open'
+    case 'duty_not_started': return 'Start your day'
     case 'party_pin_moved': return 'A shop moved'
     case 'new_allocation': return 'New order'
     case 'new_party': return 'New outlet'
