@@ -148,7 +148,13 @@ exports.pushOnAlert = onDocumentCreated(
       title: titleFor(alert),
       body: String(alert.message).slice(0, 240),
       tag: `alert-${alert.type || 'general'}`,
-      url: '/',
+      // Where tapping it should land. This was hardcoded to '/', which quietly
+      // threw away the link every alert carried and dropped the reader on the
+      // home screen — worst for the one that says "start your day or it is
+      // marked absent", which then opens the screen without the button on it.
+      // Relative paths only: a push is a link somebody taps without reading,
+      // and this is not a place to let one point off-site.
+      url: typeof alert.url === 'string' && alert.url.startsWith('/') ? alert.url : '/',
     })
     console.log(`[push] ${alert.type}: ${result.sent} sent, ${result.pruned} pruned`)
   },
@@ -183,7 +189,9 @@ exports.endOfDayReminder = onSchedule(
       title: 'End your day',
       body: 'You are still punched in. Record your closing meter reading before you finish.',
       tag: 'end-of-day',
-      url: '/',
+      // Straight to the closing form, for the same reason: a notification that
+      // names one job should open the screen that does it.
+      url: '/?go=duty',
     })
     console.log(`[push] end of day: ${uids.length} still out, ${result.sent} sent`)
   },
