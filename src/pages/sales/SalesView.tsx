@@ -296,21 +296,19 @@ export default function SalesView({ name }: Props) {
   }, [appUser, visitLogLoaded, outletVisitsLoaded, leaveLoaded, holidaysLoaded, dutyLoading,
       todayVisitLog, todayLeave, holidays, dutySession, outletVisitsToday])
 
-  const handleUnmarkLeave = async () => {
-    if (!todayLeave?.id) return
-    const confirmed = await showLeaveConfirm(
-      'Request to unmark this leave?',
-      'An admin has to approve it. Your leave stays active until then.'
-    )
-    if (!confirmed) return
-    await updateDoc(doc(db, 'leave_records', todayLeave.id), {
-      status: 'unmark_requested',
-      unmarkRequestedAt: Date.now(),
-      auditLog: [...((todayLeave as any).auditLog || []), {
-        action: 'unmark_requested', by: appUser!.uid, byName: appUser!.name, at: Date.now()
-      }],
-    })
-  }
+  /**
+   * Appeals happen on the Leave screen, not here.
+   *
+   * This used to raise the request itself — flip the status and stop. It told
+   * nobody: no alert, so a manager only found out by opening the leave tracker
+   * and noticing, and it asked for no reason even on a leave the app had marked
+   * automatically, which is the one case where the reason is the whole point.
+   * Meanwhile the identical action on the Leave screen did both.
+   *
+   * Two copies of one action is what produced that, so there is one now. This
+   * hands over to it rather than growing a third.
+   */
+  const goToLeaveAppeal = () => setScreen('leaves')
   /**
    * A half day off is half a day off.
    *
@@ -464,8 +462,8 @@ export default function SalesView({ name }: Props) {
                 </div>
               </div>
               {todayLeave.status === 'active' && (
-                <GhostButton onClick={handleUnmarkLeave} style={{ flexShrink: 0 }}>
-                  Unmark
+                <GhostButton onClick={goToLeaveAppeal} style={{ flexShrink: 0 }}>
+                  {todayLeave.autoMarked ? 'This is wrong' : 'Unmark'}
                 </GhostButton>
               )}
             </div>
