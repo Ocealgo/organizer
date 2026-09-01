@@ -40,8 +40,13 @@ service cloud.firestore {
     // minutes. Written only by the scheduled function, which runs with admin
     // credentials and does not consult these rules. Nothing on a client has any
     // business reading or writing it.
+    // A super admin may read and clear them, which is what "Run it again
+    // today" in Settings does — without that, trying the sweep out means
+    // waiting until tomorrow, because every stage is claimed for the day.
+    // Nobody else has any business here.
     match /attendance_runs/{date} {
-      allow read, write: if false;
+      allow read, delete: if isSuperAdmin();
+      allow create, update: if false;
     }
 
     function isSelf(uid) {

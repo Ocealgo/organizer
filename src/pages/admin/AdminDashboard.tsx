@@ -8,6 +8,7 @@ import {
   getDoc,
   setDoc,
   getDocs,
+  deleteDoc,
   writeBatch,
   query,
   where,
@@ -132,6 +133,8 @@ export default function AdminDashboard() {
   const [attFull, setAttFull] = useState('14:00');
   const [attWarn, setAttWarn] = useState('10');
   const [attResume, setAttResume] = useState('13:00');
+  const [attResetting, setAttResetting] = useState(false);
+  const [attResetNote, setAttResetNote] = useState<string | null>(null);
   // Which roles are swept, and who is individually let off. Exemptions are
   // stored as the people excluded rather than included, so somebody hired next
   // month is covered from their first day instead of quietly escaping.
@@ -610,6 +613,59 @@ export default function AdminDashboard() {
                     }}>
                     {attSaving ? 'Saving' : attSaved ? 'Saved' : 'Save'}
                   </PrimaryButton>
+                </div>
+
+                {/* Trying this out is otherwise a one-shot-a-day affair: every
+                    stage is claimed for the date, and anybody whose automatic
+                    leave was removed is left alone until tomorrow. Both are
+                    right in use and both make it untestable. */}
+                <div style={{ borderTop: `0.5px solid ${t.border}`, paddingTop: 16 }}>
+                  <div style={{ fontSize: 13, color: t.text3, lineHeight: 1.6, marginBottom: 10 }}>
+                    <strong style={{ color: t.text, fontWeight: 500 }}>Run it again today</strong>
+                    {' — '}forgets that today's warnings and markings already happened, and deletes
+                    the leave this sweep recorded today. Leave anybody asked for themselves is not
+                    touched. Move the times above, save, and the whole thing runs again on the next
+                    five-minute tick.
+                  </div>
+                  {attResetNote && <Note>{attResetNote}</Note>}
+                  <div style={{ marginTop: 10 }}>
+                    <GhostButton
+                      disabled={attResetting}
+                      onClick={async () => {
+                        const today = localDateStr();
+                        const ok = await showAdminLeaveConfirm(
+                          'Run today again?',
+                          `Every automatic leave recorded today is deleted and the sweep forgets `
+                          + `it has run. Leave that people asked for themselves is untouched.`,
+                          'Do it',
+                        );
+                        if (!ok) return;
+                        setAttResetting(true); setAttResetNote(null);
+                        try {
+                          const auto = await getDocs(query(
+                            collection(db, 'leave_records'),
+                            where('date', '==', today),
+                          ));
+                          let removed = 0;
+                          for (const d of auto.docs) {
+                            if ((d.data() as any).autoMarked !== true) continue;
+                            await deleteDoc(doc(db, 'leave_records', d.id));
+                            removed++;
+                          }
+                          await deleteDoc(doc(db, 'attendance_runs', today)).catch(() => {});
+                          setAttResetNote(
+                            `Cleared. ${removed} automatic leave record${removed === 1 ? '' : 's'} `
+                            + 'deleted and the day reset — change a time above and wait for the next tick.',
+                          );
+                        } catch (e: any) {
+                          setAttResetNote(e?.code === 'permission-denied'
+                            ? 'Firestore refused that. Only a super admin can reset the day.'
+                            : e?.message || 'Could not reset the day.');
+                        } finally { setAttResetting(false); }
+                      }}>
+                      {attResetting ? 'Clearing…' : 'Run it again today'}
+                    </GhostButton>
+                  </div>
                 </div>
               </div>
             </Section>
