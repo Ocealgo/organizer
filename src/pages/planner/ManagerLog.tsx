@@ -56,6 +56,8 @@ export default function ManagerLog({ onBack }: Props) {
   const [reps, setReps] = useState<AppUser[]>([])
   const [parties, setParties] = useState<Party[]>([])
   const [readError, setReadError] = useState<string | null>(null)
+  /** uid → when they punched in today. Only these can be named in a meeting. */
+  const [startedToday, setStartedToday] = useState<Map<string, number>>(new Map())
 
   // Admin view: a window and a person.
   const [from, setFrom] = useState(addDays(today, -6))
@@ -81,7 +83,23 @@ export default function ManagerLog({ onBack }: Props) {
         .sort((a, b) => a.name.localeCompare(b.name))))
     const u2 = onSnapshot(collection(db, 'parties'), s =>
       setParties(s.docs.map(d => ({ id: d.id, ...d.data() } as Party))))
-    return () => { u1(); u2() }
+    /**
+     * Who has actually started today.
+     *
+     * Only they can be named in a meeting. It means somebody has to punch in
+     * before they can be recorded as attending — so a rep at a nine o'clock
+     * meeting has to start their day first, which is worth telling them once
+     * rather than leaving managers to discover the list is empty.
+     */
+    const u3 = onSnapshot(
+      query(collection(db, 'duty_sessions'), where('date', '==', localDateStr())),
+      s => setStartedToday(new Map(s.docs.map(d => {
+        const v = d.data() as { uid: string; startAt: number }
+        return [v.uid, v.startAt]
+      }))),
+      () => setStartedToday(new Map()),
+    )
+    return () => { u1(); u2(); u3() }
   }, [])
 
   useEffect(() => {
@@ -122,6 +140,18 @@ export default function ManagerLog({ onBack }: Props) {
     entries.forEach(e => seen.set(e.uid, e.name))
     return [...seen.entries()].map(([uid, name]) => ({ value: uid, label: name }))
   }, [entries])
+
+  /**
+   * Only people who have started their day can be named.
+   *
+   * It means a rep at a nine o'clock meeting has to punch in before the meeting
+   * can be recorded against them — worth knowing, because the alternative
+   * reading is that the list is broken. The form says so when it is empty.
+   */
+  const startedReps = useMemo(
+    () => reps.filter(r => startedToday.has(r.uid)),
+    [reps, startedToday],
+  )
 
   const reset = () => {
     setEditingId(null); setKind('meeting'); setTitle('')
@@ -235,17 +265,33 @@ export default function ManagerLog({ onBack }: Props) {
                 {kind !== 'office' && (
                   <Field
                     label={kind === 'joint_field' ? 'Who you were out with' : `Who was there · ${withUids.length}`}
-                    hint={kind === 'joint_field' ? 'Required — this is the part the visits do not record.' : 'Optional.'}
+                    hint={(kind === 'joint_field'
+                      ? 'Required — this is the part the visits do not record. '
+                      : 'Optional. ')
+                      + 'Only people who have started their day today can be named.'}
                   >
-                    <CustomSelect
-                      values={withUids}
-                      onToggle={(uid: string) => setWithUids(prev =>
-                        prev.includes(uid) ? prev.filter(x => x !== uid) : [...prev, uid])}
-                      value=""
-                      onChange={() => {}}
-                      options={reps.map(r => ({ value: r.uid, label: r.name }))}
-                      placeholder="Choose reps"
-                    />
+                    {startedReps.length === 0 ? (
+                      <Note tone="warn">
+                        Nobody has started their day yet, so there is nobody to name. A rep has
+                        to punch in before they can be recorded as being somewhere — ask them to
+                        start their day and this fills in.
+                      </Note>
+                    ) : (
+                      <CustomSelect
+                        values={withUids}
+                        onToggle={(uid: string) => setWithUids(prev =>
+                          prev.includes(uid) ? prev.filter(x => x !== uid) : [...prev, uid])}
+                        value=""
+                        onChange={() => {}}
+                        options={startedReps.map(r => ({
+                          value: r.uid,
+                          label: r.name,
+                          sub: `started ${new Date(startedToday.get(r.uid)!)
+                            .toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`,
+                        }))}
+                        placeholder="Choose reps"
+                      />
+                    )}
                   </Field>
                 )}
 
