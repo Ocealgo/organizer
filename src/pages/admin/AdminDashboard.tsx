@@ -28,7 +28,6 @@ import OpportunitiesScreen from "../reports/OpportunitiesScreen";
 import FieldReport from "./FieldReport";
 import BeatManager from "../planner/BeatManager";
 import Planner from "../planner/Planner";
-import BeatImporter from "../planner/BeatImporter";
 import {
   Eyebrow, PageHeader, Section, StatGrid, StatCard, EmptyState,
   Field, GhostButton, PrimaryButton, inputStyle,
@@ -67,8 +66,7 @@ type SubScreen =
   | "opportunities"
   | "settings"
   | "beats"
-  | "planner"
-  | "beatImport";
+  | "planner";
 
 function isValidUrl(url: string): boolean {
   try { return ['http:', 'https:'].includes(new URL(url).protocol) }
@@ -868,9 +866,6 @@ export default function AdminDashboard() {
   if (subScreen === "planner")
     return <Planner onBack={() => setSubScreen("dashboard")} />;
 
-  if (subScreen === "beatImport")
-    return <BeatImporter onBack={() => setSubScreen("dashboard")} />;
-
   const handleAdminMarkLeave = async (
     uid: string,
     name: string,
@@ -995,7 +990,6 @@ export default function AdminDashboard() {
     opportunities: "view_reports",
     beats: "assign_work",
     planner: "assign_work",
-    beatImport: "assign_work",
   };
 
   // The nav doubles as a status board: every row carries its own live number,
@@ -1051,12 +1045,6 @@ export default function AdminDashboard() {
       screen: "planner" as SubScreen,
       value: plannedThisWeek > 0 ? `${plannedThisWeek} days planned` : "Nothing planned",
       warn: plannedThisWeek === 0 && routeCount > 0,
-    },
-    {
-      name: "Import a beat sheet",
-      desc: "The spreadsheet from the group — shops and their beats in one pass",
-      screen: "beatImport" as SubScreen,
-      value: "From Excel",
     },
     {
       name: "Leave tracker",

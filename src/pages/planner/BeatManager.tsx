@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import CustomSelect from '../../components/CustomSelect'
+import BeatImporter from './BeatImporter'
 import {
   PageHeader, Section, EmptyState, Field, Note, ChipGroup,
   GhostButton, PrimaryButton, inputStyle,
@@ -45,6 +46,8 @@ export default function BeatManager({ onBack }: Props) {
   const [targetOrderValue, setTargetOrderValue] = useState('')
   const [saving, setSaving] = useState(false)
   const [blocked, setBlocked] = useState<string | null>(null)
+  const [beatSearch, setBeatSearch] = useState('')
+  const [importing, setImporting] = useState(false)
 
   useEffect(() => {
     const u1 = onSnapshot(collection(db, 'parties'), s =>
@@ -175,6 +178,11 @@ export default function BeatManager({ onBack }: Props) {
     if (!ok) return
     await deleteDoc(doc(db, 'sales_routes', r.id!))
   }
+
+  // ── IMPORT ────────────────────────────────────────────────────────────────
+  // Rendered here rather than routed from the dashboard, so finishing an import
+  // lands back on the beats it just made instead of the admin home screen.
+  if (importing) return <BeatImporter onBack={() => setImporting(false)} />
 
   // ── FORM ──────────────────────────────────────────────────────────────────
   if (editing) {
@@ -345,7 +353,23 @@ export default function BeatManager({ onBack }: Props) {
   }
 
   // ── LIST ──────────────────────────────────────────────────────────────────
-  const sorted = [...routes].sort((a, b) => a.name.localeCompare(b.name))
+  /**
+   * Search by name or by area.
+   *
+   * A beat sheet brings in a beat per area per number, so twenty of them
+   * arrive at once and they all begin with the same words. Scrolling to
+   * "Fort Kochi / Mattancherry - Beat 7" past six near-identical neighbours is
+   * the thing this saves.
+   */
+  const sorted = [...routes]
+    .filter(r => {
+      const q = beatSearch.trim().toLowerCase()
+      if (!q) return true
+      return r.name.toLowerCase().includes(q)
+        || routePlaces(r).some(p => p.toLowerCase().includes(q))
+    })
+    .sort((a, b) => a.name.localeCompare(b.name))
+
   return (
     <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 56 }}>
       {modal}
@@ -356,12 +380,31 @@ export default function BeatManager({ onBack }: Props) {
         onBack={onBack}
       />
       <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 720 }}>
-        <div><GhostButton onClick={openNew}>New beat</GhostButton></div>
+        <div className="oc-wrap" style={{ gap: 10 }}>
+          <GhostButton onClick={openNew}>New beat</GhostButton>
+          {/* The importer lives here rather than on the dashboard: it makes
+              beats, so it belongs beside them. */}
+          <GhostButton onClick={() => setImporting(true)}>Import from a sheet</GhostButton>
+        </div>
 
-        {sorted.length === 0 ? (
+        {routes.length > 3 && (
+          <input
+            value={beatSearch}
+            onChange={e => setBeatSearch(e.target.value)}
+            placeholder="Search beats by name or area"
+            style={inputStyle(t)}
+          />
+        )}
+
+        {routes.length === 0 ? (
           <EmptyState
             title="No beats yet"
-            body="A beat is the areas a rep works and the shops in them. Build one, then assign it to a day."
+            body="A beat is the areas a rep works and the shops in them. Build one by hand, or import the sheet the office circulates."
+          />
+        ) : sorted.length === 0 ? (
+          <EmptyState
+            title="Nothing matches that"
+            body={`No beat has "${beatSearch.trim()}" in its name or area.`}
           />
         ) : (
           <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
