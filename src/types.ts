@@ -138,6 +138,20 @@ export interface Party {
   state?: string
   pincode?: string
   email?: string
+  /**
+   * The code this outlet carries on the beat sheet the office circulates —
+   * `CFM004` and the like.
+   *
+   * It exists so a re-import is boring. Matching on the name works once and
+   * then rots: a shop typed `AJU MEDICALS` this month and `Aju Medicals` next
+   * either creates a duplicate or, worse, merges with a different shop whose
+   * name happens to be close. A code assigned by whoever keeps the sheet is
+   * stable in a way a hand-typed name never is, so the first import matches on
+   * the name under review and stamps this, and every import after it is exact.
+   *
+   * Absent on anything added in the field, which has no sheet behind it.
+   */
+  outletCode?: string
   addedBy: string; addedByName: string; createdAt: number
  stock?: Record<string, number>   // productId → packets currently held
 
