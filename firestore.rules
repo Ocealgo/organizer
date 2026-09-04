@@ -670,6 +670,34 @@ service cloud.firestore {
       allow write: if hasPerm('assign_work');
     }
 
+    // ── WHAT A MANAGER DID ──────────────────────────────────────────────────
+    // Meetings, days out with a rep, days at the desk — the parts of a
+    // manager's day nothing else records.
+    match /manager_activities/{id} {
+      // The admin branch stands alone so "everybody, this month" is answerable.
+      // The second matches a manager listing their own with a uid filter. The
+      // third lets somebody read a meeting they were actually at — answerable
+      // because their query carries `array-contains` on the same field, which
+      // is what makes the constraint checkable for every document it could
+      // return. `withUids` is always written, empty array included, so this
+      // never has to reason about a missing field.
+      allow read: if isAdmin()
+        || resource.data.uid == request.auth.uid
+        || request.auth.uid in resource.data.withUids;
+
+      // Only ever about yourself, and only a manager has this kind of day.
+      allow create: if isSalesManager()
+        && request.resource.data.uid == request.auth.uid;
+
+      // Their own entries, theirs to correct. A same-day-only rule was the
+      // first instinct, but expressing "today" here means timestamp arithmetic
+      // that compiles happily and can still deny at runtime — a brittle guard
+      // on a log whose value is that it exists at all, not that it cannot be
+      // revised. `updatedAt` records that it changed, and an admin sees it.
+      allow update, delete: if isAdmin()
+        || (isSalesManager() && resource.data.uid == request.auth.uid);
+    }
+
     // ── ALERTS ──────────────────────────────────────────────────────────────
     // READ SCOPING: NotificationBell subscribes to the entire collection and
     // filters recipients in JavaScript, so per-recipient rules would break it.

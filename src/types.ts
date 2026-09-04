@@ -1487,3 +1487,49 @@ export interface PlanOutcome {
   visits: number
   orderValue: number
 }
+
+// ── WHAT A MANAGER DID ────────────────────────────────────────────────────────
+
+/**
+ * The parts of a manager's day the app cannot work out for itself.
+ *
+ * Most of it already knows: who assigned the week, who approved the leave, who
+ * confirmed the money, who dispatched the stock — every one of those stamps the
+ * person who did it. Asking a manager to type "I approved Ravi's leave" as well
+ * is how a log becomes fiction, because people stop filling in what the app
+ * plainly already has.
+ *
+ * These three it genuinely cannot see. A meeting leaves no trace anywhere. A
+ * day out with a rep records the visits but not who was being coached. And a
+ * day at the desk produces nothing at all — which is also why a manager working
+ * the office all week gets marked absent every morning.
+ */
+export type ManagerActivityKind = 'meeting' | 'joint_field' | 'office'
+
+export const MANAGER_ACTIVITY_LABEL: Record<ManagerActivityKind, string> = {
+  meeting: 'Meeting',
+  joint_field: 'Out with a rep',
+  office: 'Office day',
+}
+
+export interface ManagerActivity {
+  id?: string
+  /** The manager. */
+  uid: string
+  name: string
+  date: string                    // YYYY-MM-DD, local
+  kind: ManagerActivityKind
+  /** "Team review", "Out with Sanjay", "Depot — month end". */
+  title: string
+  /** Reps involved: everyone at the meeting, or the one being accompanied. */
+  withUids?: string[]
+  withNames?: string[]
+  /** A distributor meeting has a party rather than a rep. */
+  partyId?: string
+  partyName?: string
+  /** Optional — some things are worth timing and some are not. */
+  minutes?: number
+  notes?: string
+  createdAt: number
+  updatedAt?: number
+}
