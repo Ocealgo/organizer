@@ -20,7 +20,10 @@ import {
   MAY_POSTS,
   STATUS_CONFIG,
 } from "../../data";
-import { CheckIn, AppUser, Party, LeaveRecord, Permission, Product } from "../../types";
+import {
+  CheckIn, AppUser, Party, LeaveRecord, Permission, Product,
+  ManagerActivityKind, MANAGER_ACTIVITY_LABEL,
+} from "../../types";
 import { can, isAdminRole, ROLE_LABELS_PLAIN } from "../../auth/permissions";
 import { survey, resetPerson, ResetSurvey, ResetProgress } from "../../data/resetPerson";
 import SalesReport from "../reports/SalesReport";
@@ -107,6 +110,7 @@ export default function AdminDashboard() {
   const [products, setProducts] = useState<Product[]>([]);
   const [routeCount, setRouteCount] = useState(0);
   const [plannedThisWeek, setPlannedThisWeek] = useState(0);
+  const [managerLogsToday, setManagerLogsToday] = useState<any[]>([]);
   const [mainTab, setMainTab] = useState<MainTab>("overview");
   const [salesTab, setSalesTab] = useState<SalesTab>("offline");
   const [marketingTab, setMarketingTab] = useState<MarketingTab>("offline");
@@ -231,8 +235,13 @@ export default function AdminDashboard() {
       (snap) => setPlannedThisWeek(snap.docs.length),
       () => setPlannedThisWeek(0),
     );
+    const u12 = onSnapshot(
+      query(collection(db, "manager_activities"), where("date", "==", localDateStr())),
+      (snap) => setManagerLogsToday(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+      () => setManagerLogsToday([]),
+    );
     return () => {
-      u0(); u3(); u4(); u4b(); u5(); u5b(); u6(); u7(); u8(); u9(); u10(); u11();
+      u0(); u3(); u4(); u4b(); u5(); u5b(); u6(); u7(); u8(); u9(); u10(); u11(); u12();
     };
   }, []);
 
@@ -1689,6 +1698,44 @@ export default function AdminDashboard() {
                 </button>
               ))}
             </div>
+
+            {/* Logs today — what the managers put down.
+                Admins only. A manager reads their own back from their day
+                screen; this is the other side of it, and reps have no business
+                here at all. */}
+            {isAdminRole(appUser) && managerLogsToday.length > 0 && (
+              <div>
+                <div style={{
+                  fontSize: 11, letterSpacing: "0.09em", textTransform: "uppercase",
+                  color: t.text3, marginBottom: 12,
+                }}>
+                  Logs today
+                </div>
+                <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+                  {managerLogsToday
+                    .slice()
+                    .sort((a: any, b: any) =>
+                      String(a.name).localeCompare(String(b.name)) || a.createdAt - b.createdAt)
+                    .map((m: any) => (
+                      <div key={m.id} style={{
+                        borderTop: `0.5px solid ${t.border}`, padding: "11px 0",
+                      }}>
+                        <div style={{ fontSize: 14, color: t.text }}>
+                          {m.name} — {m.title}
+                        </div>
+                        <div style={{ fontSize: 12, color: t.text3, marginTop: 2, lineHeight: 1.6 }}>
+                          {[
+                            MANAGER_ACTIVITY_LABEL[m.kind as ManagerActivityKind],
+                            m.withNames?.length ? m.withNames.join(", ") : null,
+                            m.partyName,
+                            m.minutes ? `${m.minutes} min` : null,
+                          ].filter(Boolean).join(" · ")}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
 
             {/* Visits today */}
             {(() => {

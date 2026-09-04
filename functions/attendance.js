@@ -146,6 +146,11 @@ async function outstanding(db, date, cfg) {
   const started = new Set([
     ...sessions.docs.map(d => d.data().uid),
     ...managerDays.docs.map(d => d.data().uid),
+    // And anybody the manager named as being there. A rep who spent the
+    // morning in a team review the manager called was working, and marking
+    // them absent for not punching in would be the app contradicting the
+    // manager who logged it — while docking the rep for attending.
+    ...managerDays.docs.flatMap(d => d.data().withUids || []),
   ])
   const leaveByUid = new Map()
   /**

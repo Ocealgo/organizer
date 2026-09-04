@@ -15,7 +15,7 @@ import ActivityScreen from './ActivityScreen'
 import LeaveHistory from './LeaveHistory'
 import {
   Party, DailyVisitLog, LeaveRecord, Holiday,
-  WorkPlan, SalesRoute, workPlanId,
+  WorkPlan, SalesRoute, workPlanId, ManagerActivity, MANAGER_ACTIVITY_LABEL,
 } from '../../types'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr, localMonthStr, localTimeStr, isSunday } from '../../utils/date'
@@ -72,6 +72,8 @@ export default function SalesView({ name }: Props) {
   const [halfDayResumeAt, setHalfDayResumeAt] = useState('13:00')
   /** Ticks every minute so a time-based block lifts without a reload. */
   const [now, setNow] = useState(localTimeStr())
+  /** Meetings a manager put this person in today. Read-only from here. */
+  const [myMeetings, setMyMeetings] = useState<ManagerActivity[]>([])
   const { modal: leaveModal, showConfirm: showLeaveConfirm } = useConfirm()
   // Spec §2.3 — the outlet list stays locked until the day is punched in.
   //
@@ -91,6 +93,31 @@ export default function SalesView({ name }: Props) {
     const id = setInterval(() => setNow(localTimeStr()), 60_000)
     return () => clearInterval(id)
   }, [])
+
+  /**
+   * Meetings somebody put this person in today.
+   *
+   * A rep who spent the morning in a team review has less of the day left for
+   * shops, and nothing anywhere said so — their visit count simply read low
+   * with no explanation. This is the explanation, on their own screen, without
+   * them having to type it.
+   *
+   * `array-contains` on withUids is not only the filter but the reason the read
+   * is allowed at all: it is what lets the rules verify the membership check
+   * for every document the query could return.
+   */
+  useEffect(() => {
+    if (!appUser) return
+    const q = query(
+      collection(db, 'manager_activities'),
+      where('withUids', 'array-contains', appUser.uid),
+      where('date', '==', todayStr()),
+    )
+    return onSnapshot(q,
+      s => setMyMeetings(s.docs.map(d => ({ id: d.id, ...d.data() } as ManagerActivity))),
+      () => setMyMeetings([]),
+    )
+  }, [appUser])
 
   useEffect(() => onSnapshot(doc(db, 'config', 'settings'), snap => {
     const at = (snap.data() as any)?.attendance?.halfDayResumeAt
@@ -618,6 +645,44 @@ export default function SalesView({ name }: Props) {
 
               <div style={{ fontSize: 12, color: t.text3, marginTop: 12, lineHeight: 1.6 }}>
                 A guide, not a limit. Anywhere else you go today still counts.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Time somebody else put in this person's day.
+            Read-only: a rep did not arrange it and cannot change it, and a card
+            they can edit would invite them to explain away a thin day. It is
+            here so a low visit count has its reason on the same screen. */}
+        {myMeetings.length > 0 && (
+          <div>
+            <div style={{ marginBottom: 12 }}><Eyebrow>Also today</Eyebrow></div>
+            <div style={{ background: t.tint, borderRadius: 6, padding: 16 }}>
+              {myMeetings
+                .sort((a, b) => a.createdAt - b.createdAt)
+                .map((m, i) => (
+                  <div key={m.id} style={{
+                    paddingTop: i === 0 ? 0 : 11,
+                    marginTop: i === 0 ? 0 : 11,
+                    borderTop: i === 0 ? 'none' : `0.5px solid ${t.border}`,
+                  }}>
+                    <div style={{ fontSize: 14, color: t.text }}>{m.title}</div>
+                    <div style={{ fontSize: 12, color: t.text3, marginTop: 3, lineHeight: 1.6 }}>
+                      {[
+                        MANAGER_ACTIVITY_LABEL[m.kind],
+                        `with ${m.name}`,
+                        m.minutes ? `${m.minutes} min` : null,
+                      ].filter(Boolean).join(' · ')}
+                    </div>
+                    {m.notes && (
+                      <div style={{ fontSize: 12, color: t.text2, marginTop: 4, lineHeight: 1.55 }}>
+                        {m.notes}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              <div style={{ fontSize: 12, color: t.text3, marginTop: 12, lineHeight: 1.6 }}>
+                Recorded by your manager. It counts as your day — you do not need to log it.
               </div>
             </div>
           </div>

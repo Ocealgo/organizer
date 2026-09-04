@@ -151,10 +151,11 @@ export default function ManagerLog({ onBack }: Props) {
         date: today,
         kind,
         title: title.trim(),
-        ...(withUids.length ? {
-          withUids,
-          withNames: withUids.map(u => reps.find(r => r.uid === u)?.name ?? ''),
-        } : {}),
+        // Always written, empty array included. The rule that lets a rep read a
+        // meeting they were at checks membership of this field, and a rule
+        // cannot check a field that is sometimes absent.
+        withUids,
+        withNames: withUids.map(u => reps.find(r => r.uid === u)?.name ?? ''),
         ...(party ? { partyId: party.id, partyName: party.name } : {}),
         ...(minutes.trim() ? { minutes: Number(minutes) } : {}),
         ...(notes.trim() ? { notes: notes.trim() } : {}),
