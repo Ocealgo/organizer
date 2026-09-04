@@ -197,14 +197,65 @@ export default function BeatImporter({ onBack }: Props) {
     try {
       const buf = await file.arrayBuffer()
       const wb = XLSX.read(buf, { type: 'array' })
-      const sheet = wb.Sheets[wb.SheetNames[0]]
-      const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
+
+      /**
+       * Find the data, rather than assuming where it is.
+       *
+       * Reading the first sheet and treating its first row as headers is only
+       * right for a file somebody made for this. A workbook that has been round
+       * a WhatsApp group has a summary tab in front of the data as often as
+       * not, and a title row above the headers nearly as often. Both produce
+       * "no usable rows", which tells whoever is holding the file nothing at
+       * all.
+       *
+       * So every sheet is examined, and within each the first ten rows are
+       * checked for one that names both a beat and an outlet. Whatever is found
+       * first wins.
+       */
+      let found: { sheet: string; header: string[]; body: unknown[][] } | null = null
+      const looked: string[] = []
+
+      for (const sheetName of wb.SheetNames) {
+        const grid = XLSX.utils.sheet_to_json<unknown[]>(
+          wb.Sheets[sheetName], { header: 1, defval: '', blankrows: false },
+        )
+        for (let i = 0; i < Math.min(10, grid.length); i++) {
+          const header = (grid[i] || []).map(c => String(c ?? '').trim())
+          const norm = header.map(normHeader)
+          const hasBeat = norm.some(h => h === 'beat' || h === 'beatname' || h === 'route')
+          const hasName = norm.some(h => h.startsWith('outletname') || h === 'outlet'
+            || h === 'shopname' || h === 'name')
+          if (hasBeat && hasName) {
+            found = { sheet: sheetName, header, body: grid.slice(i + 1) }
+            break
+          }
+        }
+        if (found) break
+        const first = (grid[0] || []).map(c => String(c ?? '').trim()).filter(Boolean)
+        looked.push(`${sheetName} (${first.slice(0, 6).join(', ') || 'empty'})`)
+      }
+
+      if (!found) {
+        // Name what was actually seen. "No usable rows" sends somebody to stare
+        // at a spreadsheet that looks perfectly fine to them.
+        setError(
+          'Could not find a Beat column and an Outlet Name column in this file. '
+          + `Looked at: ${looked.join(' · ')}.`,
+        )
+        setRows(null)
+        return
+      }
 
       const parsed: Row[] = []
-      for (const r of raw) {
+      for (const line of found.body) {
+        const r: Record<string, unknown> = {}
+        found.header.forEach((h, i) => { if (h) r[h] = (line as unknown[])[i] })
+
         const beat = cell(r, 'beat', 'beatname', 'route').trim()
         const name = cleanName(cell(r, 'outletname', 'outlet', 'name', 'shopname'))
-        if (!beat || !name) continue          // a spacer row, or a stray total
+        // A spacer, a repeated header inside the data, or a totals line.
+        if (!beat || !name) continue
+        if (normHeader(beat) === 'beat') continue
         const { outletType, category } = typeOf(cell(r, 'outlettype', 'type', 'category'))
         parsed.push({
           beat,
@@ -218,14 +269,20 @@ export default function BeatImporter({ onBack }: Props) {
       }
 
       if (parsed.length === 0) {
-        setError('No usable rows. The sheet needs a Beat column and an Outlet Name column.')
+        setError(
+          `Found the columns on "${found.sheet}" but every row was empty. `
+          + 'If the sheet is filtered, that is fine — hidden rows are read too.',
+        )
         setRows(null)
         return
       }
-      setFileName(file.name)
+      setFileName(`${file.name} · ${found.sheet}`)
       setRows(parsed)
-    } catch {
-      setError('Could not read that file. It needs to be the .xlsx as it came, not a screenshot or a PDF.')
+    } catch (e: any) {
+      setError(
+        'Could not read that file. It needs to be the .xlsx or .csv itself, not a screenshot or a PDF.'
+        + (e?.message ? ` (${e.message})` : ''),
+      )
       setRows(null)
     }
   }
