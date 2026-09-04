@@ -1357,16 +1357,17 @@ export default function AdminDashboard() {
       value: plannedThisWeek > 0 ? `${plannedThisWeek} days planned` : "Nothing planned",
       warn: plannedThisWeek === 0 && routeCount > 0,
     },
-    {
-      // Reads as the manager's own log or as a report, depending on who is
-      // looking — the same screen answers "what did I do" and "what did they".
-      name: isAdminRole(appUser) ? "Manager activity" : "What I did today",
-      desc: isAdminRole(appUser)
-        ? "Meetings, days out with a rep, and desk days"
-        : "Meetings and days the app cannot see for itself",
-      screen: "managerLog" as SubScreen,
-      value: isAdminRole(appUser) ? "Report" : "Log it",
-    },
+    // Reading it back, not writing it. A manager logs their own day from the
+    // field screen — the one they are on when the day happens — so this side
+    // is only the report.
+    ...(isAdminRole(appUser)
+      ? [{
+          name: "Manager activity",
+          desc: "Meetings, days out with a rep, and desk days",
+          screen: "managerLog" as SubScreen,
+          value: "Report",
+        }]
+      : []),
     {
       name: "Leave tracker",
       desc: "Approve time off and see who is out",

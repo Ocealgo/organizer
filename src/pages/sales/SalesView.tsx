@@ -26,13 +26,14 @@ import DutyScreen from './DutyScreen'
 import OutletVisitScreen from './OutletVisitScreen'
 import RemoteContactScreen from './RemoteContactScreen'
 import OpportunitiesScreen from '../reports/OpportunitiesScreen'
+import ManagerLog from '../planner/ManagerLog'
 
 interface Props { name: string }
 
 const todayStr = () => localDateStr()
 const currentMonth = () => localMonthStr()
 
-type SubScreen = 'home' | 'duty' | 'outlet' | 'contact' | 'opportunities' | 'visits' | 'parties' | 'stock' | 'expenses' | 'credits' | 'allocations' | 'history' | 'leaves'
+type SubScreen = 'home' | 'duty' | 'outlet' | 'contact' | 'opportunities' | 'visits' | 'parties' | 'stock' | 'expenses' | 'credits' | 'allocations' | 'history' | 'leaves' | 'managerLog'
 
 export default function SalesView({ name }: Props) {
   const { appUser } = useAuth()
@@ -401,6 +402,10 @@ export default function SalesView({ name }: Props) {
   if (screen === 'allocations') return <AllocationManager onBack={() => { const ret = allocReturnScreen; setHighlightAllocationId(undefined); setAllocSalesRepOnly(false); setAllocReturnScreen('home'); setScreen(ret) }} parties={parties} isAdmin={false} highlightId={highlightAllocationId} salesRepOnly={allocSalesRepOnly} />
   if (screen === 'history')     return <ActivityScreen onBack={() => setScreen('home')} onViewAllocation={(allocId) => { setHighlightAllocationId(allocId); setAllocSalesRepOnly(true); setAllocReturnScreen('history'); setScreen('allocations') }} onViewPayment={(partyId, paymentId) => { setDeepLinkPaymentPartyId(partyId); setDeepLinkPaymentId(paymentId); setCreditReturnScreen('history'); setScreen('credits') }} />
   if (screen === 'leaves')      return <LeaveHistory leaveRecords={allLeaveRecords} onBack={() => setScreen('home')} />
+  // A sales manager working a field day logs their meetings and desk time on
+  // the same screen they punch in on. A rep never reaches it — the row that
+  // leads here is theirs only.
+  if (screen === 'managerLog') return <ManagerLog onBack={() => setScreen('home')} />
 
   // Online Sales — not built yet
   if (isOnline) return (
@@ -692,6 +697,16 @@ export default function SalesView({ name }: Props) {
               disabled={isOnFullLeave || dutyLoading || !isOnDuty}
               onClick={() => setScreen('contact')}
             />
+            {/* A manager's own day. Not gated on a duty session: a meeting or a
+                desk day is exactly what happens when nobody punched in, and
+                that is the case this exists to record. A rep never sees it. */}
+            {appUser?.role === 'sales_manager' && (
+              <ListRow
+                title="What I did today"
+                desc="Meetings, days out with a rep, desk days — the parts nothing else records"
+                onClick={() => setScreen('managerLog')}
+              />
+            )}
             <ListRow
               title="Add an expense"
               desc="Log travel, food and daily allowance"
