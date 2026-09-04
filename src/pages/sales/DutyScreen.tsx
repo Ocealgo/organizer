@@ -14,7 +14,7 @@ import { cameraIsVerifiable } from '../../device/platform'
 import { batteryPercent } from '../../device/battery'
 import { lastDutyDay } from '../../hooks/useDutySession'
 import { scheduleEndOfDayReminder, cancelEndOfDayReminder } from '../../device/notify'
-import { localDateStr } from '../../utils/date'
+import { localDateStr, isSunday } from '../../utils/date'
 
 interface Props {
   appUser: AppUser
@@ -363,18 +363,48 @@ export default function DutyScreen({ appUser, session, onBack, blockedUntil }: P
       </div>
     )
   }
+  /**
+   * Sunday is a day off, and the day cannot be started on one.
+   *
+   * Punch-in only. A session opened on Saturday and still running has to stay
+   * closeable — refusing the punch-out too would strand the rep with an open
+   * day, an unclosed meter reading and no way to claim the distance.
+   *
+   * The old visit logger has always worked this way; the field app simply never
+   * learned about days of the week, so which rule applied depended on which
+   * screen was open.
+   */
+  if (isIn && isSunday(localDateStr())) {
+    return (
+      <div style={{ minHeight: 'var(--oc-screen)', background: t.bg }}>
+        <PageHeader eyebrow="Duty" title="Sunday is a day off" onBack={onBack} />
+        <div style={{ padding: '24px 20px', maxWidth: 560 }}>
+          <div style={{ fontSize: 14, color: t.text2, lineHeight: 1.7 }}>
+            The day cannot be started today. Nothing is lost — your next punch-in is
+            tomorrow morning.
+          </div>
+          <div style={{ fontSize: 13, color: t.text3, lineHeight: 1.7, marginTop: 14 }}>
+            If you genuinely have to work a Sunday, speak to your manager first. It has to
+            be arranged rather than recorded after the fact.
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   /**
    * A half day off is half a day off.
    *
-   * Punch-in only. A session already running has to stay closeable, or somebody
-   * is stranded with an open day and no way to claim the distance. Checked here
-   * as well as on the row that leads here, so the rule does not depend on that
-   * row staying the only way in.
+   * Checked after Sunday because Sunday is the broader fact: on a Sunday there
+   * is no day to be half of. Punch-in only, for the same reason — a session
+   * already running has to stay closeable, or somebody is stranded with an open
+   * day and no way to claim the distance. Checked here as well as on the row
+   * that leads here, so the rule does not depend on that row staying the only
+   * way in.
    */
   if (isIn && blockedUntil) {
     return (
-      <div style={{ minHeight: '100vh', background: t.bg }}>
+      <div style={{ minHeight: 'var(--oc-screen)', background: t.bg }}>
         <PageHeader eyebrow="Duty" title="Half day" onBack={onBack} />
         <div style={{ padding: '24px 20px', maxWidth: 560 }}>
           <div style={{ fontSize: 14, color: t.text2, lineHeight: 1.7 }}>

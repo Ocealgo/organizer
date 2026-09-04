@@ -36,6 +36,7 @@ import { localDateStr } from "../../utils/date";
 import { INDIAN_STATES } from "../../data";
 import DateInput from "../../components/DateInput";
 import { PageHeader, StatGrid, StatCard } from "../../components/ui";
+import { isSunday } from "../../utils/date";
 
 interface Props {
   onBack: () => void;
@@ -875,7 +876,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
   };
 
   // ── HOME ──────────────────────────────────────────────────────────────────
-  const isSundaySelected = new Date(selectedDate + 'T00:00:00').getDay() === 0
+  const isSundaySelected = isSunday(selectedDate)
   const isLeaveDay = leaveRecords.some(l => l.date === selectedDate)
   const isHolidayDay = holidays.some(h => h.date === selectedDate)
   const isBlocked = isSundaySelected || isLeaveDay || isHolidayDay
@@ -1140,7 +1141,7 @@ export default function VisitLogger({ onBack, initialDate, onViewAllocation, onV
             weekday: "long", day: "numeric", month: "long",
           })}
           subtitle={
-            new Date(selectedDate + "T00:00:00").getDay() === 0
+            isSunday(selectedDate)
               ? "Sunday is a day off"
               : undefined
           }

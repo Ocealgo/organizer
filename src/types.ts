@@ -20,6 +20,7 @@ export type Permission =
   | 'dispatch_allocations' | 'mark_paid' | 'approve_payments'
   | 'approve_leave' | 'clear_expenses'
   | 'approve_sales_users'
+  | 'assign_work'
 
 export type PermissionMap = Partial<Record<Permission, boolean>>
 
@@ -137,6 +138,20 @@ export interface Party {
   state?: string
   pincode?: string
   email?: string
+  /**
+   * The code this outlet carries on the beat sheet the office circulates —
+   * `CFM004` and the like.
+   *
+   * It exists so a re-import is boring. Matching on the name works once and
+   * then rots: a shop typed `AJU MEDICALS` this month and `Aju Medicals` next
+   * either creates a duplicate or, worse, merges with a different shop whose
+   * name happens to be close. A code assigned by whoever keeps the sheet is
+   * stable in a way a hand-typed name never is, so the first import matches on
+   * the name under review and stamps this, and every import after it is exact.
+   *
+   * Absent on anything added in the field, which has no sheet behind it.
+   */
+  outletCode?: string
   addedBy: string; addedByName: string; createdAt: number
  stock?: Record<string, number>   // productId → packets currently held
 
@@ -1026,12 +1041,47 @@ export interface SalesRoute {
   id?: string
   name: string
   description?: string
+  /**
+   * The areas this beat covers, matching `Party.place`.
+   *
+   * A beat is areas before it is a list. Shops are seeded from the places and
+   * then trimmed, which keeps the list explicit — nothing changes under the
+   * manager's feet — while giving the screen a way to notice that a shop was
+   * added in one of those areas later and offer it. A frozen list of ids
+   * assumes the world is already in the database, and reps add shops all week.
+   *
+   * Plural because a real beat crosses boundaries: a rep working the north of
+   * town covers three named places on a Tuesday, and nobody calls that three
+   * beats.
+   */
+  places: string[]
+  /**
+   * Superseded by `places`. Beats written during the first day of this feature
+   * have it; read as a single-entry list wherever it is all there is.
+   */
+  place?: string
   outletIds: string[]
-  assignedTo: string[]            // uids of officers who may select this beat
+  /**
+   * Copied onto each day when the beat is assigned, never read from here
+   * afterwards. See WorkPlan.targets for why.
+   */
+  defaultTargets?: PlanTargets
+  /**
+   * Left from the original spec: "uids of officers who may select this beat".
+   * Superseded by WorkPlan, which says who is doing it and on which day.
+   * Nothing reads it; kept so existing documents stay valid.
+   */
+  assignedTo: string[]
   active: boolean
   createdBy: string
   createdByName: string
   createdAt: number
+}
+
+/** A beat's areas, however old the document is. */
+export function routePlaces(r: SalesRoute): string[] {
+  if (r.places?.length) return r.places
+  return r.place ? [r.place] : []
 }
 
 // ── VISIT OUTCOME TAXONOMY (spec §5.1) ───────────────────────────────────────
@@ -1361,4 +1411,79 @@ export interface StockLedgerEntry {
   byUid: string
   byName: string
   createdAt: number
+}
+
+// ── WORK PLANNING ─────────────────────────────────────────────────────────────
+
+/**
+ * What a day is aiming at.
+ *
+ * Deliberately two numbers. Every extra target is another thing a rep is
+ * measured on and another column in a grid nobody then reads, and these are
+ * the two the business actually steers by.
+ */
+export interface PlanTargets {
+  /** Shops visited — all of them, beat or not. */
+  visits?: number
+  /** Rupee value of orders raised. Raised, not dispatched or paid. */
+  orderValue?: number
+}
+
+/**
+ * A day's assignment for one person.
+ *
+ * The document id is `${uid}_${date}`, which makes assigning idempotent and
+ * makes two plans for the same rep-day structurally impossible rather than
+ * merely unlikely.
+ *
+ * `targets` is copied from the beat when the day is assigned and then left
+ * alone. If it were read from the beat at display time, editing a beat in
+ * November would quietly rewrite what September was measured against — the
+ * same reason a visit stores what the shop owed on the day rather than looking
+ * it up later.
+ */
+export interface WorkPlan {
+  id?: string
+  uid: string
+  /** Denormalised so the board can render without joining users. */
+  name: string
+  date: string                    // YYYY-MM-DD, local
+  routeId?: string
+  routeName?: string
+  targets?: PlanTargets
+  /** Anything the beat cannot say — "start at the far end", "chase Anand". */
+  note?: string
+  assignedBy: string
+  assignedByName: string
+  createdAt: number
+  updatedAt?: number
+}
+
+/** Deterministic id: one plan per person per day, enforced by the key itself. */
+export function workPlanId(uid: string, date: string): string {
+  return `${uid}_${date}`
+}
+
+/**
+ * How a planned day actually went.
+ *
+ * Derived at read time from the beat and the visits, never stored — so it
+ * corrects itself when a visit is logged late or a beat is edited, and there
+ * is no second copy to disagree with the first.
+ *
+ * `extra` is not a deviation and is never coloured as one. A rep who visited
+ * three shops that were not on the list has done more work, not less, and if
+ * some of them were new they were prospecting, which is the most valuable
+ * thing they can do all day. Only `missed` is worth a manager's attention, and
+ * even that is a question rather than a verdict.
+ */
+export interface PlanOutcome {
+  plannedIds: string[]
+  coveredIds: string[]
+  missedIds: string[]
+  extraIds: string[]
+  /** How many of the extras were shops created that same day. */
+  newShops: number
+  visits: number
+  orderValue: number
 }
