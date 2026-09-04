@@ -124,13 +124,29 @@ async function settings(db) {
  * leave a manager marked, and leave this sweep wrote earlier today.
  */
 async function outstanding(db, date, cfg) {
-  const [users, sessions, leaves] = await Promise.all([
+  const [users, sessions, leaves, managerDays] = await Promise.all([
     db.collection('users').where('status', '==', 'approved').get(),
     db.collection('duty_sessions').where('date', '==', date).get(),
     db.collection('leave_records').where('date', '==', date).get(),
+    db.collection('manager_activities').where('date', '==', date).get(),
   ])
 
-  const started = new Set(sessions.docs.map(d => d.data().uid))
+  /**
+   * A punch-in, or a manager's day that produced no punch-in.
+   *
+   * A sales manager only gets a punch-in button in field mode, so one who
+   * spent the day at the depot or in meetings could not comply with this
+   * sweep however hard they tried — the button is not there. Until now the
+   * only remedy was unticking them in Settings, which switches the check off
+   * for them entirely.
+   *
+   * A logged meeting, joint day or desk day is that manager saying what they
+   * were doing, which is the same thing a punch-in says. It counts.
+   */
+  const started = new Set([
+    ...sessions.docs.map(d => d.data().uid),
+    ...managerDays.docs.map(d => d.data().uid),
+  ])
   const leaveByUid = new Map()
   /**
    * People whose automatic leave a manager has already thrown out today.

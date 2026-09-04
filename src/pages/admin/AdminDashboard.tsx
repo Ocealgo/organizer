@@ -29,6 +29,7 @@ import OpportunitiesScreen from "../reports/OpportunitiesScreen";
 import FieldReport from "./FieldReport";
 import BeatManager from "../planner/BeatManager";
 import Planner from "../planner/Planner";
+import ManagerLog from "../planner/ManagerLog";
 import {
   Eyebrow, PageHeader, Section, StatGrid, StatCard, EmptyState, Note, ChipGroup,
   Field, GhostButton, PrimaryButton, inputStyle,
@@ -67,7 +68,8 @@ type SubScreen =
   | "opportunities"
   | "settings"
   | "beats"
-  | "planner";
+  | "planner"
+  | "managerLog";
 
 function isValidUrl(url: string): boolean {
   try { return ['http:', 'https:'].includes(new URL(url).protocol) }
@@ -1171,6 +1173,9 @@ export default function AdminDashboard() {
   if (subScreen === "planner")
     return <Planner onBack={() => setSubScreen("dashboard")} />;
 
+  if (subScreen === "managerLog")
+    return <ManagerLog onBack={() => setSubScreen("dashboard")} />;
+
   const handleAdminMarkLeave = async (
     uid: string,
     name: string,
@@ -1295,6 +1300,7 @@ export default function AdminDashboard() {
     opportunities: "view_reports",
     beats: "assign_work",
     planner: "assign_work",
+    managerLog: "view_reports",
   };
 
   // The nav doubles as a status board: every row carries its own live number,
@@ -1350,6 +1356,16 @@ export default function AdminDashboard() {
       screen: "planner" as SubScreen,
       value: plannedThisWeek > 0 ? `${plannedThisWeek} days planned` : "Nothing planned",
       warn: plannedThisWeek === 0 && routeCount > 0,
+    },
+    {
+      // Reads as the manager's own log or as a report, depending on who is
+      // looking — the same screen answers "what did I do" and "what did they".
+      name: isAdminRole(appUser) ? "Manager activity" : "What I did today",
+      desc: isAdminRole(appUser)
+        ? "Meetings, days out with a rep, and desk days"
+        : "Meetings and days the app cannot see for itself",
+      screen: "managerLog" as SubScreen,
+      value: isAdminRole(appUser) ? "Report" : "Log it",
     },
     {
       name: "Leave tracker",
