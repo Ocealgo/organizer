@@ -177,7 +177,26 @@ export default function LeaveHistory({ leaveRecords, onBack }: Props) {
               {monthRecords.map(l => {
                 const dayLabel = new Date(l.date + 'T00:00:00')
                   .toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })
-                const isFutureOrToday = l.date >= today
+                /**
+                 * Whether this leave can still be argued with.
+                 *
+                 * A leave the officer asked for themselves is theirs to
+                 * withdraw while it is still ahead of them; once the day has
+                 * passed there is nothing left to cancel.
+                 *
+                 * An automatic one is the opposite case and used to be treated
+                 * the same, which closed the appeal at midnight. The sweep
+                 * marks the day it happened, and the reasons it exists to
+                 * handle — a flat battery, no signal in a godown — are exactly
+                 * the reasons the officer does not see the notification until
+                 * the next morning. So the day the app decided they were absent
+                 * was the only day they could say otherwise, and anyone it was
+                 * actually wrong about had already missed it.
+                 *
+                 * A manager still decides. This only keeps the question
+                 * askable.
+                 */
+                const canAppeal = l.autoMarked === true || l.date >= today
                 return (
                   <div key={l.id} style={{ borderTop: `0.5px solid ${t.border}`, padding: '14px 0' }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
@@ -213,7 +232,7 @@ export default function LeaveHistory({ leaveRecords, onBack }: Props) {
                             Withdraw
                           </button>
                         )}
-                        {l.status === 'active' && isFutureOrToday && (
+                        {l.status === 'active' && canAppeal && (
                           <button className="oc-action"
                             onClick={() => {
                               // An automatic one needs an explanation, so it
@@ -226,7 +245,11 @@ export default function LeaveHistory({ leaveRecords, onBack }: Props) {
                               }
                             }}
                             style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, fontWeight: 400, color: t.text3, cursor: 'pointer' }}>
-                            Cancel
+                            {/* The same words the home screen uses for the
+                                same button. "Cancel" is what you do to a plan
+                                you made; this is disputing somebody else's
+                                conclusion about you. */}
+                            {l.autoMarked ? 'This is wrong' : 'Cancel'}
                           </button>
                         )}
                       </div>
