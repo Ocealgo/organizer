@@ -472,6 +472,16 @@ export default function AdminDashboard() {
             : attFull <= attHalf ? 'The full-day cutoff has to come after the half-day one.'
             : !time.test(attResume) ? 'The half-day end time needs to look like 13:00.'
             : attResume <= attHalf ? 'A half day cannot end before the cutoff that created it.'
+            // The trap this closes: a rep on half a day cannot punch in before
+            // the resume time, and the full-day cutoff marks anyone who has not
+            // punched in. Set the resume at or after that cutoff and the app
+            // forbids them from starting, then records a full day because they
+            // did not — their half day silently becomes a whole one, and the
+            // only thing they did wrong was obey the screen.
+            : attResume >= attFull
+              ? `A half day has to end before the full-day cutoff at ${attFull}. `
+                + 'Otherwise a rep on half a day is blocked from punching in until after '
+                + 'the cutoff that marks them absent, and the half day becomes a full one.'
             // Anything from 1 to 4 minutes is the trap: the sweep ticks every
             // five, so a window narrower than that can sit entirely between two
             // ticks and the warning is simply never sent. Zero is honest — it
@@ -509,14 +519,17 @@ export default function AdminDashboard() {
                 <div className="oc-wrap" style={{ gap: 16 }}>
                   <div style={{ flex: 1, minWidth: 150 }}>
                     <Field label="Half day after">
-                      <input type="time" value={attHalf}
+                      {/* Field renders its label as a div, so the control is
+                          unnamed to a screen reader — and to anything else
+                          that looks a control up by its label. */}
+                      <input type="time" aria-label="Half day after" value={attHalf}
                         onChange={e => { setAttHalf(e.target.value); setAttSaved(false); }}
                         style={inputStyle(t)} />
                     </Field>
                   </div>
                   <div style={{ flex: 1, minWidth: 150 }}>
                     <Field label="Full day after">
-                      <input type="time" value={attFull}
+                      <input type="time" aria-label="Full day after" value={attFull}
                         onChange={e => { setAttFull(e.target.value); setAttSaved(false); }}
                         style={inputStyle(t)} />
                     </Field>
@@ -532,7 +545,7 @@ export default function AdminDashboard() {
                   <div style={{ flex: 1, minWidth: 150 }}>
                     <Field label="Half day ends at"
                       hint="A rep on half a day cannot start before this.">
-                      <input type="time" value={attResume}
+                      <input type="time" aria-label="Half day ends at" value={attResume}
                         onChange={e => { setAttResume(e.target.value); setAttSaved(false); }}
                         style={inputStyle(t)} />
                     </Field>

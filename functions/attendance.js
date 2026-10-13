@@ -235,6 +235,28 @@ async function mark(db, date, stage, deadline, cfg) {
   const { reps, started, leaveByUid } = await outstanding(db, date, cfg)
   let written = 0
 
+  /**
+   * Whether a half day could have been worked at all.
+   *
+   * A rep on half a day is blocked from punching in until `halfDayResumeAt`.
+   * If that time is at or after the full-day cutoff, the app forbids them from
+   * starting and then this sweep marks them absent for not having started —
+   * their half day becomes a whole one and the only thing they did wrong was
+   * obey the screen. Settings now refuses that combination, but config already
+   * stored predates the check, so the upgrade is refused here too.
+   *
+   * Refused, not corrected: the half day stands, which is the honest record of
+   * a morning nobody punched in for. Only the escalation is dropped.
+   */
+  const afternoonWasReachable = cfg.halfDayResumeAt < cfg.fullDayAt
+  if (stage === 'full' && !afternoonWasReachable) {
+    console.log(
+      `[attendance] ${date} full: not upgrading any half day — a half day ends at `
+      + `${cfg.halfDayResumeAt}, at or after the full-day cutoff ${cfg.fullDayAt}, `
+      + 'so nobody on one could have punched in. Fix the times in Settings.',
+    )
+  }
+
   for (const rep of reps) {
     if (started.has(rep.uid)) continue
     const existing = leaveByUid.get(rep.uid)
@@ -245,6 +267,7 @@ async function mark(db, date, stage, deadline, cfg) {
       const isHalf = existing.leaveType === 'half_day'
       const untouched = existing.status === 'active'
       if (!(stage === 'full' && ours && isHalf && untouched)) continue
+      if (!afternoonWasReachable) continue
 
       await db.doc(`leave_records/${existing.id}`).update({
         leaveType: 'full_day',
