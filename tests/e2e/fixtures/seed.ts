@@ -130,6 +130,99 @@ export async function noWeeksFiled(): Promise<void> {
   await emptyNow('expense_entries')
 }
 
+/**
+ * Leave the missed-punch-in sweep wrote, on a day that has already passed.
+ *
+ * Written through the Admin SDK because that is what the sweep itself is — a
+ * server job running with admin credentials, past the rules. A spec cannot
+ * produce one by clicking: the sweep fires at a configured hour, on a day it
+ * has not already claimed, against somebody who did not punch in. Waiting for
+ * that is not a test, so the record it would have written is seeded instead and
+ * the spec starts where the officer does: looking at an absence somebody else
+ * decided on.
+ *
+ * `date` is deliberately a parameter. The interesting case is a day in the
+ * past, because that is the one the officer sees when they finally pick their
+ * phone up.
+ */
+export async function autoMarkedLeave(
+  who: UserKey,
+  date: string,
+  leaveType: 'full_day' | 'half_day' = 'half_day',
+): Promise<string> {
+  const u = USERS[who]
+  const ref = await getFirestore(admin()).collection('leave_records').add({
+    uid: u.uid,
+    name: u.name,
+    role: u.role,
+    date,
+    leaveType,
+    note: 'No punch-in by 10:00.',
+    markedAt: Date.now(),
+    markedBy: 'system',
+    markedByName: 'Automatic',
+    status: 'active',
+    autoMarked: true,
+    auditLog: [{ action: 'admin_marked', by: 'system', byName: 'Automatic', at: Date.now() }],
+  })
+  return ref.id
+}
+
+/**
+ * Leave a manager marked and approved, as against one the sweep concluded.
+ *
+ * The distinction is the whole of the appeal rule: an automatic record is the
+ * app's guess and stays arguable, while one a person asked for and a manager
+ * approved is settled once the day has gone.
+ */
+export async function approvedLeave(
+  who: UserKey,
+  date: string,
+  leaveType: 'full_day' | 'half_day' = 'full_day',
+): Promise<string> {
+  const u = USERS[who]
+  const by = USERS.admin
+  const ref = await getFirestore(admin()).collection('leave_records').add({
+    uid: u.uid,
+    name: u.name,
+    role: u.role,
+    date,
+    leaveType,
+    reason: 'Personal',
+    markedAt: Date.now(),
+    markedBy: by.uid,
+    markedByName: by.name,
+    status: 'active',
+    auditLog: [{ action: 'admin_marked', by: by.uid, byName: by.name, at: Date.now() }],
+  })
+  return ref.id
+}
+
+/**
+ * Promote a seeded account to super admin.
+ *
+ * The standard world has no super admin on purpose — it is a bootstrap role
+ * granted by hand in the console, and seeding one would make every spec run as
+ * though that had already happened. A spec that needs the Settings screen says
+ * so here instead, and only for itself.
+ */
+export async function makeSuperAdmin(who: UserKey): Promise<void> {
+  await getFirestore(admin()).doc(`users/${USERS[who].uid}`).update({ role: 'super_admin' })
+}
+
+/**
+ * No leave on anybody's record, right now.
+ *
+ * Same reasoning as noOneOnDuty, and the same failure: a spec that asserts an
+ * appeal has *not* been sent has to start from a book with no appeal in it.
+ * Inherit the previous spec's `unmark_requested` record — which the wipe can
+ * miss, because a write already in flight lands after it — and the screen says
+ * "Cancellation requested" for a reason that has nothing to do with the test.
+ */
+export async function noLeaveRecorded(): Promise<void> {
+  await emptyNow('leave_records')
+}
+
 async function emptyNow(collectionName: string): Promise<void> {
   const snap = await getFirestore(admin()).collection(collectionName).get()
   await Promise.all(snap.docs.map(d => d.ref.delete()))
