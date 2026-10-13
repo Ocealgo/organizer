@@ -405,6 +405,44 @@ npm run build
 npm run preview
 ```
 
+### Sandbox — using the app without touching live data
+
+```bash
+npm run sandbox          # emulators + seeded world + app on :5174
+npm run sandbox:reseed   # rebuild the world, emulators left running
+```
+
+Opens the real app at **http://127.0.0.1:5174**, backed entirely by the Firebase
+emulators. Sign in as any seeded account and use every screen the way a rep or an
+admin does — punch in, log a visit, claim an expense, settle a bill. Nothing
+reaches production.
+
+Why it cannot: `--mode test` loads `.env.test`, whose project id is
+`demo-ocealgo`. The Firebase SDKs refuse to contact real infrastructure for a
+`demo-` project, so a misconfigured run fails loudly instead of writing to
+somebody's live week. Port 5174 is deliberate — `npm run dev` keeps 5173, so the
+sandbox and a live-pointing dev server can run side by side.
+
+| Account | Email | Mobile | Role |
+|---|---|---|---|
+| rep | `rep@ocealgo.test` | 9800000001 | offline_sales |
+| rep2 | `rep2@ocealgo.test` | 9800000002 | offline_sales |
+| admin | `admin@ocealgo.test` | 9800000003 | admin |
+| manager | `manager@ocealgo.test` | 9800000004 | sales_manager (default perms) |
+| managerPlus | `manager2@ocealgo.test` | 9800000005 | sales_manager (all perms) |
+| pending | `pending@ocealgo.test` | 9800000006 | awaiting approval |
+
+Password for all of them: `Passw0rd!`. Either the email or the mobile number signs
+them in — the numbers are real linked auth providers, so the OTP flows work too
+(the emulator keeps the code it would have texted; the Auth tab at
+http://127.0.0.1:4000 shows it).
+
+The world is two products, a distributor, two retailers and a ₹4.50/km fuel rate.
+The seed itself lives in `tests/e2e/fixtures/seed.ts` and is shared with the
+Playwright suite rather than copied, so the sandbox cannot drift from what the
+specs assert. Sandbox-only extras are applied on top in `scripts/sandbox.mjs`.
+The emulator UI at http://127.0.0.1:4000 shows every document as you write it.
+
 ### Firebase Setup
 
 1. Enable **Email/Password** sign-in: Firebase Console → Authentication → Sign-in method.

@@ -11,7 +11,21 @@ import { defineConfig, devices } from '@playwright/test'
  * Video is on for every test, not just failures: the same recordings are the
  * raw material for the end-user walkthroughs, and a walkthrough that only
  * exists when a test fails is no use to anybody.
+ *
+ * WHY THE PORT IS A VARIABLE
+ * `reuseExistingServer` is what makes a second local run fast, and it is also
+ * how a run can end up driving production: anything already answering on the
+ * port is adopted, and `npm run dev` answers on 5173 pointing at the live
+ * project. Playwright cannot tell the two apart — both are a Vite server on
+ * the right port — so the specs would sign in as the seeded accounts against
+ * real data, seeding one world and asserting against another.
+ *
+ * So the port can be moved out of the way: `E2E_PORT=5175 npm run e2e` leaves
+ * a dev server where it is. The default is unchanged, because the fast reuse is
+ * worth keeping when the thing being reused is the right server.
  */
+const PORT = process.env.E2E_PORT ?? '5173'
+const BASE_URL = `http://127.0.0.1:${PORT}`
 export default defineConfig({
   testDir: './tests/e2e',
   outputDir: './tests/e2e/.artifacts',
@@ -27,7 +41,7 @@ export default defineConfig({
     : [['list'], ['html', { open: 'never' }]],
 
   use: {
-    baseURL: 'http://127.0.0.1:5173',
+    baseURL: BASE_URL,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: { mode: 'on', size: { width: 1280, height: 800 } },
@@ -80,7 +94,8 @@ export default defineConfig({
 
   webServer: {
     command: 'npm run e2e:server',
-    url: 'http://127.0.0.1:5173',
+    env: { E2E_PORT: PORT },
+    url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     stdout: 'ignore',
