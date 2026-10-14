@@ -10,21 +10,20 @@ import { deleteApp, getApps, initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 import { getFirestore } from 'firebase-admin/firestore'
 import type { PermissionMap } from '../../../src/types'
+import { DEFAULT_SALES_MANAGER_PERMISSIONS } from '../../../src/auth/permissions'
 
 export const PROJECT_ID = 'demo-ocealgo'
 export const PASSWORD = 'Passw0rd!'
 
-/** Mirrors DEFAULT_SALES_MANAGER_PERMISSIONS in src/auth/permissions.ts. */
-const MGR_DEFAULT: PermissionMap = {
-  view_parties: true, view_allocations: true, view_stock: true, view_products: true,
-  view_credit: true, view_expenses: true, view_leave: true, view_reports: true,
-  view_users: true, view_workspace: false,
-  edit_parties: true, approve_leave: true, approve_sales_users: true,
-  dispatch_allocations: true,
-  manage_products: false, edit_stock: false,
-  mark_paid: false, approve_payments: false,
-  clear_expenses: false, delete_parties: false,
-}
+/**
+ * The shipped manager defaults, imported rather than copied.
+ *
+ * The copy here had drifted — `assign_work` was added to the real default and
+ * never added here, so the seeded manager could not plan a week and no spec
+ * could have noticed. Importing it means the world the specs run in is the
+ * world the app ships.
+ */
+const MGR_DEFAULT: PermissionMap = DEFAULT_SALES_MANAGER_PERMISSIONS
 
 const MGR_FULL: PermissionMap = Object.fromEntries(
   Object.keys(MGR_DEFAULT).map(k => [k, true]),
@@ -279,6 +278,29 @@ export async function makeSuperAdmin(who: UserKey): Promise<void> {
  */
 export async function noLeaveRecorded(): Promise<void> {
   await emptyNow('leave_records')
+}
+
+/**
+ * No orders on the books, right now.
+ *
+ * Same reasoning as noOneOnDuty. A spec that seeds one allocation and asserts
+ * on what the row says cannot inherit the previous spec's — two identical rows
+ * make a `getByText` ambiguous, and the failure reads as the screen being
+ * wrong rather than the world being dirty.
+ */
+export async function noAllocations(): Promise<void> {
+  await emptyNow('allocations_v2')
+}
+
+/**
+ * No targets set for anybody, right now.
+ *
+ * The one that bites: a leftover target turns the button from "Set" into
+ * "Update", so a spec looking for Set waits ten seconds for a control that is
+ * on the screen under another name.
+ */
+export async function noTargetsSet(): Promise<void> {
+  await emptyNow('sales_targets')
 }
 
 async function emptyNow(collectionName: string): Promise<void> {
