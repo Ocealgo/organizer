@@ -20,8 +20,9 @@ const MGR_DEFAULT: PermissionMap = {
   view_credit: true, view_expenses: true, view_leave: true, view_reports: true,
   view_users: true, view_workspace: false,
   edit_parties: true, approve_leave: true, approve_sales_users: true,
+  dispatch_allocations: true,
   manage_products: false, edit_stock: false,
-  dispatch_allocations: false, mark_paid: false, approve_payments: false,
+  mark_paid: false, approve_payments: false,
   clear_expenses: false, delete_parties: false,
 }
 
@@ -128,6 +129,63 @@ export async function noOneOnDuty(): Promise<void> {
 export async function noWeeksFiled(): Promise<void> {
   await emptyNow('expense_reports')
   await emptyNow('expense_entries')
+}
+
+/**
+ * Stock in the company's hands, for a spec that needs a dispatch to succeed.
+ *
+ * Separate from the standard world, which starts at zero on purpose: most
+ * specs are about who may do a thing, and a world with stock in it would let
+ * one of them move some by accident and leave the next one wondering.
+ */
+export async function companyStock(productId: string, total: number): Promise<void> {
+  // Nested, not `productStock.${id}`. `update()` reads a dotted key as a path
+  // and `set()` reads it as a field name with dots in it, so the dotted form
+  // here wrote a field nothing looks at and the screen went on seeing zero.
+  await getFirestore(admin()).doc('config/stock').set(
+    { productStock: { [productId]: { total, locked: 0 } }, updatedAt: Date.now() },
+    { merge: true },
+  )
+}
+
+const tomorrow = (): string => {
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/**
+ * An order on the books, at whatever stage the spec needs.
+ *
+ * Seeded rather than clicked because what is being tested is who may act on
+ * one, not who may raise one — and raising one through the UI drags in stock
+ * config, a product, a price and a planned date, none of which the assertion
+ * is about.
+ *
+ * The receiving party is the distributor: `party_shop` sits under one, and a
+ * company order to a retailer with a distributor above it is a different flow
+ * with a different screen.
+ */
+export async function companyAllocation(
+  over: Record<string, unknown> = {},
+): Promise<string> {
+  const ref = await getFirestore(admin()).collection('allocations_v2').add({
+    fromType: 'company', fromId: 'company', fromName: 'Ocealgo',
+    partyId: 'party_dist', partyName: 'Rajan Distributors', partyType: 'distributor',
+    productId: 'prod_wipes', productName: 'Baby Wet Wipes 72s',
+    packets: 24, cartons: 1, pricePerPacket: 60, totalAmount: 1440,
+    paymentType: 'credit',
+    // Tomorrow, so it stays `pending` rather than ageing into `overdue` — and
+    // so the screen reads "Due tomorrow" rather than "Due in 26377 days",
+    // which is what a far-future placeholder looked like to anyone watching.
+    plannedDate: tomorrow(),
+    status: 'pending', notes: '',
+    createdBy: USERS.rep.uid, createdByName: USERS.rep.name,
+    createdAt: Date.now(), month: tomorrow().slice(0, 7), lockedAtCreation: false,
+    channel: 'desk',
+    ...over,
+  })
+  return ref.id
 }
 
 /**
@@ -306,8 +364,17 @@ export async function seedWorld(): Promise<void> {
 
   await db.doc('config/settings').set({ mapperLink: '' })
   await db.doc('expense_config/main').set({ hq: 200, ex: 300, os: 450 })
-  await db.doc('stock_config/main').set({
-    packetsPerCarton: 24, total: 0, locked: 0, updatedAt: Date.now(),
+  /**
+   * `config/stock`, not `stock_config/main`.
+   *
+   * The seed wrote the second one, which nothing reads — the app and the rules
+   * both use `config/stock`. So the carton size never arrived and every screen
+   * fell back to its built-in 12, and company stock was zero no matter what
+   * was seeded here, which made a successful dispatch untestable.
+   */
+  await db.doc('config/stock').set({
+    packetsPerCarton: 24, total: 0, locked: 0,
+    defaultPricePerPacket: 60, updatedAt: Date.now(),
   })
 
   await db.doc('products/prod_wipes').set({

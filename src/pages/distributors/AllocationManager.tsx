@@ -18,7 +18,29 @@ import {
 
 import { bookAllocation } from '../../data/bookAllocation'
 
-interface Props { onBack: () => void; parties: Party[]; isAdmin?: boolean; highlightId?: string; salesRepOnly?: boolean }
+/**
+ * Two permissions, not one role.
+ *
+ * This used to take a single `isAdmin`, which every caller was already filling
+ * in from `dispatch_allocations` — and which then gated Mark paid as well.
+ * Marking a bill paid has its own permission, deliberately, because moving
+ * stock and deciding money arrived are different authorities. So anybody
+ * granted dispatch got a Mark paid button the rules would refuse, and the
+ * refusal was silent.
+ *
+ * Named after what they allow rather than who holds them, so the next person
+ * to add a button has to decide which one it belongs to.
+ */
+interface Props {
+  onBack: () => void
+  parties: Party[]
+  /** Move stock: dispatch, confirm a distributor sent it, fulfil an indent, cancel. */
+  canDispatch?: boolean
+  /** Declare a credit bill settled. A money action, and not implied by the above. */
+  canMarkPaid?: boolean
+  highlightId?: string
+  salesRepOnly?: boolean
+}
 
 const STATUS_LABEL: Record<AllocationStatus, string> = {
   pending: 'Pending', sent: 'Sent', paid: 'Paid', overdue: 'Overdue', cancelled: 'Cancelled',
@@ -27,7 +49,9 @@ const STATUS_LABEL: Record<AllocationStatus, string> = {
 /** Only two tones carry meaning here: something needs action, or it does not. */
 const NEEDS_ACTION: AllocationStatus[] = ['pending', 'overdue']
 
-export default function AllocationManager({ onBack, parties, isAdmin, highlightId, salesRepOnly }: Props) {
+export default function AllocationManager({
+  onBack, parties, canDispatch, canMarkPaid, highlightId, salesRepOnly,
+}: Props) {
   const { appUser } = useAuth()
   const { t } = useTheme()
   const { config } = useStockConfig()
@@ -52,6 +76,25 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
   const [acting, setActing] = useState<string | null>(null)
   const [dispatchDateAlloc, setDispatchDateAlloc] = useState<UnifiedAllocation | null>(null)
   const [dispatchDate, setDispatchDate] = useState(localDateStr())
+
+  // ── Sending several at once ───────────────────────────────────────────────
+  /** Ids ticked for a bulk send. Only ever allocations waiting to go out. */
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkDate, setBulkDate] = useState(localDateStr())
+  /** How far through, so a run of forty does not look like a frozen screen. */
+  const [bulkAt, setBulkAt] = useState<{ done: number; total: number } | null>(null)
+  /**
+   * What happened to each one.
+   *
+   * Kept per row rather than reduced to a count. A run where thirty-seven
+   * landed and three did not is the normal outcome once stock runs out
+   * mid-way, and "37 of 40 dispatched" tells somebody they have a problem
+   * without telling them where it is.
+   */
+  const [bulkResults, setBulkResults] = useState<
+    { id: string; label: string; ok: boolean; why?: string }[] | null
+  >(null)
   const [unit, setUnit] = useState<'packets' | 'cartons'>('packets')
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -302,28 +345,27 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
           await updateStockConfig({ locked: Math.max(0, config.locked - a.packets) })
         }
       }
+    } catch (err: any) {
+      // This one hands packets back, so a failure halfway leaves the available
+      // figure wrong. Worth telling somebody rather than letting the row sit
+      // there looking unchanged.
+      await showAlert('Could not cancel it', err?.message
+        || 'Something went wrong, and the locked stock may not have been released. Please try again.')
     } finally { setActing(null) }
   }
 
-  // Admin dispatches — moves stock via transaction
-  const handleDispatch = async (a: UnifiedAllocation, sentDate: string) => {
-    if (!isAdmin) return
+  /**
+   * One dispatch, and it throws rather than explaining itself.
+   *
+   * Split out so the single-row button and the bulk run share one definition
+   * of what dispatching means. They differ only in what they do with a
+   * failure: one shows a dialog, the other collects it into a list and keeps
+   * going. Two copies of a stock transaction is how the two paths drift, which
+   * is the whole lesson of bookAllocation.
+   */
+  const dispatchOne = async (a: UnifiedAllocation, sentDate: string) => {
     const isCompany = a.fromType === 'company' || !(a as any).fromType
-
-    // UX pre-check (non-atomic — transaction re-validates atomically)
-    if (isCompany) {
-      const pStk = a.productId ? config.productStock?.[a.productId] : null
-      const prodAvail = pStk ? pStk.total - pStk.locked : available
-      if (a.packets > prodAvail) { await showAlert('Not enough stock', `Only ${toDisplay(prodAvail, config.packetsPerCarton)} of ${a.productName || 'this product'} is available.`); return }
-    } else {
-      const dist = parties.find(p => p.id === a.fromId)
-      const distStock = (dist?.stock?.[a.productId]) || 0
-      if (a.packets > distStock) { await showAlert('Not enough stock', `The distributor holds ${distStock} packets.`); return }
-    }
-
-    setActing(a.id!)
-    try {
-      await runTransaction(db, async (tx) => {
+    await runTransaction(db, async (tx) => {
         const allocRef = doc(db, 'allocations_v2', a.id!)
         const partyRef = doc(db, 'parties', a.partyId)
 
@@ -340,6 +382,17 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
 
           if (a.productId) {
             const pStk = cfg?.productStock?.[a.productId] ?? { total: 0, locked: 0 }
+            // Checked here, not only on the way in. The screen's pre-check
+            // reads a snapshot and passes each allocation on its own, so
+            // twenty that each fit can still not fit together — and without
+            // this the subtraction simply ran the total negative. The
+            // distributor branch below has always checked; this one did not.
+            if (pStk.total < a.packets) {
+              throw new Error(
+                `Only ${toDisplay(pStk.total, config.packetsPerCarton)} of `
+                + `${a.productName || 'this product'} left — this needs `
+                + `${toDisplay(a.packets, config.packetsPerCarton)}.`)
+            }
             tx.update(configRef, {
               [`productStock.${a.productId}.total`]: pStk.total - a.packets,
               [`productStock.${a.productId}.locked`]: Math.max(0, pStk.locked - (a.lockedAtCreation ? a.packets : 0)),
@@ -349,6 +402,9 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
             // Legacy global-pool fallback for old allocations without productId
             const total = cfg?.total ?? 0
             const locked = cfg?.locked ?? 0
+            if (total < a.packets) {
+              throw new Error(`Only ${toDisplay(total, config.packetsPerCarton)} left in the pool.`)
+            }
             tx.update(configRef, {
               total: total - a.packets,
               locked: Math.max(0, locked - (a.lockedAtCreation ? a.packets : 0)),
@@ -397,37 +453,117 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
         }
       })
 
-      // Audit log (outside transaction — non-load-bearing)
-      await addDoc(collection(db, 'dispatches'), {
+    // Audit log (outside transaction — non-load-bearing)
+    await addDoc(collection(db, 'dispatches'), {
+      partyId: a.partyId, partyName: a.partyName, partyType: a.partyType,
+      fromType: a.fromType || 'company', fromId: a.fromId || 'company', fromName: a.fromName || 'Ocealgo',
+      packets: a.packets, cartons: a.cartons,
+      pricePerPacket: a.pricePerPacket, totalAmount: a.totalAmount,
+      paymentType: a.paymentType, notes: a.notes || '',
+      month: a.month, allocationId: a.id,
+      dispatchedBy: appUser!.uid, dispatchedByName: appUser!.name,
+      dispatchedAt: Date.now(), date: sentDate, createdAt: Date.now(),
+    })
+    if (a.paymentType === 'credit') {
+      await addDoc(collection(db, 'credits'), {
         partyId: a.partyId, partyName: a.partyName, partyType: a.partyType,
-        fromType: a.fromType || 'company', fromId: a.fromId || 'company', fromName: a.fromName || 'Ocealgo',
-        packets: a.packets, cartons: a.cartons,
-        pricePerPacket: a.pricePerPacket, totalAmount: a.totalAmount,
-        paymentType: a.paymentType, notes: a.notes || '',
-        month: a.month, allocationId: a.id,
-        dispatchedBy: appUser!.uid, dispatchedByName: appUser!.name,
-        dispatchedAt: Date.now(), date: sentDate, createdAt: Date.now(),
+        deliveryId: a.id, packets: a.packets, amount: a.totalAmount,
+        status: 'outstanding', createdAt: Date.now(),
       })
-      if (a.paymentType === 'credit') {
-        await addDoc(collection(db, 'credits'), {
-          partyId: a.partyId, partyName: a.partyName, partyType: a.partyType,
-          deliveryId: a.id, packets: a.packets, amount: a.totalAmount,
-          status: 'outstanding', createdAt: Date.now(),
-        })
-      }
+    }
+  }
+
+  /** Enough stock to send this one, as far as the screen's snapshot knows. */
+  const stockShortfall = (a: UnifiedAllocation): string | null => {
+    const isCompany = a.fromType === 'company' || !(a as any).fromType
+    if (isCompany) {
+      const pStk = a.productId ? config.productStock?.[a.productId] : null
+      const prodAvail = pStk ? pStk.total - pStk.locked : available
+      return a.packets > prodAvail
+        ? `Only ${toDisplay(prodAvail, config.packetsPerCarton)} of ${a.productName || 'this product'} is available.`
+        : null
+    }
+    const dist = parties.find(p => p.id === a.fromId)
+    const distStock = (dist?.stock?.[a.productId]) || 0
+    return a.packets > distStock ? `The distributor holds ${distStock} packets.` : null
+  }
+
+  // One row's button. The pre-check is a courtesy — the transaction decides.
+  const handleDispatch = async (a: UnifiedAllocation, sentDate: string) => {
+    if (!canDispatch) return
+    const short = stockShortfall(a)
+    if (short) { await showAlert('Not enough stock', short); return }
+
+    setActing(a.id!)
+    try {
+      await dispatchOne(a, sentDate)
     } catch (err: any) {
-      await showAlert('Could not dispatch', err.message || 'Something went wrong. Please try again.')
+      await showAlert('Could not dispatch', err?.message || 'Something went wrong. Please try again.')
     } finally { setActing(null) }
   }
 
-  // Admin marks credit paid — stock already moved at dispatch, just flip status
+  // Settling a credit bill — stock already moved at dispatch, just flip status.
+  // Its own permission: dispatching is goods, this is money.
   const handleMarkPaid = async (a: UnifiedAllocation) => {
-    if (!isAdmin) return
+    if (!canMarkPaid) return
     if (!await showConfirm('Mark this as paid?', `₹${a.totalAmount.toLocaleString('en-IN')} received from ${a.partyName}.`, 'Mark paid')) return
     setActing(a.id!)
     try {
       await updateDoc(doc(db, 'allocations_v2', a.id!), { status: 'paid' as AllocationStatus, paidAt: Date.now() })
+    } catch (err: any) {
+      // Said out loud. A button that does nothing on click reads as a broken
+      // app rather than as a rule being enforced, and this one is reachable
+      // only by somebody the rules may still refuse.
+      await showAlert('Could not mark it paid', err?.code === 'permission-denied'
+        ? 'Firestore refused that. Marking a bill paid needs the money permission, not the dispatch one.'
+        : err?.message || 'Something went wrong. Please try again.')
     } finally { setActing(null) }
+  }
+
+  /**
+   * Sending a whole list, one at a time.
+   *
+   * Sequential on purpose, and this is the part worth not changing. Every
+   * company dispatch updates `config/stock`, which is one document — fire
+   * forty transactions at it in parallel and they contend, retry and some
+   * lose. One after another is slower and finishes.
+   *
+   * A failure does not stop the run. Stopping leaves an arbitrary prefix done
+   * and the person holding the phone working out where it got to; carrying on
+   * and reporting each row is the version somebody can act on. The usual
+   * failure is stock running out part way through, and then every later one of
+   * that product fails too — which is worth seeing listed rather than inferred
+   * from a number.
+   */
+  const runBulkDispatch = async (rows: UnifiedAllocation[], sentDate: string) => {
+    if (!canDispatch || rows.length === 0) return
+    setBulkOpen(false)
+    setBulkResults(null)
+    setBulkAt({ done: 0, total: rows.length })
+    const results: { id: string; label: string; ok: boolean; why?: string }[] = []
+
+    for (const [i, a] of rows.entries()) {
+      const label = `${a.partyName} · ${toDisplay(a.packets, config.packetsPerCarton)}`
+      try {
+        await dispatchOne(a, sentDate)
+        results.push({ id: a.id!, label, ok: true })
+      } catch (err: any) {
+        results.push({
+          id: a.id!, label, ok: false,
+          why: err?.code === 'permission-denied'
+            ? 'Firestore refused it.'
+            : err?.message || 'Something went wrong.',
+        })
+      }
+      setBulkAt({ done: i + 1, total: rows.length })
+    }
+
+    setBulkAt(null)
+    setBulkResults(results)
+    // Only the ones that landed leave the selection. Whatever failed stays
+    // ticked, so trying again means pressing the button rather than finding
+    // them all a second time.
+    setPicked(new Set(results.filter(r => !r.ok).map(r => r.id)))
   }
 
   // Filter allocations
@@ -669,6 +805,35 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
     )
   }
 
+  /**
+   * The rows a bulk send could act on — everything in the current filter that
+   * is still waiting to go out, across every page.
+   *
+   * Across pages deliberately. "Select all" that means "all twenty on this
+   * screen" out of sixty waiting is the sort of thing somebody discovers after
+   * they thought they were finished, so the count says what it is covering.
+   */
+  const dispatchable = filtered.filter(a => a.status === 'pending' || a.status === 'overdue')
+  const pickedRows = dispatchable.filter(a => picked.has(a.id!))
+  const allPicked = dispatchable.length > 0 && pickedRows.length === dispatchable.length
+
+  const togglePicked = (id: string) => setPicked(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
+
+  const pickedTotals = {
+    packets: pickedRows.reduce((n, a) => n + a.packets, 0),
+    // Only the company's own orders carry a price — a distributor supplying
+    // their retailer is not the company's sale, so adding it up would invent
+    // revenue.
+    value: pickedRows
+      .filter(a => a.fromType !== 'distributor')
+      .reduce((n, a) => n + (a.totalAmount || 0), 0),
+    fromDistributor: pickedRows.filter(a => a.fromType === 'distributor').length,
+  }
+
   // ── MAIN ───────────────────────────────────────────────────────────────────
   const attention = counts.overdue > 0
     ? `${counts.overdue} overdue`
@@ -782,6 +947,84 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
                 ? ` · ${filteredIndents.length} indent${filteredIndents.length !== 1 ? 's' : ''}`
                 : '')
             }>
+              {/* Sending several at once. Drawn when there is more than one to
+                  send — a bar offering to batch a single allocation is just a
+                  second way to press the button already on the row — and also
+                  whenever something is still ticked, however few are left.
+                  Without that second case a run where all but one succeeded
+                  took the bar away with it, and the panel below was left
+                  telling somebody they could try again using a button that was
+                  no longer on the screen. */}
+              {canDispatch && (dispatchable.length > 1 || pickedRows.length > 0) && (
+                <div style={{
+                  display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12,
+                  background: t.tint, borderRadius: 6, padding: '11px 13px', marginBottom: 14,
+                }}>
+                  <button className="oc-action"
+                    onClick={() => setPicked(allPicked
+                      ? new Set()
+                      : new Set(dispatchable.map(a => a.id!)))}
+                    style={{
+                      background: 'none', border: `0.5px solid ${t.border2}`, borderRadius: 6,
+                      padding: '7px 12px', fontSize: 13, color: t.text, cursor: 'pointer',
+                    }}>
+                    {allPicked ? 'Clear selection' : `Select all ${dispatchable.length} waiting`}
+                  </button>
+
+                  <span style={{ fontSize: 13, color: t.text3, flex: 1, minWidth: 120 }}>
+                    {pickedRows.length === 0
+                      ? 'Tick the ones to send, or select them all.'
+                      : `${pickedRows.length} selected · ${toDisplay(pickedTotals.packets, config.packetsPerCarton)}`
+                        + (pickedTotals.value > 0 ? ` · ${money(pickedTotals.value)}` : '')}
+                  </span>
+
+                  {pickedRows.length > 0 && (
+                    <PrimaryButton
+                      onClick={() => { setBulkDate(localDateStr()); setBulkResults(null); setBulkOpen(true) }}
+                      disabled={!!bulkAt}>
+                      {bulkAt ? `Sending ${bulkAt.done} of ${bulkAt.total}` : `Send ${pickedRows.length}`}
+                    </PrimaryButton>
+                  )}
+                </div>
+              )}
+
+              {/* What became of the last run. Per row, because "37 of 40" is
+                  not something anybody can act on. */}
+              {bulkResults && (
+                <div style={{
+                  border: `0.5px solid ${t.border2}`, borderRadius: 6,
+                  padding: '13px 14px', marginBottom: 14,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                    <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: t.text }}>
+                      {bulkResults.every(r => r.ok)
+                        ? `All ${bulkResults.length} sent`
+                        : `${bulkResults.filter(r => r.ok).length} sent, `
+                          + `${bulkResults.filter(r => !r.ok).length} not`}
+                    </span>
+                    <button className="oc-action" onClick={() => setBulkResults(null)}
+                      style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, color: t.text3, cursor: 'pointer' }}>
+                      Dismiss
+                    </button>
+                  </div>
+                  {bulkResults.some(r => !r.ok) && (
+                    <>
+                      <div style={{ fontSize: 13, color: t.text3, marginTop: 8, lineHeight: 1.55 }}>
+                        These were left alone and are still ticked, so you can try again once
+                        the reason is dealt with.
+                      </div>
+                      <div style={{ marginTop: 8 }}>
+                        {bulkResults.filter(r => !r.ok).map(r => (
+                          <div key={r.id} style={{ fontSize: 13, color: t.warn, marginTop: 5, lineHeight: 1.5 }}>
+                            {r.label} — {r.why}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
               {filtered.length === 0 ? (
                 filterSource !== 'distributor' && (
                   <EmptyState
@@ -812,6 +1055,24 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
                           background: isHighlighted ? t.tint : 'transparent',
                         }}>
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
+                          {/* Only on the ones a batch could send. A tickbox on
+                              a row already dispatched is a promise the button
+                              above it cannot keep. */}
+                          {canDispatch && (dispatchable.length > 1 || pickedRows.length > 0)
+                            && (a.status === 'pending' || a.status === 'overdue') && (
+                            <button className="oc-action" onClick={() => togglePicked(a.id!)}
+                              aria-pressed={picked.has(a.id!)}
+                              aria-label={`Select ${a.partyName}`}
+                              style={{
+                                width: 20, height: 20, flexShrink: 0, marginTop: 2, padding: 0,
+                                borderRadius: 4, cursor: 'pointer',
+                                border: `0.5px solid ${picked.has(a.id!) ? t.text2 : t.border2}`,
+                                background: picked.has(a.id!) ? t.text2 : 'transparent',
+                                color: t.bg, fontSize: 13, lineHeight: 1,
+                              }}>
+                              {picked.has(a.id!) ? '✓' : ''}
+                            </button>
+                          )}
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: 15, fontWeight: 500, color: t.text }}>{a.partyName}</div>
                             <div style={{ fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 3 }}>
@@ -902,7 +1163,7 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
                                 plannedDate: a.plannedDate, creditDueDate: (a as any).creditDueDate || '',
                               }))}
 
-                            {isAdmin && (a.status === 'pending' || a.status === 'overdue') && (
+                            {canDispatch && (a.status === 'pending' || a.status === 'overdue') && (
                               <>
                                 {action(
                                   acting === a.id ? 'Working' : a.fromType === 'distributor' ? 'Confirm sent' : 'Dispatch',
@@ -912,12 +1173,15 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
                               </>
                             )}
 
-                            {isAdmin && a.fromType !== 'distributor' && isSentCredit &&
+                            {canMarkPaid && a.fromType !== 'distributor' && isSentCredit &&
                               action(acting === a.id ? 'Working' : 'Mark paid', () => handleMarkPaid(a), acting === a.id)}
 
-                            {!isAdmin && (a.status === 'pending' || a.status === 'overdue') && (
+                            {!canDispatch && (a.status === 'pending' || a.status === 'overdue') && (
                               <span style={{ fontSize: 13, fontWeight: 400, color: t.text3 }}>
-                                Waiting for an admin to dispatch this.
+                                {/* Not "an admin" any more — a sales manager holding
+                                    dispatch is the ordinary case now, and naming the
+                                    wrong person is how a rep chases the wrong one. */}
+                                Waiting to be dispatched.
                               </span>
                             )}
 
@@ -994,7 +1258,7 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
                             </div>
                           )}
 
-                          {isAdmin && (
+                          {canDispatch && (
                             <div style={{ marginTop: 16, maxWidth: 460 }}>
                               <Field label="Packets to send"
                                 hint={`They asked for ${indent.requestedPackets}.`}
@@ -1332,7 +1596,7 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
                                         {distStockN} in stock
                                       </div>
                                     </div>
-                                    {isAdmin && (
+                                    {canDispatch && (
                                       <div style={{ marginTop: 10 }}>
                                         {indentErrors[indent.id!] && (
                                           <div style={{ fontSize: 12, color: t.warn, marginBottom: 6 }}>
@@ -1419,7 +1683,7 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
                             })}
                           </div>
 
-                          {isAdmin && (
+                          {canDispatch && (
                             <div style={{ marginTop: 12 }}>
                               {action('View full history', () => setHistoryPartyId(dist.id!))}
                             </div>
@@ -1471,7 +1735,7 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
                                 if (next.has(r.id!)) next.delete(r.id!); else next.add(r.id!)
                                 return next
                               }))}
-                            {isAdmin && action('View full history', () => setHistoryPartyId(r.id!))}
+                            {canDispatch && action('View full history', () => setHistoryPartyId(r.id!))}
                           </div>
                           {open && recent.map(a => <AllocLine key={a.id} a={a} />)}
                         </div>
@@ -1485,6 +1749,47 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
         })()}
       </div>
       {modal}
+
+      {/* Sending the selection. Says what it is about to move, because this is
+          the one tap that turns a list into inventory leaving a building. */}
+      {bulkOpen && pickedRows.length > 0 && (
+        <div className="oc-overlay" style={{ zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)' }}
+            onClick={() => setBulkOpen(false)} />
+          <div style={{ position: 'relative', zIndex: 1, background: t.bg2, borderRadius: 8,
+                        padding: '24px 22px', maxWidth: 420, width: '100%',
+                        border: `0.5px solid ${t.border2}` }}>
+            <div style={{ fontSize: 17, fontWeight: 500, color: t.text, marginBottom: 6 }}>
+              Send {pickedRows.length} allocation{pickedRows.length > 1 ? 's' : ''}?
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 400, color: t.text3, marginBottom: 20, lineHeight: 1.55 }}>
+              {toDisplay(pickedTotals.packets, config.packetsPerCarton)} in total
+              {pickedTotals.value > 0 ? `, worth ${money(pickedTotals.value)}` : ''}.
+              {pickedTotals.fromDistributor > 0 && ` ${pickedTotals.fromDistributor} of `
+                + `${pickedTotals.fromDistributor === pickedRows.length ? 'them' : 'these'} `
+                + 'a distributor sent, not the company — those are being recorded, not dispatched.'}
+            </div>
+
+            <Field label="Date it was sent" hint="Applies to all of them. Change it if you are recording a past dispatch.">
+              <DateInput type="date" value={bulkDate} onChange={setBulkDate} />
+            </Field>
+
+            <div style={{ margin: '18px 0' }}>
+              <Note tone="warn">
+                This cannot be undone — there is no way back from a dispatch in the app.
+                Only send what has physically gone.
+              </Note>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <PrimaryButton onClick={() => runBulkDispatch(pickedRows, bulkDate)}>
+                Send {pickedRows.length}
+              </PrimaryButton>
+              <GhostButton onClick={() => setBulkOpen(false)}>Cancel</GhostButton>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Dispatch date confirmation */}
       {dispatchDateAlloc && (
