@@ -670,6 +670,37 @@ service cloud.firestore {
       allow write: if hasPerm('assign_work');
     }
 
+    // ── MONTHLY TARGETS ─────────────────────────────────────────────────────
+    // How many packets a rep is expected to sell this month. Set by whoever
+    // plans the work, which is the same authority that assigns the week — a
+    // target and a beat are the same act of management, and inventing a second
+    // permission for it would mean an admin remembering to grant both.
+    match /sales_targets/{id} {
+      // The first three branches stand alone on purpose, for the same reason
+      // work_plans does: Firestore checks a list query against the rule rather
+      // than against each document, so "everybody, this month" needs a branch
+      // that never mentions resource.data or the query is denied outright
+      // rather than filtered.
+      allow read: if isAdmin()
+        || hasPerm('assign_work')
+        || hasPerm('view_reports')
+        || resource.data.uid == request.auth.uid;
+
+      // A rep never writes their own. A target somebody sets for themselves is
+      // not a target, it is an intention.
+      //
+      // Create and update are separated from delete rather than written as one
+      // `write`, because on a delete there is no request.resource to read a
+      // units field from — the condition would have been false and removing a
+      // target would have failed for no stated reason.
+      allow create, update: if hasPerm('assign_work')
+        && request.resource.data.units >= 0
+        && request.resource.data.uid is string
+        && request.resource.data.month is string;
+
+      allow delete: if hasPerm('assign_work');
+    }
+
     // ── WHAT A MANAGER DID ──────────────────────────────────────────────────
     // Meetings, days out with a rep, days at the desk — the parts of a
     // manager's day nothing else records.

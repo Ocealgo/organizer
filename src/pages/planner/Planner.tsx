@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo } from 'react'
-import { collection, query, where, writeBatch, doc, deleteDoc, updateDoc } from 'firebase/firestore'
+import {
+  collection, query, where, writeBatch, doc, deleteDoc, updateDoc, setDoc,
+} from 'firebase/firestore'
 import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
-  AppUser, SalesRoute, WorkPlan, Holiday, LeaveRecord,
-  workPlanId, routePlaces,
+  AppUser, SalesRoute, WorkPlan, Holiday, LeaveRecord, SalesTarget, UnifiedAllocation,
+  workPlanId, routePlaces, salesTargetId, packetsSettled,
 } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
@@ -14,11 +16,11 @@ import {
   PageHeader, TabBar, Eyebrow, EmptyState, Note, Field,
   GhostButton, PrimaryButton, inputStyle,
 } from '../../components/ui'
-import { localDateStr, isSunday } from '../../utils/date'
+import { localDateStr, localMonthStr, isSunday } from '../../utils/date'
 
 interface Props { onBack: () => void }
 
-type Tab = 'assign' | 'assigned'
+type Tab = 'assign' | 'assigned' | 'targets'
 
 /** Monday of the week containing `d`. */
 function mondayOf(d: string): string {
@@ -67,6 +69,18 @@ export default function Planner({ onBack }: Props) {
   const [leaves, setLeaves] = useState<LeaveRecord[]>([])
   const [readError, setReadError] = useState<string | null>(null)
 
+  // Monthly targets. Their own month, not the week above them — a target is
+  // set once for a month and the week navigator would make it look as though
+  // it changed every Monday.
+  const [targets, setTargets] = useState<SalesTarget[]>([])
+  const [allocations, setAllocations] = useState<UnifiedAllocation[]>([])
+  const [targetMonth, setTargetMonth] = useState(localMonthStr())
+  /** uid → what is being typed, so a half-typed number is never saved. */
+  const [targetDraft, setTargetDraft] = useState<Record<string, string>>({})
+  const [targetNote, setTargetNote] = useState<Record<string, string>>({})
+  const [targetSaving, setTargetSaving] = useState<string | null>(null)
+  const [targetError, setTargetError] = useState<string | null>(null)
+
   /** '' means everybody. Shared by both tabs — a filter you set once holds. */
   const [whoFilter, setWhoFilter] = useState('')
   const [beatFilter, setBeatFilter] = useState('')
@@ -102,8 +116,35 @@ export default function Planner({ onBack }: Props) {
         .sort((a, b) => a.name.localeCompare(b.name))))
     const u3 = onSnapshot(collection(db, 'holidays'), s =>
       setHolidays(s.docs.map(d => ({ id: d.id, ...d.data() } as Holiday))))
-    return () => { u1(); u2(); u3() }
+    // Whole collection, filtered here, because what counts toward a target is
+    // the month the money arrived — which is on the allocation, not in its id.
+    const u4 = onSnapshot(collection(db, 'allocations_v2'), s =>
+      setAllocations(s.docs.map(d => ({ id: d.id, ...d.data() } as UnifiedAllocation))))
+    return () => { u1(); u2(); u3(); u4() }
   }, [])
+
+  useEffect(() => {
+    setTargetError(null)
+    return onSnapshot(
+      query(collection(db, 'sales_targets'), where('month', '==', targetMonth)),
+      s => {
+        setTargets(s.docs.map(d => ({ id: d.id, ...d.data() } as SalesTarget)))
+        // Only seed the boxes that are not being typed in, so a listener
+        // firing mid-edit does not snatch the number back.
+        setTargetDraft(prev => {
+          const next = { ...prev }
+          s.docs.forEach(d => {
+            const v = d.data() as SalesTarget
+            if (next[v.uid] === undefined) next[v.uid] = String(v.units)
+          })
+          return next
+        })
+      },
+      err => setTargetError(err?.code === 'permission-denied'
+        ? 'Firestore turned down the read. The deployed rules may be older than this build.'
+        : 'Could not load the targets.'),
+    )
+  }, [targetMonth])
 
   useEffect(() => {
     setReadError(null)
@@ -318,6 +359,53 @@ export default function Planner({ onBack }: Props) {
     )
   }
 
+  /**
+   * Set or clear one rep's month.
+   *
+   * Written at a deterministic id so the same rep-month cannot end up with two
+   * targets, the way work plans are keyed. A blank box or a zero is a real
+   * answer meaning "no target this month", and it is stored rather than
+   * deleted — a zero says somebody decided, an absence says nobody looked.
+   */
+  const saveTarget = async (rep: AppUser) => {
+    const raw = (targetDraft[rep.uid] ?? '').trim()
+    const units = raw === '' ? 0 : Number(raw)
+    if (!Number.isFinite(units) || units < 0 || !Number.isInteger(units)) {
+      setTargetError(`${rep.name}: packets has to be a whole number, zero or more.`)
+      return
+    }
+    setTargetError(null)
+    setTargetSaving(rep.uid)
+    try {
+      const note = (targetNote[rep.uid] ?? '').trim()
+      const existing = targets.find(x => x.uid === rep.uid)
+      await setDoc(doc(db, 'sales_targets', salesTargetId(rep.uid, targetMonth)), {
+        uid: rep.uid,
+        name: rep.name,
+        month: targetMonth,
+        units,
+        ...(note ? { note } : {}),
+        setBy: appUser!.uid,
+        setByName: appUser!.name,
+        setAt: existing?.setAt ?? Date.now(),
+        ...(existing ? { updatedAt: Date.now() } : {}),
+      })
+    } catch (e: any) {
+      setTargetError(e?.code === 'permission-denied'
+        ? 'Firestore refused that. Setting a target needs the same permission as assigning the week.'
+        : e?.message || 'Could not save it.')
+    } finally { setTargetSaving(null) }
+  }
+
+  const shiftTargetMonth = (delta: number) => {
+    const [y, m] = targetMonth.split('-').map(Number)
+    const d = new Date(y, m - 1 + delta, 1)
+    setTargetMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+    // The boxes belong to the month that was on screen, so they go with it.
+    setTargetDraft({})
+    setTargetNote({})
+  }
+
   return (
     <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 56 }}>
       {modal}
@@ -333,12 +421,13 @@ export default function Planner({ onBack }: Props) {
         tabs={[
           { id: 'assign' as Tab, label: 'Assign' },
           { id: 'assigned' as Tab, label: 'Everything assigned' },
+          { id: 'targets' as Tab, label: 'Targets' },
         ]}
       />
 
       <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 760 }}>
-        {weekNav}
-        {readError && <Note tone="warn">{readError}</Note>}
+        {tab !== 'targets' && weekNav}
+        {tab !== 'targets' && readError && <Note tone="warn">{readError}</Note>}
 
         {/* ── ASSIGN ────────────────────────────────────────────────────── */}
         {tab === 'assign' && (
@@ -535,6 +624,118 @@ export default function Planner({ onBack }: Props) {
                 </div>
               )
             })}
+          </>
+        )}
+
+        {/* ── TARGETS ───────────────────────────────────────────────────── */}
+        {tab === 'targets' && (
+          <>
+            <div className="oc-wrap" style={{ alignItems: 'center', gap: 10 }}>
+              <button className="oc-action" onClick={() => shiftTargetMonth(-1)}
+                aria-label="Previous month"
+                style={{ background: 'none', border: 'none', padding: '0 6px', fontSize: 18, color: t.text2, cursor: 'pointer' }}>
+                ‹
+              </button>
+              <span style={{ fontSize: 15, fontWeight: 500, color: t.text, minWidth: 140 }}>
+                {new Date(targetMonth + '-02').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
+              </span>
+              <button className="oc-action" onClick={() => shiftTargetMonth(1)}
+                aria-label="Next month"
+                style={{ background: 'none', border: 'none', padding: '0 6px', fontSize: 18, color: t.text2, cursor: 'pointer' }}>
+                ›
+              </button>
+            </div>
+
+            <Note>
+              Packets each rep is expected to sell this month. Progress counts packets on
+              bills that have been settled, in the month the money arrived — so credit
+              sold in September lands in October, and the first days of a month look thin.
+              What was ordered is shown beside it so the difference is visible.
+            </Note>
+
+            {targetError && <Note tone="warn">{targetError}</Note>}
+
+            {reps.length === 0 ? (
+              <EmptyState
+                title="Nobody to set a target for"
+                body="Approved sales officers appear here."
+              />
+            ) : (
+              <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+                {reps.map(r => {
+                  const existing = targets.find(x => x.uid === r.uid)
+                  const settled = packetsSettled(allocations as any, r.uid, targetMonth)
+                  // Raised, for context. Not the measure — just the reason a
+                  // settled figure can look low while somebody is working.
+                  const raised = allocations
+                    .filter(a => a.createdBy === r.uid && a.status !== 'cancelled'
+                      && (a.month || '') === targetMonth)
+                    .reduce((n, a) => n + (a.packets || 0), 0)
+                  const goal = existing?.units ?? 0
+                  const pct = goal > 0 ? Math.round((settled / goal) * 100) : null
+                  const dirty = (targetDraft[r.uid] ?? '') !== String(existing?.units ?? '')
+                    || (targetNote[r.uid] ?? '') !== ''
+
+                  return (
+                    <div key={r.uid} style={{
+                      borderTop: `0.5px solid ${t.border}`, padding: '15px 0',
+                      display: 'flex', flexDirection: 'column', gap: 10,
+                    }}>
+                      <div className="oc-wrap" style={{ alignItems: 'flex-end', gap: 14 }}>
+                        <span style={{ flex: '1 1 180px', minWidth: 0 }}>
+                          <span style={{ display: 'block', fontSize: 15, fontWeight: 500, color: t.text }}>
+                            {r.name}
+                          </span>
+                          <span style={{ display: 'block', fontSize: 13, color: t.text3, marginTop: 3 }}>
+                            {goal > 0
+                              ? `${settled} of ${goal} packets settled${pct !== null ? ` · ${pct}%` : ''}`
+                              : `${settled} packets settled · no target set`}
+                          </span>
+                          <span style={{ display: 'block', fontSize: 12, color: t.text3, marginTop: 2 }}>
+                            {raised} packets ordered this month
+                            {existing?.setByName ? ` · set by ${existing.setByName}` : ''}
+                            {existing?.updatedAt ? ' · edited' : ''}
+                          </span>
+                          {existing?.note && (
+                            <span style={{ display: 'block', fontSize: 12, color: t.text2, marginTop: 4, lineHeight: 1.5 }}>
+                              {existing.note}
+                            </span>
+                          )}
+                        </span>
+
+                        <span style={{ flex: '0 0 120px' }}>
+                          <Field label="Packets">
+                            {/* Named per person. Field renders its label as a
+                                div, so without this every box on the screen is
+                                an unnamed control called the same thing — to a
+                                screen reader and to anything else that looks a
+                                control up by what it is for. */}
+                            <input type="number" inputMode="numeric" min={0}
+                              aria-label={`Packets for ${r.name}`}
+                              value={targetDraft[r.uid] ?? ''}
+                              onChange={e => setTargetDraft(prev => ({ ...prev, [r.uid]: e.target.value }))}
+                              placeholder="0" style={inputStyle(t)} />
+                          </Field>
+                        </span>
+
+                        <GhostButton onClick={() => saveTarget(r)}
+                          ariaLabel={`${existing ? 'Update' : 'Set'} target for ${r.name}`}
+                          disabled={targetSaving === r.uid || !dirty}>
+                          {targetSaving === r.uid ? 'Saving…' : existing ? 'Update' : 'Set'}
+                        </GhostButton>
+                      </div>
+
+                      <input
+                        aria-label={`Note for ${r.name}`}
+                        value={targetNote[r.uid] ?? ''}
+                        onChange={e => setTargetNote(prev => ({ ...prev, [r.uid]: e.target.value }))}
+                        placeholder="Why, if it is not the usual — Onam push, covering a beat"
+                        style={{ ...inputStyle(t), fontSize: 13 }} />
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </>
         )}
       </div>

@@ -14,8 +14,9 @@ import VisitLogger from './VisitLogger'
 import ActivityScreen from './ActivityScreen'
 import LeaveHistory from './LeaveHistory'
 import {
-  Party, DailyVisitLog, LeaveRecord, Holiday,
+  Party, DailyVisitLog, LeaveRecord, Holiday, SalesTarget,
   WorkPlan, SalesRoute, workPlanId, ManagerActivity, MANAGER_ACTIVITY_LABEL,
+  salesTargetId, packetsSettled,
 } from '../../types'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr, localMonthStr, localTimeStr, isSunday } from '../../utils/date'
@@ -43,6 +44,15 @@ export default function SalesView({ name }: Props) {
   const [visitInitialDate, setVisitInitialDate] = useState<string | undefined>()
   const [parties, setParties] = useState<Party[]>([])
   const [todayVisitLog, setTodayVisitLog] = useState<DailyVisitLog | null>(null)
+  /**
+   * This month's packet target, and what has settled against it.
+   *
+   * On the rep's own screen because a target nobody can see is not a target,
+   * it is a note in somebody else's report. Read-only here — theirs to work
+   * toward, not to set.
+   */
+  const [myTarget, setMyTarget] = useState<SalesTarget | null>(null)
+  const [mySettled, setMySettled] = useState(0)
   const [todayLeave, setTodayLeave] = useState<LeaveRecord | null>(null)
   const [allLeaveRecords, setAllLeaveRecords] = useState<LeaveRecord[]>([])
   const [visitLogLoaded, setVisitLogLoaded] = useState(false)
@@ -291,6 +301,26 @@ export default function SalesView({ name }: Props) {
 
   useEffect(() => {
     if (!appUser) return
+    const u1 = onSnapshot(
+      doc(db, 'sales_targets', salesTargetId(appUser.uid, currentMonth())),
+      snap => setMyTarget(snap.exists() ? ({ id: snap.id, ...snap.data() } as SalesTarget) : null),
+      // No target for the month is the ordinary case, not a fault.
+      () => setMyTarget(null),
+    )
+    // Their own settled bills. Scoped by uid so the read is one a rep is
+    // allowed to make, and filtered to the month here because what counts is
+    // when the money arrived.
+    const u2 = onSnapshot(
+      query(collection(db, 'allocations_v2'), where('createdBy', '==', appUser.uid)),
+      snap => setMySettled(packetsSettled(
+        snap.docs.map(d => d.data() as any), appUser.uid, currentMonth())),
+      () => setMySettled(0),
+    )
+    return () => { u1(); u2() }
+  }, [appUser])
+
+  useEffect(() => {
+    if (!appUser) return
     const q = query(collection(db, 'leave_records'), where('uid', '==', appUser.uid))
     return onSnapshot(q, snap => {
       const records = snap.docs.map(d => ({ id: d.id, ...d.data() } as LeaveRecord))
@@ -530,6 +560,40 @@ export default function SalesView({ name }: Props) {
             </div>
           </div>
         )}
+
+        {/* This month's target. Only when somebody set one — a card reading
+            "0 of 0" is a feature announcing itself rather than information. */}
+        {myTarget && myTarget.units > 0 && (() => {
+          const pct = Math.min(100, Math.round((mySettled / myTarget.units) * 100))
+          const left = Math.max(0, myTarget.units - mySettled)
+          return (
+            <div style={{ background: t.tint, borderRadius: 6, padding: '14px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+                <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: t.text }}>
+                  This month · {mySettled} of {myTarget.units} packets
+                </span>
+                <span style={{ fontSize: 14, color: pct >= 100 ? t.text2 : t.text3 }}>
+                  {pct}%
+                </span>
+              </div>
+              {/* A bar, because a percentage is read and a bar is seen. */}
+              <div style={{ marginTop: 10, height: 4, borderRadius: 2, background: t.border, overflow: 'hidden' }}>
+                <div style={{ width: `${pct}%`, height: '100%', background: t.text2 }} />
+              </div>
+              <div style={{ fontSize: 13, color: t.text3, marginTop: 9, lineHeight: 1.5 }}>
+                {left === 0
+                  ? 'Target met.'
+                  : `${left} to go. Counted when a bill is settled, so credit you sold `
+                    + 'this month lands here when it is paid.'}
+              </div>
+              {myTarget.note && (
+                <div style={{ fontSize: 13, color: t.text2, marginTop: 6, lineHeight: 1.5 }}>
+                  {myTarget.note}
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
         {/* Leave status */}
         {todayLeave && (todayLeave.status === 'pending_approval' || todayLeave.status === 'active' || todayLeave.status === 'unmark_requested') && (

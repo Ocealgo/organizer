@@ -256,12 +256,19 @@ function capFullWidth(style?: CSSProperties): CSSProperties | undefined {
   return { ...style, maxWidth: FULL_WIDTH_CAP }
 }
 
-export function GhostButton({ onClick, children, disabled, style }: {
+export function GhostButton({ onClick, children, disabled, style, ariaLabel }: {
   onClick?: () => void; children: ReactNode; disabled?: boolean; style?: CSSProperties
+  /**
+   * An accessible name, when the visible text is not enough on its own.
+   *
+   * A column of buttons all reading "Set" is unambiguous to somebody who can
+   * see which row each one is in and ambiguous to everybody else.
+   */
+  ariaLabel?: string
 }) {
   const { t } = useTheme()
   return (
-    <button className="oc-action" onClick={onClick} disabled={disabled}
+    <button className="oc-action" onClick={onClick} disabled={disabled} aria-label={ariaLabel}
       style={{
         background: 'none', border: `0.5px solid ${t.border2}`, borderRadius: 6,
         padding: '9px 14px', fontSize: 13, fontWeight: 400, color: t.text,

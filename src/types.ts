@@ -1465,6 +1465,75 @@ export function workPlanId(uid: string, date: string): string {
 }
 
 /**
+ * How many packets a rep is expected to sell in a month.
+ *
+ * Its own collection rather than a third field on PlanTargets, and the reason
+ * is the horizon. A day's plan is advisory and often absent — a rep works days
+ * nobody assigned, and summing daily targets over a month would quietly
+ * measure them against whatever happened to be filled in. A month is a figure
+ * somebody decides once, and it is the horizon a packet number is actually set
+ * on.
+ *
+ * Packets, not rupees. PlanTargets already carries `orderValue` for the money
+ * question; this is the volume one, and the two answer differently when the
+ * cheap line sells.
+ *
+ * WHAT COUNTS TOWARD IT
+ * Packets on orders that reached `paid`, counted in the month the money
+ * arrived rather than the month the order was raised. That is a deliberate
+ * choice and it has a consequence worth knowing: credit runs thirty days here,
+ * so a rep's October figure largely reflects September's selling, and the first
+ * days of any month look empty. The screens show what was raised alongside it
+ * so the lag is visible rather than mysterious. A partly-paid bill counts for
+ * nothing until it clears — the unit is an order settled, not a part of one.
+ */
+export interface SalesTarget {
+  id?: string
+  uid: string
+  /** Denormalised so a report can render without joining users. */
+  name: string
+  month: string                   // YYYY-MM
+  /** Packets to sell. Zero is a real answer and means "no target this month". */
+  units: number
+  /** Anything the number cannot say — "Onam push", "covering Priya's beat". */
+  note?: string
+  setBy: string
+  setByName: string
+  setAt: number
+  updatedAt?: number
+}
+
+/** One target per person per month, enforced by the key rather than by hope. */
+export function salesTargetId(uid: string, month: string): string {
+  return `${uid}_${month}`
+}
+
+/**
+ * Packets a rep has sold in a month, by the definition the target uses.
+ *
+ * Here rather than in a screen because two of them ask — the report reads it
+ * for the team and the rep's own home reads it for one person — and a target
+ * measured one way in one place and another way in the other is worse than no
+ * target.
+ */
+export function packetsSettled(
+  allocations: { status: string; packets?: number; paidAt?: number; createdBy?: string }[],
+  uid: string,
+  month: string,
+): number {
+  return allocations.reduce((n, a) => {
+    if (a.createdBy !== uid || a.status !== 'paid' || !a.paidAt) return n
+    return monthOfMs(a.paidAt) === month ? n + (a.packets || 0) : n
+  }, 0)
+}
+
+/** YYYY-MM for a timestamp, in local time — the same month a person would say. */
+export function monthOfMs(ms: number): string {
+  const d = new Date(ms)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+/**
  * How a planned day actually went.
  *
  * Derived at read time from the beat and the visits, never stored — so it
