@@ -34,8 +34,9 @@ const MGR_DEFAULT = {
   view_credit: true, view_expenses: true, view_leave: true, view_reports: true,
   view_users: true, view_workspace: false,
   edit_parties: true, approve_leave: true, approve_sales_users: true,
+  dispatch_allocations: true,
   manage_products: false, edit_stock: false,
-  dispatch_allocations: false, mark_paid: false, approve_payments: false,
+  mark_paid: false, approve_payments: false,
   clear_expenses: false, delete_parties: false,
 }
 
@@ -815,8 +816,16 @@ describe('expenses', () => {
 describe('sales manager — permission enforcement', () => {
   it('a manager CANNOT widen their own permissions', async () => {
     // The whole feature rests on this one.
+    //
+    // It has to ask for something the defaults do not already grant, or it is
+    // not a widening at all. This used to raise dispatch_allocations, and when
+    // that shipped on by default the payload became identical to what was
+    // stored — a write that changes no keys, which the rules allow because
+    // there is nothing in it to refuse. It would have gone on passing while
+    // testing nothing. mark_paid is a money permission and stays off, so
+    // asking for it is a real escalation.
     await assertFails(updateDoc(doc(asUser(U.mgr), 'users', U.mgr), {
-      permissions: { ...MGR_DEFAULT, dispatch_allocations: true },
+      permissions: { ...MGR_DEFAULT, mark_paid: true },
     }))
   })
 
@@ -847,8 +856,26 @@ describe('sales manager — permission enforcement', () => {
     await assertSucceeds(deleteDoc(doc(asUser(U.mgrPlus), 'parties', 'p1')))
   })
 
-  it('a manager on defaults CANNOT dispatch an allocation', async () => {
+  // Sending the stock ships on by default now. Off, the work did not stop
+  // happening — it moved to an admin, who dispatched allocations a manager had
+  // already decided on.
+  it('a manager on defaults CAN dispatch an allocation', async () => {
     await seed((db) => setDoc(doc(db, 'allocations_v2', 'a1'), alloc()))
+    await assertSucceeds(updateDoc(doc(asUser(U.mgr), 'allocations_v2', 'a1'),
+      { status: 'sent', sentAt: 9 }))
+  })
+
+  // The default moved; the permission still decides. An admin who takes
+  // dispatch away from somebody has to actually have taken it away.
+  it('a manager with dispatch_allocations withheld CANNOT dispatch', async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, 'users', U.mgr), {
+        email: 'mgr@ocealgo.test', name: U.mgr, role: 'sales_manager',
+        status: 'approved', createdAt: 1,
+        permissions: { ...MGR_DEFAULT, dispatch_allocations: false },
+      })
+      await setDoc(doc(db, 'allocations_v2', 'a1'), alloc())
+    })
     await assertFails(updateDoc(doc(asUser(U.mgr), 'allocations_v2', 'a1'),
       { status: 'sent', sentAt: 9 }))
   })

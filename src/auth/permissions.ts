@@ -71,10 +71,17 @@ export const DEFAULT_SALES_MANAGER_PERMISSIONS: PermissionMap = {
   // Planning the week is the manager's job and nobody else's, so it is on by
   // default rather than something an admin has to remember to grant.
   assign_work: true,
+  // So is sending the stock. Off by default, the work did not stop happening —
+  // it moved to an admin, who then dispatched allocations a manager had already
+  // decided on. That is not a control, it is a queue with one person in it.
+  //
+  // The line this draws: the manager moves goods, an admin confirms money.
+  // mark_paid, approve_payments and clear_expenses stay off below, so nothing
+  // here lets a manager declare that cash arrived.
+  dispatch_allocations: true,
 
   manage_products: false,
   edit_stock: false,
-  dispatch_allocations: false,
   mark_paid: false,
   approve_payments: false,
   clear_expenses: false,

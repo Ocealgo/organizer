@@ -20,8 +20,9 @@ const MGR_DEFAULT: PermissionMap = {
   view_credit: true, view_expenses: true, view_leave: true, view_reports: true,
   view_users: true, view_workspace: false,
   edit_parties: true, approve_leave: true, approve_sales_users: true,
+  dispatch_allocations: true,
   manage_products: false, edit_stock: false,
-  dispatch_allocations: false, mark_paid: false, approve_payments: false,
+  mark_paid: false, approve_payments: false,
   clear_expenses: false, delete_parties: false,
 }
 
@@ -128,6 +129,37 @@ export async function noOneOnDuty(): Promise<void> {
 export async function noWeeksFiled(): Promise<void> {
   await emptyNow('expense_reports')
   await emptyNow('expense_entries')
+}
+
+/**
+ * An order on the books, at whatever stage the spec needs.
+ *
+ * Seeded rather than clicked because what is being tested is who may act on
+ * one, not who may raise one — and raising one through the UI drags in stock
+ * config, a product, a price and a planned date, none of which the assertion
+ * is about.
+ *
+ * The receiving party is the distributor: `party_shop` sits under one, and a
+ * company order to a retailer with a distributor above it is a different flow
+ * with a different screen.
+ */
+export async function companyAllocation(
+  over: Record<string, unknown> = {},
+): Promise<string> {
+  const ref = await getFirestore(admin()).collection('allocations_v2').add({
+    fromType: 'company', fromId: 'company', fromName: 'Ocealgo',
+    partyId: 'party_dist', partyName: 'Rajan Distributors', partyType: 'distributor',
+    productId: 'prod_wipes', productName: 'Baby Wet Wipes 72s',
+    packets: 24, cartons: 1, pricePerPacket: 60, totalAmount: 1440,
+    paymentType: 'credit',
+    plannedDate: '2099-01-01',
+    status: 'pending', notes: '',
+    createdBy: USERS.rep.uid, createdByName: USERS.rep.name,
+    createdAt: Date.now(), month: '2099-01', lockedAtCreation: false,
+    channel: 'desk',
+    ...over,
+  })
+  return ref.id
 }
 
 /**
