@@ -337,7 +337,8 @@ export default function PartyManager({ onBack }: Props) {
   }
 
   if (tab === 'import') return <CSVImporter onBack={() => setTab('list')} onDone={() => setTab('list')} />
-  if (tab === 'allocations') return <AllocationManager onBack={() => setTab('list')} parties={parties} isAdmin={canDispatch} />
+  if (tab === 'allocations') return <AllocationManager onBack={() => setTab('list')} parties={parties}
+    canDispatch={canDispatch} canMarkPaid={can(appUser, 'mark_paid')} />
 
   const distributorOptions = distributors.map(d => ({ value: d.id!, label: d.name }))
   const uniqueDistricts = [...new Set(parties.map(p => p.district).filter(Boolean))].sort() as string[]

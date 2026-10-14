@@ -18,7 +18,29 @@ import {
 
 import { bookAllocation } from '../../data/bookAllocation'
 
-interface Props { onBack: () => void; parties: Party[]; isAdmin?: boolean; highlightId?: string; salesRepOnly?: boolean }
+/**
+ * Two permissions, not one role.
+ *
+ * This used to take a single `isAdmin`, which every caller was already filling
+ * in from `dispatch_allocations` — and which then gated Mark paid as well.
+ * Marking a bill paid has its own permission, deliberately, because moving
+ * stock and deciding money arrived are different authorities. So anybody
+ * granted dispatch got a Mark paid button the rules would refuse, and the
+ * refusal was silent.
+ *
+ * Named after what they allow rather than who holds them, so the next person
+ * to add a button has to decide which one it belongs to.
+ */
+interface Props {
+  onBack: () => void
+  parties: Party[]
+  /** Move stock: dispatch, confirm a distributor sent it, fulfil an indent, cancel. */
+  canDispatch?: boolean
+  /** Declare a credit bill settled. A money action, and not implied by the above. */
+  canMarkPaid?: boolean
+  highlightId?: string
+  salesRepOnly?: boolean
+}
 
 const STATUS_LABEL: Record<AllocationStatus, string> = {
   pending: 'Pending', sent: 'Sent', paid: 'Paid', overdue: 'Overdue', cancelled: 'Cancelled',
@@ -27,7 +49,9 @@ const STATUS_LABEL: Record<AllocationStatus, string> = {
 /** Only two tones carry meaning here: something needs action, or it does not. */
 const NEEDS_ACTION: AllocationStatus[] = ['pending', 'overdue']
 
-export default function AllocationManager({ onBack, parties, isAdmin, highlightId, salesRepOnly }: Props) {
+export default function AllocationManager({
+  onBack, parties, canDispatch, canMarkPaid, highlightId, salesRepOnly,
+}: Props) {
   const { appUser } = useAuth()
   const { t } = useTheme()
   const { config } = useStockConfig()
@@ -302,12 +326,18 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
           await updateStockConfig({ locked: Math.max(0, config.locked - a.packets) })
         }
       }
+    } catch (err: any) {
+      // This one hands packets back, so a failure halfway leaves the available
+      // figure wrong. Worth telling somebody rather than letting the row sit
+      // there looking unchanged.
+      await showAlert('Could not cancel it', err?.message
+        || 'Something went wrong, and the locked stock may not have been released. Please try again.')
     } finally { setActing(null) }
   }
 
-  // Admin dispatches — moves stock via transaction
+  // Dispatching — moves stock via transaction
   const handleDispatch = async (a: UnifiedAllocation, sentDate: string) => {
-    if (!isAdmin) return
+    if (!canDispatch) return
     const isCompany = a.fromType === 'company' || !(a as any).fromType
 
     // UX pre-check (non-atomic — transaction re-validates atomically)
@@ -420,13 +450,21 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
     } finally { setActing(null) }
   }
 
-  // Admin marks credit paid — stock already moved at dispatch, just flip status
+  // Settling a credit bill — stock already moved at dispatch, just flip status.
+  // Its own permission: dispatching is goods, this is money.
   const handleMarkPaid = async (a: UnifiedAllocation) => {
-    if (!isAdmin) return
+    if (!canMarkPaid) return
     if (!await showConfirm('Mark this as paid?', `₹${a.totalAmount.toLocaleString('en-IN')} received from ${a.partyName}.`, 'Mark paid')) return
     setActing(a.id!)
     try {
       await updateDoc(doc(db, 'allocations_v2', a.id!), { status: 'paid' as AllocationStatus, paidAt: Date.now() })
+    } catch (err: any) {
+      // Said out loud. A button that does nothing on click reads as a broken
+      // app rather than as a rule being enforced, and this one is reachable
+      // only by somebody the rules may still refuse.
+      await showAlert('Could not mark it paid', err?.code === 'permission-denied'
+        ? 'Firestore refused that. Marking a bill paid needs the money permission, not the dispatch one.'
+        : err?.message || 'Something went wrong. Please try again.')
     } finally { setActing(null) }
   }
 
@@ -902,7 +940,7 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
                                 plannedDate: a.plannedDate, creditDueDate: (a as any).creditDueDate || '',
                               }))}
 
-                            {isAdmin && (a.status === 'pending' || a.status === 'overdue') && (
+                            {canDispatch && (a.status === 'pending' || a.status === 'overdue') && (
                               <>
                                 {action(
                                   acting === a.id ? 'Working' : a.fromType === 'distributor' ? 'Confirm sent' : 'Dispatch',
@@ -912,12 +950,15 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
                               </>
                             )}
 
-                            {isAdmin && a.fromType !== 'distributor' && isSentCredit &&
+                            {canMarkPaid && a.fromType !== 'distributor' && isSentCredit &&
                               action(acting === a.id ? 'Working' : 'Mark paid', () => handleMarkPaid(a), acting === a.id)}
 
-                            {!isAdmin && (a.status === 'pending' || a.status === 'overdue') && (
+                            {!canDispatch && (a.status === 'pending' || a.status === 'overdue') && (
                               <span style={{ fontSize: 13, fontWeight: 400, color: t.text3 }}>
-                                Waiting for an admin to dispatch this.
+                                {/* Not "an admin" any more — a sales manager holding
+                                    dispatch is the ordinary case now, and naming the
+                                    wrong person is how a rep chases the wrong one. */}
+                                Waiting to be dispatched.
                               </span>
                             )}
 
@@ -994,7 +1035,7 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
                             </div>
                           )}
 
-                          {isAdmin && (
+                          {canDispatch && (
                             <div style={{ marginTop: 16, maxWidth: 460 }}>
                               <Field label="Packets to send"
                                 hint={`They asked for ${indent.requestedPackets}.`}
@@ -1332,7 +1373,7 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
                                         {distStockN} in stock
                                       </div>
                                     </div>
-                                    {isAdmin && (
+                                    {canDispatch && (
                                       <div style={{ marginTop: 10 }}>
                                         {indentErrors[indent.id!] && (
                                           <div style={{ fontSize: 12, color: t.warn, marginBottom: 6 }}>
@@ -1419,7 +1460,7 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
                             })}
                           </div>
 
-                          {isAdmin && (
+                          {canDispatch && (
                             <div style={{ marginTop: 12 }}>
                               {action('View full history', () => setHistoryPartyId(dist.id!))}
                             </div>
@@ -1471,7 +1512,7 @@ export default function AllocationManager({ onBack, parties, isAdmin, highlightI
                                 if (next.has(r.id!)) next.delete(r.id!); else next.add(r.id!)
                                 return next
                               }))}
-                            {isAdmin && action('View full history', () => setHistoryPartyId(r.id!))}
+                            {canDispatch && action('View full history', () => setHistoryPartyId(r.id!))}
                           </div>
                           {open && recent.map(a => <AllocLine key={a.id} a={a} />)}
                         </div>

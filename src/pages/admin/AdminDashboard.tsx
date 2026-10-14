@@ -1136,7 +1136,8 @@ export default function AdminDashboard() {
       <AllocationManager
         onBack={() => setSubScreen("dashboard")}
         parties={parties}
-        isAdmin={can(appUser, "dispatch_allocations")}
+        canDispatch={can(appUser, "dispatch_allocations")}
+        canMarkPaid={can(appUser, "mark_paid")}
       />
     );
   // The reports front door. Both screens below it existed and neither was
