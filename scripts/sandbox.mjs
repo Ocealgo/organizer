@@ -17,6 +17,14 @@
  *
  * The seed itself is `tests/e2e/fixtures/seed.ts`, imported rather than copied.
  * A sandbox that drifts from what the specs assert is a sandbox that lies.
+ *
+ * NO DATA VIEWER HERE
+ * firebase.json enables the Emulator UI, but `emulators:exec` is the CI entry
+ * point and does not start it — it runs a command against the emulators and
+ * leaves. `npm run emulators` is the one that opens the UI, and it takes no
+ * command, so having both would mean two processes and two worlds to keep
+ * straight. The app is the viewer: everything seeded here is reachable through
+ * a screen, which is the point of a sandbox you click rather than query.
  */
 import { getFirestore } from 'firebase-admin/firestore'
 import {

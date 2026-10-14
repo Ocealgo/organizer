@@ -433,15 +433,20 @@ sandbox and a live-pointing dev server can run side by side.
 | pending | `pending@ocealgo.test` | 9800000006 | awaiting approval |
 
 Password for all of them: `Passw0rd!`. Either the email or the mobile number signs
-them in — the numbers are real linked auth providers, so the OTP flows work too
-(the emulator keeps the code it would have texted; the Auth tab at
-http://127.0.0.1:4000 shows it).
+them in. The numbers are real linked auth providers, so the OTP flows work too:
+no SMS leaves the machine, and the code the emulator would have texted is
+readable from its own endpoint — `latestSmsCode()` in the seed fixtures is what
+the specs use.
 
 The world is two products, a distributor, two retailers and a ₹4.50/km fuel rate.
 The seed itself lives in `tests/e2e/fixtures/seed.ts` and is shared with the
 Playwright suite rather than copied, so the sandbox cannot drift from what the
 specs assert. Sandbox-only extras are applied on top in `scripts/sandbox.mjs`.
-The emulator UI at http://127.0.0.1:4000 shows every document as you write it.
+
+There is no Emulator UI alongside it: `emulators:exec` is the CI entry point and
+does not start one. `npm run emulators` opens the UI, but it takes no command of
+its own, so running both would mean two worlds to keep straight. Here the app is
+the viewer.
 
 ### Firebase Setup
 
