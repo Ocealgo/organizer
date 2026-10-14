@@ -6,7 +6,7 @@ import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
   AppUser, SalesRoute, WorkPlan, Holiday, LeaveRecord, SalesTarget, UnifiedAllocation,
-  workPlanId, routePlaces, salesTargetId, packetsSettled,
+  workPlanId, routePlaces, salesTargetId, packetsOrdered,
 } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
@@ -648,9 +648,13 @@ export default function Planner({ onBack }: Props) {
 
             <Note>
               Packets each rep is expected to sell this month. Progress counts packets on
-              bills that have been settled, in the month the money arrived — so credit
-              sold in September lands in October, and the first days of a month look thin.
-              What was ordered is shown beside it so the difference is visible.
+              orders they placed, in the month they placed them, and a cancelled order
+              counts for nothing — the figure is worked out from the orders every time,
+              so cancelling one takes its packets straight back out.
+              <br /><br />
+              A day&rsquo;s target lives on the beat rather than here, beside the visit and
+              order value ones: open a beat in Beats to say how many packets a round is
+              worth. A rep sees it on their day, under this month&rsquo;s figure.
             </Note>
 
             {targetError && <Note tone="warn">{targetError}</Note>}
@@ -664,15 +668,14 @@ export default function Planner({ onBack }: Props) {
               <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
                 {reps.map(r => {
                   const existing = targets.find(x => x.uid === r.uid)
-                  const settled = packetsSettled(allocations as any, r.uid, targetMonth)
-                  // Raised, for context. Not the measure — just the reason a
-                  // settled figure can look low while somebody is working.
-                  const raised = allocations
-                    .filter(a => a.createdBy === r.uid && a.status !== 'cancelled'
-                      && (a.month || '') === targetMonth)
-                    .reduce((n, a) => n + (a.packets || 0), 0)
+                  const ordered = packetsOrdered(allocations as any, r.uid, targetMonth)
+                  // Cancelled orders are simply absent from the count above,
+                  // which is the whole reason it is derived rather than stored.
+                  // Said out loud so the number is not only a number.
+                  const cancelled = allocations
+                    .filter(a => a.createdBy === r.uid && a.status === 'cancelled').length
                   const goal = existing?.units ?? 0
-                  const pct = goal > 0 ? Math.round((settled / goal) * 100) : null
+                  const pct = goal > 0 ? Math.round((ordered / goal) * 100) : null
                   const dirty = (targetDraft[r.uid] ?? '') !== String(existing?.units ?? '')
                     || (targetNote[r.uid] ?? '') !== ''
 
@@ -688,11 +691,13 @@ export default function Planner({ onBack }: Props) {
                           </span>
                           <span style={{ display: 'block', fontSize: 13, color: t.text3, marginTop: 3 }}>
                             {goal > 0
-                              ? `${settled} of ${goal} packets settled${pct !== null ? ` · ${pct}%` : ''}`
-                              : `${settled} packets settled · no target set`}
+                              ? `${ordered} of ${goal} packets ordered${pct !== null ? ` · ${pct}%` : ''}`
+                              : `${ordered} packets ordered · no target set`}
                           </span>
                           <span style={{ display: 'block', fontSize: 12, color: t.text3, marginTop: 2 }}>
-                            {raised} packets ordered this month
+                            {cancelled > 0
+                              ? `${cancelled} cancelled, not counted`
+                              : 'Cancelled orders are not counted'}
                             {existing?.setByName ? ` · set by ${existing.setByName}` : ''}
                             {existing?.updatedAt ? ' · edited' : ''}
                           </span>

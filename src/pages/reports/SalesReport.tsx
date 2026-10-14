@@ -5,7 +5,7 @@ import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
   AppUser, Holiday, LeaveRecord, SalesTarget,
-  VISIT_OUTCOME_LABEL, VisitOutcomeCategory, packetsSettled,
+  VISIT_OUTCOME_LABEL, VisitOutcomeCategory, packetsOrdered,
 } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
@@ -71,12 +71,12 @@ interface PersonStats {
   orders: number
   orderValue: number
   /**
-   * Packets on bills settled inside the month, and the month's target.
+   * Packets ordered inside the month, and the month's target.
    *
    * Only meaningful over a whole month, which is the horizon a target is set
    * on, so both are zero in any other range and the rows are not offered.
    */
-  packetsSettled: number
+  packetsOrdered: number
   targetUnits: number
   payments: number
   paymentValue: number
@@ -91,7 +91,7 @@ const EMPTY = (uid: string, name: string): PersonStats => ({
   interested: 0, notInterested: 0, followUp: 0,
   newParties: 0, visitMinutes: 0, timedVisits: 0,
   orders: 0, orderValue: 0,
-  packetsSettled: 0, targetUnits: 0,
+  packetsOrdered: 0, targetUnits: 0,
   payments: 0, paymentValue: 0,
   expenses: 0, fullDayLeave: 0, halfDayLeave: 0,
 })
@@ -123,15 +123,7 @@ export default function SalesReport({ onBack }: Props) {
   const [newParties, setNewParties] = useState<any[]>([])
   const [revisitLogs, setRevisitLogs] = useState<any[]>([])
   const [allocations, setAllocations] = useState<any[]>([])
-  /**
-   * Everything settled, and the month's targets.
-   *
-   * Separate from `allocations` above, which is narrowed by `createdAt`: what
-   * counts toward a target is the month the money arrived, and an order raised
-   * in August can be paid in October. Narrowing by when it was raised would
-   * miss exactly the bills a target is measured by.
-   */
-  const [paidAllocs, setPaidAllocs] = useState<any[]>([])
+  /** The month's targets. What counts toward them is already in `allocations`. */
   const [monthTargets, setMonthTargets] = useState<SalesTarget[]>([])
   const [payments, setPayments] = useState<any[]>([])
   const [expenses, setExpenses] = useState<any[]>([])
@@ -185,29 +177,26 @@ export default function SalesReport({ onBack }: Props) {
   }, [from, to])
 
   /**
-   * The month's targets, and the bills that count toward them.
+   * The month's targets.
    *
    * Only while a whole month is on screen. A target is a monthly figure, so
    * "62% of target" over a Tuesday is not a smaller truth, it is a different
    * and wrong one — the rows are withheld rather than rendered as noise.
+   *
+   * Nothing extra is fetched for the progress half. The orders already loaded
+   * for this range are narrowed by `createdAt`, which is exactly what the
+   * target counts — it was a second whole-collection listener while the
+   * measure was payments.
    */
   useEffect(() => {
-    if (mode !== 'month') { setMonthTargets([]); setPaidAllocs([]); return }
-    const unsubs = [
-      onSnapshot(
-        query(collection(db, 'sales_targets'), where('month', '==', month)),
-        snap => setMonthTargets(snap.docs.map(d => ({ id: d.id, ...d.data() } as SalesTarget))),
-        // A month nobody set targets for is the ordinary case, and a refused
-        // read is not — but neither should empty the rest of the report.
-        () => setMonthTargets([]),
-      ),
-      onSnapshot(
-        query(collection(db, 'allocations_v2'), where('status', '==', 'paid')),
-        snap => setPaidAllocs(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
-        () => setPaidAllocs([]),
-      ),
-    ]
-    return () => unsubs.forEach(u => u())
+    if (mode !== 'month') { setMonthTargets([]); return }
+    return onSnapshot(
+      query(collection(db, 'sales_targets'), where('month', '==', month)),
+      snap => setMonthTargets(snap.docs.map(d => ({ id: d.id, ...d.data() } as SalesTarget))),
+      // A month nobody set targets for is the ordinary case, and a refused
+      // read is not — but neither should empty the rest of the report.
+      () => setMonthTargets([]),
+    )
   }, [mode, month])
 
   // ── aggregation ────────────────────────────────────────────────────────────
@@ -295,7 +284,7 @@ export default function SalesReport({ onBack }: Props) {
       // Shared with the Planner and the rep's own screen through
       // packetsSettled, so a target cannot mean one thing here and another
       // there.
-      s.packetsSettled = packetsSettled(paidAllocs, uid, month)
+      s.packetsOrdered = packetsOrdered(allocations, uid, month)
       s.targetUnits = monthTargets.find(x => x.uid === uid)?.units ?? 0
     })
 
@@ -331,7 +320,7 @@ export default function SalesReport({ onBack }: Props) {
 
     return { rows: list, team: total, workingDays: working }
   }, [salesUsers, scope, visitLogs, allocations, payments, expenses, leaves, holidays,
-      from, to, paidAllocs, monthTargets, month])
+      from, to, monthTargets, month])
 
   const conversion = team.visits > 0 ? ((team.interested / team.visits) * 100).toFixed(1) : '0.0'
 
@@ -355,12 +344,12 @@ export default function SalesReport({ onBack }: Props) {
     { label: 'Order value', get: s => s.orderValue, money: true },
     // Only over a whole month, which is the horizon a target is set on.
     ...(mode === 'month' ? [
-      { label: 'Packets settled', get: (s: PersonStats) => s.packetsSettled },
+      { label: 'Packets ordered', get: (s: PersonStats) => s.packetsOrdered },
       { label: 'Monthly target', get: (s: PersonStats) => s.targetUnits },
       {
         label: '% of target',
         get: (s: PersonStats) => s.targetUnits > 0
-          ? +((s.packetsSettled / s.targetUnits) * 100).toFixed(1)
+          ? +((s.packetsOrdered / s.targetUnits) * 100).toFixed(1)
           : 0,
       },
     ] : []),

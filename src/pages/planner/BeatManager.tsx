@@ -44,6 +44,8 @@ export default function BeatManager({ onBack }: Props) {
   const [search, setSearch] = useState('')
   const [targetVisits, setTargetVisits] = useState('')
   const [targetOrderValue, setTargetOrderValue] = useState('')
+  /** Packets — the day's half of the monthly target a manager sets per rep. */
+  const [targetUnits, setTargetUnits] = useState('')
   const [saving, setSaving] = useState(false)
   const [blocked, setBlocked] = useState<string | null>(null)
   const [beatSearch, setBeatSearch] = useState('')
@@ -100,6 +102,7 @@ export default function BeatManager({ onBack }: Props) {
     setTypeFilter('all'); setSearch('')
     setTargetVisits(r.defaultTargets?.visits?.toString() ?? '')
     setTargetOrderValue(r.defaultTargets?.orderValue?.toString() ?? '')
+    setTargetUnits(r.defaultTargets?.units?.toString() ?? '')
     setBlocked(null)
   }
 
@@ -145,6 +148,7 @@ export default function BeatManager({ onBack }: Props) {
       const targets = {
         ...(targetVisits.trim() ? { visits: Number(targetVisits) } : {}),
         ...(targetOrderValue.trim() ? { orderValue: Number(targetOrderValue) } : {}),
+        ...(targetUnits.trim() ? { units: Number(targetUnits) } : {}),
       }
       const payload = {
         name: name.trim(),
@@ -316,15 +320,24 @@ export default function BeatManager({ onBack }: Props) {
               </Note>
               <Field label="Shops visited"
                 hint="Optional. All visits that day, not only the ones on this beat.">
-                <input type="number" inputMode="numeric" value={targetVisits}
+                <input type="number" inputMode="numeric" aria-label="Shops visited target"
+                  value={targetVisits}
                   onChange={e => setTargetVisits(e.target.value)}
                   placeholder={String(picked.size || 12)} style={inputStyle(t)} />
               </Field>
               <Field label="Order value"
                 hint="Optional. Rupees of orders raised — raised, not dispatched or paid.">
-                <input type="number" inputMode="numeric" value={targetOrderValue}
+                <input type="number" inputMode="numeric" aria-label="Order value target"
+                  value={targetOrderValue}
                   onChange={e => setTargetOrderValue(e.target.value)}
                   placeholder="50000" style={inputStyle(t)} />
+              </Field>
+              <Field label="Packets ordered"
+                hint="Optional. The day's share of the monthly packet target, which a manager sets per rep in the planner. Counted the same way — orders placed, cancellations off.">
+                <input type="number" inputMode="numeric" aria-label="Packets target"
+                  value={targetUnits}
+                  onChange={e => setTargetUnits(e.target.value)}
+                  placeholder="80" style={inputStyle(t)} />
               </Field>
             </div>
           </Section>
@@ -424,6 +437,7 @@ export default function BeatManager({ onBack }: Props) {
                   <span style={{ display: 'block', fontSize: 13, color: t.text3, marginTop: 3 }}>
                     {routePlaces(r).join(', ') || 'No area'} · {(r.outletIds || []).length} shops
                     {r.defaultTargets?.visits ? ` · target ${r.defaultTargets.visits} visits` : ''}
+                    {r.defaultTargets?.units ? ` · ${r.defaultTargets.units} packets` : ''}
                   </span>
                 </button>
                 <button className="oc-action" onClick={() => remove(r)}

@@ -1418,15 +1418,27 @@ export interface StockLedgerEntry {
 /**
  * What a day is aiming at.
  *
- * Deliberately two numbers. Every extra target is another thing a rep is
- * measured on and another column in a grid nobody then reads, and these are
- * the two the business actually steers by.
+ * Three numbers, and no more. Every extra target is another thing a rep is
+ * measured on and another column in a grid nobody then reads.
+ *
+ * `units` arrived with the monthly packet target, so that a day has the same
+ * question asked of it as the month: a rep working toward two thousand packets
+ * wants to know what today is supposed to contribute, and a monthly figure
+ * divided by the days left is arithmetic they should not have to do standing
+ * in a shop.
+ *
+ * It sits on the beat with the other two, because that is where a day's
+ * expectations are already decided — a beat of forty shops in town is not the
+ * same day as eight in the hills, and the target belongs to the round rather
+ * than to the person walking it.
  */
 export interface PlanTargets {
   /** Shops visited — all of them, beat or not. */
   visits?: number
   /** Rupee value of orders raised. Raised, not dispatched or paid. */
   orderValue?: number
+  /** Packets ordered. Same measure as the monthly target, over one day. */
+  units?: number
 }
 
 /**
@@ -1479,13 +1491,21 @@ export function workPlanId(uid: string, date: string): string {
  * cheap line sells.
  *
  * WHAT COUNTS TOWARD IT
- * Packets on orders that reached `paid`, counted in the month the money
- * arrived rather than the month the order was raised. That is a deliberate
- * choice and it has a consequence worth knowing: credit runs thirty days here,
- * so a rep's October figure largely reflects September's selling, and the first
- * days of any month look empty. The screens show what was raised alongside it
- * so the lag is visible rather than mysterious. A partly-paid bill counts for
- * nothing until it clears — the unit is an order settled, not a part of one.
+ * Packets on orders the rep placed, in the month they placed them. A
+ * cancelled order counts for nothing.
+ *
+ * Measured on the order rather than on the payment because this is the rep's
+ * number and placing the order is the part they control — whether it ships
+ * depends on the warehouse and whether it is paid depends on the shop. It also
+ * means the figure moves while they are standing in the shop, which is the
+ * only point at which a target changes what somebody does.
+ *
+ * Derived from the orders every time, never accumulated into a stored total.
+ * That is what makes a cancellation correct for free: the packets stop being
+ * counted the moment the order is cancelled, with no running figure to adjust
+ * and nothing to drift out of step. A stored counter would need every path
+ * that cancels, edits or re-raises an order to remember to adjust it, and the
+ * first one that forgot would be wrong quietly and for ever.
  */
 export interface SalesTarget {
   id?: string
@@ -1509,22 +1529,45 @@ export function salesTargetId(uid: string, month: string): string {
 }
 
 /**
- * Packets a rep has sold in a month, by the definition the target uses.
+ * Packets a rep has ordered in a month, by the definition the target uses.
  *
- * Here rather than in a screen because two of them ask — the report reads it
- * for the team and the rep's own home reads it for one person — and a target
- * measured one way in one place and another way in the other is worse than no
+ * Here rather than in a screen because three of them ask — the planner where
+ * the target is set, the report, and the rep's own home — and a target
+ * measured one way in one place and another way in the next is worse than no
  * target.
+ *
+ * Bucketed by when the order was placed, not by `month`, which carries the
+ * planned send date. An order taken on the thirtieth for dispatch on the
+ * second belongs to the month the rep was in the shop; crediting it to the
+ * next one would move their work into a month they had not started.
  */
-export function packetsSettled(
-  allocations: { status: string; packets?: number; paidAt?: number; createdBy?: string }[],
+export function packetsOrdered(
+  allocations: { status: string; packets?: number; createdAt?: number; createdBy?: string }[],
   uid: string,
   month: string,
 ): number {
   return allocations.reduce((n, a) => {
-    if (a.createdBy !== uid || a.status !== 'paid' || !a.paidAt) return n
-    return monthOfMs(a.paidAt) === month ? n + (a.packets || 0) : n
+    if (a.createdBy !== uid || a.status === 'cancelled' || !a.createdAt) return n
+    return monthOfMs(a.createdAt) === month ? n + (a.packets || 0) : n
   }, 0)
+}
+
+/** The same count for one day, for the target a beat carries. */
+export function packetsOrderedOn(
+  allocations: { status: string; packets?: number; createdAt?: number; createdBy?: string }[],
+  uid: string,
+  date: string,
+): number {
+  return allocations.reduce((n, a) => {
+    if (a.createdBy !== uid || a.status === 'cancelled' || !a.createdAt) return n
+    return dateOfMs(a.createdAt) === date ? n + (a.packets || 0) : n
+  }, 0)
+}
+
+/** YYYY-MM-DD for a timestamp, in local time. */
+export function dateOfMs(ms: number): string {
+  const d = new Date(ms)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 /** YYYY-MM for a timestamp, in local time — the same month a person would say. */

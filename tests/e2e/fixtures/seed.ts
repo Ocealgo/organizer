@@ -10,7 +10,11 @@ import { deleteApp, getApps, initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 import { getFirestore } from 'firebase-admin/firestore'
 import type { PermissionMap } from '../../../src/types'
-import { DEFAULT_SALES_MANAGER_PERMISSIONS } from '../../../src/auth/permissions'
+// With the extension, because this file is loaded two ways: Playwright bundles
+// it, and `scripts/sandbox.mjs` imports it straight into Node. A bundler
+// resolves an extensionless path and Node does not, so leaving it off broke the
+// sandbox while every test went on passing.
+import { DEFAULT_SALES_MANAGER_PERMISSIONS } from '../../../src/auth/permissions.ts'
 
 export const PROJECT_ID = 'demo-ocealgo'
 export const PASSWORD = 'Passw0rd!'
@@ -145,6 +149,39 @@ export async function companyStock(productId: string, total: number): Promise<vo
     { productStock: { [productId]: { total, locked: 0 } }, updatedAt: Date.now() },
     { merge: true },
   )
+}
+
+/**
+ * A day assigned to somebody, with a packet target on it.
+ *
+ * The daily target lives on the beat and is copied onto the day when the beat
+ * is assigned, so the thing a rep actually reads is this document. Seeded
+ * directly because walking the beat builder and the planner to arrive at one
+ * number is three screens of setup for an assertion about a fourth.
+ */
+export async function assignedDay(
+  who: UserKey,
+  date: string,
+  targets: { visits?: number; orderValue?: number; units?: number },
+): Promise<void> {
+  const u = USERS[who]
+  await getFirestore(admin()).doc(`work_plans/${u.uid}_${date}`).set({
+    uid: u.uid,
+    name: u.name,
+    date,
+    routeId: 'route_test',
+    routeName: 'Beach Road',
+    targets,
+    assignedBy: USERS.manager.uid,
+    assignedByName: USERS.manager.name,
+    createdAt: Date.now(),
+  })
+}
+
+/** Local date today, the way the app means it. */
+export const todayLocal = (): string => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 const tomorrow = (): string => {
