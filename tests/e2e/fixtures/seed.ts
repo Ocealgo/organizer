@@ -152,12 +152,32 @@ export async function companyStock(productId: string, total: number): Promise<vo
 }
 
 /**
- * A day assigned to somebody, with a packet target on it.
+ * A monthly packet target, with whatever daily breakdown the spec needs.
  *
- * The daily target lives on the beat and is copied onto the day when the beat
- * is assigned, so the thing a rep actually reads is this document. Seeded
- * directly because walking the beat builder and the planner to arrive at one
- * number is three screens of setup for an assertion about a fourth.
+ * Both live in one document: the month figure and its per-day split are one
+ * decision at two grains, and dividing the first is how the second is usually
+ * arrived at.
+ */
+export async function packetTarget(
+  who: UserKey,
+  month: string,
+  units: number,
+  days?: Record<string, number>,
+): Promise<void> {
+  const u = USERS[who]
+  await getFirestore(admin()).doc(`sales_targets/${u.uid}_${month}`).set({
+    uid: u.uid, name: u.name, month, units,
+    ...(days ? { days } : {}),
+    setBy: USERS.manager.uid, setByName: USERS.manager.name, setAt: Date.now(),
+  })
+}
+
+/**
+ * A day assigned to somebody, with the beat's own targets on it.
+ *
+ * Visits and order value only — the packet figure is not a beat's to carry,
+ * because a rep sent off their round still owes the day's packets. That one
+ * lives on the rep's month, in `packetTarget` above.
  */
 export async function assignedDay(
   who: UserKey,

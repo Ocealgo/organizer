@@ -6,7 +6,8 @@ import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
   AppUser, SalesRoute, WorkPlan, Holiday, LeaveRecord, SalesTarget, UnifiedAllocation,
-  workPlanId, routePlaces, salesTargetId, packetsOrdered,
+  workPlanId, routePlaces, salesTargetId, packetsOrdered, packetsOrderedOn,
+  dailyTargetFor, divideAcrossDays,
 } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
@@ -80,6 +81,11 @@ export default function Planner({ onBack }: Props) {
   const [targetNote, setTargetNote] = useState<Record<string, string>>({})
   const [targetSaving, setTargetSaving] = useState<string | null>(null)
   const [targetError, setTargetError] = useState<string | null>(null)
+  /** Whose day-by-day breakdown is open. One at a time — a month of boxes for
+   *  five reps at once is a spreadsheet, and a worse one than a spreadsheet. */
+  const [daysOpenFor, setDaysOpenFor] = useState<string | null>(null)
+  /** uid → date → what is being typed, so a half-typed number is never saved. */
+  const [dayDraft, setDayDraft] = useState<Record<string, Record<string, string>>>({})
 
   /** '' means everybody. Shared by both tabs — a filter you set once holds. */
   const [whoFilter, setWhoFilter] = useState('')
@@ -136,6 +142,17 @@ export default function Planner({ onBack }: Props) {
           s.docs.forEach(d => {
             const v = d.data() as SalesTarget
             if (next[v.uid] === undefined) next[v.uid] = String(v.units)
+          })
+          return next
+        })
+        setDayDraft(prev => {
+          const next = { ...prev }
+          s.docs.forEach(d => {
+            const v = d.data() as SalesTarget
+            if (next[v.uid] === undefined && v.days) {
+              next[v.uid] = Object.fromEntries(
+                Object.entries(v.days).map(([k, n]) => [k, String(n)]))
+            }
           })
           return next
         })
@@ -397,6 +414,92 @@ export default function Planner({ onBack }: Props) {
     } finally { setTargetSaving(null) }
   }
 
+  /**
+   * The days of the chosen month a rep could actually work.
+   *
+   * Sundays are off and a public holiday is off, so neither can carry a
+   * target — dividing a month across days nobody works would hand back a
+   * figure that was wrong on every one of them.
+   *
+   * Approved leave is deliberately not excluded. Leave is decided and changed
+   * after a month is planned, so a breakdown that moved every time somebody
+   * took a day would never match what the rep was told at the start.
+   */
+  const workableDays = useMemo(() => {
+    const [y, m] = targetMonth.split('-').map(Number)
+    const last = new Date(y, m, 0).getDate()
+    const out: string[] = []
+    for (let d = 1; d <= last; d++) {
+      const date = `${targetMonth}-${String(d).padStart(2, '0')}`
+      if (isSunday(date)) continue
+      if (holidays.some(h => h.date === date)) continue
+      out.push(date)
+    }
+    return out
+  }, [targetMonth, holidays])
+
+  const dayBoxes = (uid: string) => dayDraft[uid] ?? {}
+
+  /** Fill the boxes from the month's figure. Not saved until Save is pressed. */
+  const divideEqually = (rep: AppUser) => {
+    const raw = (targetDraft[rep.uid] ?? '').trim()
+    const units = raw === '' ? (targets.find(x => x.uid === rep.uid)?.units ?? 0) : Number(raw)
+    if (!Number.isFinite(units) || units <= 0) {
+      setTargetError(`${rep.name}: set the month's packets first — there is nothing to divide.`)
+      return
+    }
+    setTargetError(null)
+    const split = divideAcrossDays(units, workableDays)
+    setDayDraft(prev => ({
+      ...prev,
+      [rep.uid]: Object.fromEntries(Object.entries(split).map(([d, n]) => [d, String(n)])),
+    }))
+  }
+
+  /**
+   * Save one rep's day-by-day breakdown.
+   *
+   * Written as a whole map rather than day by day: the breakdown is one
+   * decision about a month, and a half-written one is a month that adds up to
+   * the wrong number. A box left blank clears that day rather than storing a
+   * zero — absent means nobody set it, zero means somebody said today does not
+   * count, and those read differently on the rep's screen.
+   */
+  const saveDays = async (rep: AppUser) => {
+    const boxes = dayBoxes(rep.uid)
+    const days: Record<string, number> = {}
+    for (const [date, raw] of Object.entries(boxes)) {
+      const v = raw.trim()
+      if (v === '') continue
+      const n = Number(v)
+      if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
+        setTargetError(`${rep.name}, ${date}: packets has to be a whole number, zero or more.`)
+        return
+      }
+      days[date] = n
+    }
+    setTargetError(null)
+    setTargetSaving(rep.uid)
+    try {
+      const existing = targets.find(x => x.uid === rep.uid)
+      await setDoc(doc(db, 'sales_targets', salesTargetId(rep.uid, targetMonth)), {
+        uid: rep.uid,
+        name: rep.name,
+        month: targetMonth,
+        units: existing?.units ?? 0,
+        days,
+        setBy: appUser!.uid,
+        setByName: appUser!.name,
+        setAt: existing?.setAt ?? Date.now(),
+        ...(existing ? { updatedAt: Date.now() } : {}),
+      }, { merge: true })
+    } catch (e: any) {
+      setTargetError(e?.code === 'permission-denied'
+        ? 'Firestore refused that. Setting a target needs the same permission as assigning the week.'
+        : e?.message || 'Could not save the days.')
+    } finally { setTargetSaving(null) }
+  }
+
   const shiftTargetMonth = (delta: number) => {
     const [y, m] = targetMonth.split('-').map(Number)
     const d = new Date(y, m - 1 + delta, 1)
@@ -404,6 +507,8 @@ export default function Planner({ onBack }: Props) {
     // The boxes belong to the month that was on screen, so they go with it.
     setTargetDraft({})
     setTargetNote({})
+    setDayDraft({})
+    setDaysOpenFor(null)
   }
 
   return (
@@ -652,9 +757,12 @@ export default function Planner({ onBack }: Props) {
               counts for nothing — the figure is worked out from the orders every time,
               so cancelling one takes its packets straight back out.
               <br /><br />
-              A day&rsquo;s target lives on the beat rather than here, beside the visit and
-              order value ones: open a beat in Beats to say how many packets a round is
-              worth. A rep sees it on their day, under this month&rsquo;s figure.
+              Open <strong>Day by day</strong> on a rep to say what each day owes.
+              <strong> Divide equally</strong> spreads the month across the days that can be
+              worked — Sundays and holidays are left out, and the remainder goes to the
+              earliest days so the dailies still add up to the month. Change any of them
+              afterwards: a day off the usual round still owes its packets, so the figure
+              belongs to the rep and the day rather than to a beat.
             </Note>
 
             {targetError && <Note tone="warn">{targetError}</Note>}
@@ -736,6 +844,95 @@ export default function Planner({ onBack }: Props) {
                         onChange={e => setTargetNote(prev => ({ ...prev, [r.uid]: e.target.value }))}
                         placeholder="Why, if it is not the usual — Onam push, covering a beat"
                         style={{ ...inputStyle(t), fontSize: 13 }} />
+
+                      {/* ── The day-by-day breakdown ── */}
+                      {(() => {
+                        const boxes = dayBoxes(r.uid)
+                        const setSum = Object.values(boxes)
+                          .reduce((n, v) => n + (Number(v.trim()) || 0), 0)
+                        const filled = Object.values(boxes).filter(v => v.trim() !== '').length
+                        const open = daysOpenFor === r.uid
+                        return (
+                          <>
+                            <div className="oc-wrap" style={{ alignItems: 'center', gap: 12 }}>
+                              <button className="oc-action"
+                                onClick={() => setDaysOpenFor(open ? null : r.uid)}
+                                aria-label={`Day by day for ${r.name}`}
+                                aria-expanded={open}
+                                style={{ background: 'none', border: 'none', padding: 0,
+                                         fontSize: 13, color: t.text2, cursor: 'pointer' }}>
+                                {open ? 'Hide' : 'Day by day'}
+                                {filled > 0 ? ` · ${filled} day${filled > 1 ? 's' : ''} set` : ''}
+                              </button>
+                              {filled > 0 && (
+                                <span style={{ fontSize: 12, color: setSum === goal || goal === 0 ? t.text3 : t.warn }}>
+                                  {setSum} across the days
+                                  {goal > 0 && setSum !== goal
+                                    ? ` · ${setSum > goal ? 'over' : 'under'} the month by ${Math.abs(setSum - goal)}`
+                                    : ''}
+                                </span>
+                              )}
+                            </div>
+
+                            {open && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                <div className="oc-wrap" style={{ gap: 10 }}>
+                                  <GhostButton onClick={() => divideEqually(r)}
+                                    ariaLabel={`Divide equally for ${r.name}`}>
+                                    Divide equally across {workableDays.length} days
+                                  </GhostButton>
+                                  <GhostButton
+                                    onClick={() => setDayDraft(prev => ({ ...prev, [r.uid]: {} }))}
+                                    ariaLabel={`Clear days for ${r.name}`}>
+                                    Clear
+                                  </GhostButton>
+                                  <GhostButton onClick={() => saveDays(r)}
+                                    ariaLabel={`Save days for ${r.name}`}
+                                    disabled={targetSaving === r.uid}>
+                                    {targetSaving === r.uid ? 'Saving…' : 'Save days'}
+                                  </GhostButton>
+                                </div>
+
+                                {/* A box per workable day. Sundays and holidays are
+                                    absent rather than disabled — a greyed box still
+                                    reads as something somebody forgot to fill in. */}
+                                <div style={{
+                                  display: 'grid',
+                                  gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))',
+                                  gap: 8,
+                                }}>
+                                  {workableDays.map(date => {
+                                    const done = packetsOrderedOn(allocations as any, r.uid, date)
+                                    const dayGoal = Number((boxes[date] ?? '').trim()) || 0
+                                    return (
+                                      <label key={date} style={{ display: 'block' }}>
+                                        <span style={{ display: 'block', fontSize: 11, color: t.text3, marginBottom: 3 }}>
+                                          {monthLabel(date)}
+                                          {done > 0 ? ` · ${done}` : ''}
+                                        </span>
+                                        <input type="number" inputMode="numeric" min={0}
+                                          aria-label={`Packets for ${r.name} on ${date}`}
+                                          value={boxes[date] ?? ''}
+                                          onChange={e => setDayDraft(prev => ({
+                                            ...prev,
+                                            [r.uid]: { ...(prev[r.uid] ?? {}), [date]: e.target.value },
+                                          }))}
+                                          placeholder="—"
+                                          style={{
+                                            ...inputStyle(t), fontSize: 13, padding: '7px 9px',
+                                            // Met days are quietly marked, so a manager
+                                            // scanning the month sees where it is going.
+                                            borderColor: dayGoal > 0 && done >= dayGoal ? t.text2 : undefined,
+                                          }} />
+                                      </label>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        )
+                      })()}
                     </div>
                   )
                 })}

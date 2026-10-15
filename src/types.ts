@@ -1418,27 +1418,21 @@ export interface StockLedgerEntry {
 /**
  * What a day is aiming at.
  *
- * Three numbers, and no more. Every extra target is another thing a rep is
- * measured on and another column in a grid nobody then reads.
+ * Deliberately two numbers. Every extra target is another thing a rep is
+ * measured on and another column in a grid nobody then reads, and these are
+ * the two the business actually steers by.
  *
- * `units` arrived with the monthly packet target, so that a day has the same
- * question asked of it as the month: a rep working toward two thousand packets
- * wants to know what today is supposed to contribute, and a monthly figure
- * divided by the days left is arithmetic they should not have to do standing
- * in a shop.
- *
- * It sits on the beat with the other two, because that is where a day's
- * expectations are already decided — a beat of forty shops in town is not the
- * same day as eight in the hills, and the target belongs to the round rather
- * than to the person walking it.
+ * A packet figure briefly lived here too, on the beat, and it was wrong: a rep
+ * sent to a shop off their round still owes the day's packets, so a target
+ * fixed to the beat is a target that stops applying the moment the day stops
+ * going to plan. The day's packets live on the rep's month instead, in
+ * `SalesTarget.days`, and need no beat to exist.
  */
 export interface PlanTargets {
   /** Shops visited — all of them, beat or not. */
   visits?: number
   /** Rupee value of orders raised. Raised, not dispatched or paid. */
   orderValue?: number
-  /** Packets ordered. Same measure as the monthly target, over one day. */
-  units?: number
 }
 
 /**
@@ -1515,6 +1509,23 @@ export interface SalesTarget {
   month: string                   // YYYY-MM
   /** Packets to sell. Zero is a real answer and means "no target this month". */
   units: number
+  /**
+   * What each day of the month is expected to contribute, keyed YYYY-MM-DD.
+   *
+   * In the month's own document rather than a collection of its own, because
+   * the month figure and its daily breakdown are one decision at two grains —
+   * dividing the first gives the second — and keeping them together means one
+   * read to show both and one write to set them.
+   *
+   * Per rep-day, and needing no beat. A day the rep spends off their round
+   * still owes its packets, so a figure attached to the beat would stop
+   * applying exactly when the day stopped going to plan.
+   *
+   * Sparse on purpose. A date that is absent has no target rather than a
+   * target of zero, so a manager who fills in three days has set three days
+   * and not silently excused the rest.
+   */
+  days?: Record<string, number>
   /** Anything the number cannot say — "Onam push", "covering Priya's beat". */
   note?: string
   setBy: string
@@ -1552,7 +1563,45 @@ export function packetsOrdered(
   }, 0)
 }
 
-/** The same count for one day, for the target a beat carries. */
+/**
+ * What this day is expected to contribute, or null when nothing was set.
+ *
+ * Null rather than zero, because the two mean different things on screen: no
+ * figure shows no line, and a figure of zero is somebody saying today does not
+ * count.
+ */
+export function dailyTargetFor(
+  target: { days?: Record<string, number> } | null | undefined,
+  date: string,
+): number | null {
+  const v = target?.days?.[date]
+  return typeof v === 'number' ? v : null
+}
+
+/**
+ * Spread a month's packets across the days that can be worked.
+ *
+ * Whole packets only, and the remainder goes to the earliest days rather than
+ * being dropped — twenty-six days of 38 against a target of 1000 leaves 12
+ * packets that have to live somewhere, and quietly losing them would make the
+ * daily figures add up to less than the month they came from.
+ *
+ * Front-loaded rather than spread at random so the arithmetic is checkable by
+ * looking: the first twelve days carry 39, the rest 38.
+ */
+export function divideAcrossDays(units: number, dates: string[]): Record<string, number> {
+  const out: Record<string, number> = {}
+  if (dates.length === 0 || units <= 0) return out
+  const base = Math.floor(units / dates.length)
+  let extra = units - base * dates.length
+  for (const d of [...dates].sort()) {
+    out[d] = base + (extra > 0 ? 1 : 0)
+    if (extra > 0) extra--
+  }
+  return out
+}
+
+/** The same count for one day, against a per-day target. */
 export function packetsOrderedOn(
   allocations: { status: string; packets?: number; createdAt?: number; createdBy?: string }[],
   uid: string,

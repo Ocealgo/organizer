@@ -1,6 +1,6 @@
 import { test, expect } from './fixtures/app'
 import {
-  companyAllocation, companyStock, noAllocations, noTargetsSet, assignedDay, todayLocal,
+  companyAllocation, companyStock, noAllocations, noTargetsSet, packetTarget, todayLocal,
 } from './fixtures/seed'
 
 /**
@@ -113,36 +113,82 @@ test.describe('progress against it', () => {
   })
 
   /**
-   * The day's half. It lives on the beat, not on the rep, because a round of
-   * forty shops in town is not the same day as eight in the hills — and it
-   * reaches the rep through the day the beat was assigned to.
+   * The day's figure is the rep's, not the beat's, and needs no beat at all.
+   *
+   * That is the whole point of moving it: a rep sent to a shop off their round
+   * still owes the day's packets, so a target fixed to the beat stops applying
+   * exactly when the day stops going to plan.
    */
-  test('a day with a packet target shows today against it', async ({ page, loginAs }) => {
+  test('a day target shows with no beat assigned at all', async ({ page, loginAs }) => {
     await companyStock('prod_wipes', 500)
     await companyAllocation()
-    await assignedDay('rep', todayLocal(), { units: 80, visits: 12 })
+    await packetTarget('rep', todayLocal().slice(0, 7), 1000, { [todayLocal()]: 80 })
 
     await loginAs('rep')
+    await expect(page.getByText('This month · 24 of 1000 packets')).toBeVisible()
     await expect(page.getByText('Today · 24 of 80 packets')).toBeVisible()
-    // No monthly target here, so the month line carries no goal rather than
-    // inventing one.
-    await expect(page.getByText('This month · 24 packets')).toBeVisible()
   })
 
-  /** Both horizons at once, which is the ordinary case once both are set. */
-  test('a month target and a day target read side by side', async ({ page, loginAs, asAlso }) => {
+  /** A day nobody set has no line, rather than a line reading zero. */
+  test('a day with nothing set shows no day line', async ({ page, loginAs }) => {
     await companyStock('prod_wipes', 500)
     await companyAllocation()
-    await assignedDay('rep', todayLocal(), { units: 80 })
+    await packetTarget('rep', todayLocal().slice(0, 7), 1000, { '2020-01-02': 80 })
 
+    await loginAs('rep')
+    await expect(page.getByText('This month · 24 of 1000 packets')).toBeVisible()
+    await expect(page.getByText(/^Today ·/)).toHaveCount(0)
+  })
+})
+
+test.describe('dividing a month across its days', () => {
+  test('equal division fills the days and adds up to the month', async ({
+    page, loginAs, asAlso,
+  }) => {
     await loginAs('manager')
     await openPlannerTargets(page)
+
     await page.getByLabel('Packets for Ravi Rep').fill('1000')
     await page.getByRole('button', { name: 'Set target for Ravi Rep' }).click()
 
+    // By name, not by position: the reps sort alphabetically, so the first
+    // panel on the screen is Priya's and the assertions below are Ravi's.
+    await page.getByRole('button', { name: 'Day by day for Ravi Rep' }).click()
+    await page.getByRole('button', { name: 'Divide equally for Ravi Rep' }).click()
+
+    // The remainder goes somewhere rather than being dropped, so the days
+    // still add up to the month they came from.
+    await expect(page.getByText('1000 across the days')).toBeVisible()
+    await page.getByRole('button', { name: 'Save days for Ravi Rep' }).click()
+
+    // And the rep is told what today owes, without anybody assigning a beat.
     const repPage = await asAlso('rep')
-    await expect(repPage.getByText('This month · 24 of 1000 packets')).toBeVisible()
-    await expect(repPage.getByText('Today · 24 of 80 packets')).toBeVisible()
+    await expect(repPage.getByText(/^Today · 0 of \d+ packets$/)).toBeVisible()
+  })
+
+  test('a day can be changed away from the even split', async ({ page, loginAs }) => {
+    await packetTarget('rep', todayLocal().slice(0, 7), 1000, { [todayLocal()]: 38 })
+
+    await loginAs('manager')
+    await openPlannerTargets(page)
+    await page.getByRole('button', { name: 'Day by day for Ravi Rep' }).click()
+
+    await page.getByLabel(`Packets for Ravi Rep on ${todayLocal()}`).fill('120')
+    await page.getByRole('button', { name: 'Save days for Ravi Rep' }).click()
+
+    // Said out loud, because a breakdown that no longer adds up to its month is
+    // a decision rather than a mistake — but only if somebody can see it.
+    await expect(page.getByText(/under the month by 880/)).toBeVisible()
+  })
+
+  test('there is nothing to divide without a month figure', async ({ page, loginAs }) => {
+    await loginAs('manager')
+    await openPlannerTargets(page)
+
+    await page.getByRole('button', { name: 'Day by day for Priya Rep' }).click()
+    await page.getByRole('button', { name: 'Divide equally for Priya Rep' }).click()
+
+    await expect(page.getByText(/there is nothing to divide/)).toBeVisible()
   })
 
   /** Nothing set means nothing shown. A card reading "0 of 0" is noise. */

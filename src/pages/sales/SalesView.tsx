@@ -16,7 +16,7 @@ import LeaveHistory from './LeaveHistory'
 import {
   Party, DailyVisitLog, LeaveRecord, Holiday, SalesTarget,
   WorkPlan, SalesRoute, workPlanId, ManagerActivity, MANAGER_ACTIVITY_LABEL,
-  salesTargetId, packetsOrdered, packetsOrderedOn,
+  salesTargetId, packetsOrdered, packetsOrderedOn, dailyTargetFor,
 } from '../../types'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr, localMonthStr, localTimeStr, isSunday } from '../../utils/date'
@@ -571,9 +571,11 @@ export default function SalesView({ name }: Props) {
             announcing itself rather than information. Today's figure is drawn
             inside the same card rather than beside it, because two cards about
             packets is how a rep ends up reading the wrong one. */}
-        {((myTarget && myTarget.units > 0) || !!todayPlan?.targets?.units) && (() => {
+        {((myTarget && myTarget.units > 0) || dailyTargetFor(myTarget, todayStr()) !== null) && (() => {
           const monthGoal = myTarget?.units ?? 0
-          const dayGoal = todayPlan?.targets?.units ?? 0
+          // Off the rep's own month, not off the beat. A day spent away from
+          // the round still owes its packets.
+          const dayGoal = dailyTargetFor(myTarget, todayStr()) ?? 0
           const pct = monthGoal > 0
             ? Math.min(100, Math.round((myOrdered / monthGoal) * 100))
             : null
