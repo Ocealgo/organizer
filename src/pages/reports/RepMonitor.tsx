@@ -4,13 +4,14 @@ import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
   AppUser, OutletVisit, DutySession, WorkPlan, SalesRoute, SalesTarget,
-  UnifiedAllocation, OutletType, OUTLET_TYPE_LABEL, ExpenseEntry,
-  dailyTargetFor, packetsOrderedOn, dateOfMs, routePlaces,
+  UnifiedAllocation, OutletType, OUTLET_TYPE_LABEL, ExpenseEntry, Party, Product,
+  dailyTargetFor, packetsOrderedOn, dateOfMs, routePlaces, productDailyTargets,
 } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
-import { PageHeader, Eyebrow, EmptyState, Note } from '../../components/ui'
+import { PageHeader, Eyebrow, EmptyState, Note, TabBar } from '../../components/ui'
+import RankedBars from '../../components/RankedBars'
 import { localDateStr, localMonthStr, isSunday } from '../../utils/date'
 import { pathLengthKm } from '../../device/location'
 
@@ -18,6 +19,32 @@ interface Props { onBack: () => void }
 
 type RangeMode = 'day' | 'week' | 'month' | 'custom'
 type Outcome = 'all' | 'met' | 'missed' | 'untargeted'
+type Tab = 'eod' | 'report'
+type ReportRange = 'week' | 'month' | 'custom'
+type Rank = 'packets' | 'value'
+
+/**
+ * One rep over the report's range — everything the table shows and the graph
+ * ranks, worked out once so the two cannot disagree.
+ */
+interface RepWeek {
+  uid: string
+  name: string
+  /** Where they actually went: the places of the shops they punched into. */
+  areas: string[]
+  visits: number
+  shops: number
+  daysWorked: number
+  orders: number
+  packets: number
+  value: number
+  /** Sum of the days' targets in range, or null when no day carried one. */
+  target: number | null
+  daysTargeted: number
+  daysMet: number
+  meterKm: number
+  expenses: number
+}
 
 /**
  * One card per rep per day — the end of a day, said in six lines.
@@ -61,6 +88,10 @@ function eachDay(from: string, to: string): string[] {
   while (cur <= to && guard++ < 200) { out.push(cur); cur = addDays(cur, 1) }
   return out
 }
+
+/** "Mon 12 Oct" — short enough to sit in a range. */
+const shortDay = (d: string) =>
+  new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
 
 const longDay = (d: string) =>
   new Date(d + 'T00:00:00').toLocaleDateString('en-IN',
@@ -120,7 +151,24 @@ export default function RepMonitor({ onBack }: Props) {
   const [targets, setTargets] = useState<SalesTarget[]>([])
   const [allocations, setAllocations] = useState<UnifiedAllocation[]>([])
   const [expenses, setExpenses] = useState<ExpenseEntry[]>([])
+  const [parties, setParties] = useState<Party[]>([])
+  const [products, setProducts] = useState<Product[]>([])
   const [readError, setReadError] = useState<string | null>(null)
+
+  const [tab, setTab] = useState<Tab>('eod')
+
+  // ── the report's own filters ───────────────────────────────────────────────
+  // Separate from the end-of-day ones above, so moving between the tabs does not
+  // drag one view's window into the other.
+  const [rMode, setRMode] = useState<ReportRange>('week')
+  const [rWeekStart, setRWeekStart] = useState(mondayOf(localDateStr()))
+  const [rMonth, setRMonth] = useState(localMonthStr())
+  const [rFrom, setRFrom] = useState(addDays(localDateStr(), -6))
+  const [rTo, setRTo] = useState(localDateStr())
+  /** '' means every product. */
+  const [rProduct, setRProduct] = useState('')
+  const [rBeat, setRBeat] = useState('')
+  const [rank, setRank] = useState<Rank>('packets')
 
   // ── filters ───────────────────────────────────────────────────────────────
   const [mode, setMode] = useState<RangeMode>('day')
@@ -147,12 +195,26 @@ export default function RepMonitor({ onBack }: Props) {
   /** Sundays and days nobody worked are noise until somebody asks for them. */
   const [showQuiet, setShowQuiet] = useState(false)
 
-  const [from, to] = useMemo((): [string, string] => {
+  const [eodFrom, eodTo] = useMemo((): [string, string] => {
     if (mode === 'day') return [day, day]
     if (mode === 'week') return [weekStart, addDays(weekStart, 6)]
     if (mode === 'month') return [`${month}-01`, lastDayOfMonth(month)]
     return customFrom <= customTo ? [customFrom, customTo] : [customTo, customFrom]
   }, [mode, day, weekStart, month, customFrom, customTo])
+
+  /**
+   * The report's window. A week is Monday to Saturday, matching the planner,
+   * which treats Sunday as off — a weekly report that counted Sundays would
+   * divide the same work by a different number of days than the targets were.
+   */
+  const [repFrom, repTo] = useMemo((): [string, string] => {
+    if (rMode === 'week') return [rWeekStart, addDays(rWeekStart, 5)]
+    if (rMode === 'month') return [`${rMonth}-01`, lastDayOfMonth(rMonth)]
+    return rFrom <= rTo ? [rFrom, rTo] : [rTo, rFrom]
+  }, [rMode, rWeekStart, rMonth, rFrom, rTo])
+
+  // One set of listeners, pointed at whichever window is on screen.
+  const [from, to] = tab === 'report' ? [repFrom, repTo] : [eodFrom, eodTo]
 
   useEffect(() => {
     const u1 = onSnapshot(collection(db, 'users'), s =>
@@ -162,7 +224,13 @@ export default function RepMonitor({ onBack }: Props) {
         .sort((a, b) => a.name.localeCompare(b.name))))
     const u2 = onSnapshot(collection(db, 'sales_routes'), s =>
       setRoutes(s.docs.map(d => ({ id: d.id, ...d.data() } as SalesRoute))))
-    return () => { u1(); u2() }
+    // For the report: where a visited shop is, and the products to filter by.
+    const u2p = onSnapshot(collection(db, 'parties'), s =>
+      setParties(s.docs.map(d => ({ id: d.id, ...d.data() } as Party))))
+    const u2q = onSnapshot(collection(db, 'products'), s =>
+      setProducts(s.docs.map(d => ({ id: d.id, ...d.data() } as Product))
+        .filter(x => x.active).sort((a, b) => a.name.localeCompare(b.name))))
+    return () => { u1(); u2(); u2p(); u2q() }
   }, [])
 
   useEffect(() => {
@@ -341,6 +409,85 @@ export default function RepMonitor({ onBack }: Props) {
     return [...m.entries()]
   }, [cards])
 
+  /**
+   * The report: one row per rep over the window, every figure from the same
+   * pass.
+   *
+   * The product filter narrows what a product can be said to own — the
+   * packets, their value, the targets and the days met — and nothing else.
+   * A visit, a kilometre or a bus fare is not "of" a product, so filtering
+   * those would be inventing a split the data does not have.
+   *
+   * The beat filter narrows the days: a day counts for a rep only when that
+   * beat was the one assigned to them, which is the only way "how did Beach
+   * Road go" has an answer when the same person works three beats a week.
+   */
+  const report = useMemo((): RepWeek[] => {
+    if (tab !== 'report') return []
+    const days = eachDay(repFrom, repTo)
+    const placeOf = new Map(parties.map(pt => [pt.id!, pt.place || '']))
+
+    return reps.map(r => {
+      const planOn = (d: string) => plans.find(pl => pl.uid === r.uid && pl.date === d)
+      const inScope = (d: string) => !rBeat || planOn(d)?.routeId === rBeat
+      const scoped = days.filter(inScope)
+      const inDays = new Set(scoped)
+
+      const theirVisits = visits.filter(v =>
+        v.uid === r.uid && inDays.has(v.date) && v.status !== 'abandoned')
+      const theirOrders = allocations.filter(a =>
+        a.createdBy === r.uid && a.status !== 'cancelled' && a.createdAt
+        && inDays.has(dateOfMs(a.createdAt))
+        && (!rProduct || a.productId === rProduct))
+      const theirSessions = sessions.filter(se => se.uid === r.uid && inDays.has(se.date))
+      const theirSpend = expenses.filter(e => e.userId === r.uid && inDays.has(e.date))
+
+      // Targets and days met, a day at a time, for the product in question.
+      let target = 0
+      let daysTargeted = 0
+      let daysMet = 0
+      for (const d of scoped) {
+        const t = targets.find(x => x.uid === r.uid && x.month === d.slice(0, 7))
+        const goal = rProduct
+          ? (productDailyTargets(t, d)?.[rProduct] ?? null)
+          : dailyTargetFor(t, d)
+        if (goal === null || goal <= 0) continue
+        target += goal
+        daysTargeted++
+        const did = packetsOrderedOn(allocations as any, r.uid, d, rProduct || undefined)
+        if (did >= goal) daysMet++
+      }
+
+      const areas = [...new Set(theirVisits
+        .map(v => placeOf.get(v.partyId))
+        .filter((x): x is string => !!x))].sort()
+
+      return {
+        uid: r.uid,
+        name: r.name,
+        areas,
+        visits: theirVisits.length,
+        shops: new Set(theirVisits.map(v => v.partyId)).size,
+        daysWorked: theirSessions.length,
+        orders: theirOrders.length,
+        packets: theirOrders.reduce((n, a) => n + (a.packets || 0), 0),
+        value: Math.round(theirOrders.reduce((n, a) => n + (a.totalAmount || 0), 0)),
+        target: daysTargeted > 0 ? target : null,
+        daysTargeted,
+        daysMet,
+        meterKm: Math.round(theirSessions.reduce((n, se) =>
+          n + ((se.odometerStatus ?? 'recorded') === 'recorded' && typeof se.claimedDistanceKm === 'number'
+            ? se.claimedDistanceKm : 0), 0)),
+        expenses: Math.round(theirSpend.reduce((n, e) => n + (e.amount || 0), 0) * 100) / 100,
+      }
+    })
+    // The table reads in the graph's order, so the two say the same thing in
+    // the same sequence.
+    .sort((a, b) => (rank === 'packets' ? b.packets - a.packets : b.value - a.value)
+      || a.name.localeCompare(b.name))
+  }, [tab, repFrom, repTo, reps, plans, visits, allocations, sessions, expenses, targets,
+      parties, rProduct, rBeat, rank])
+
   const tally = useMemo(() => ({
     met: cards.filter(c => c.target !== null && c.packets >= c.target).length,
     missed: cards.filter(c => c.target !== null && c.packets < c.target).length,
@@ -399,13 +546,20 @@ export default function RepMonitor({ onBack }: Props) {
       <PageHeader
         eyebrow="Reports"
         title="Monitor reps"
-        subtitle="The end of each day, one card per person — what they covered and whether it met the target."
+        subtitle={tab === 'eod'
+          ? 'The end of each day, one card per person — what they covered and whether it met the target.'
+          : 'Who is leading over a stretch of days, and what sits behind it.'}
         onBack={onBack}
+      />
+      <TabBar<Tab>
+        tabs={[{ id: 'eod', label: 'End of day' }, { id: 'report', label: 'Report' }]}
+        value={tab} onChange={setTab}
       />
 
       <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 860 }}>
         {readError && <Note tone="warn">{readError}</Note>}
 
+        {tab === 'eod' && (<>
         {/* ── WHEN ──────────────────────────────────────────────────────── */}
         <div>
           <div style={{ marginBottom: 8 }}><Eyebrow>When</Eyebrow></div>
@@ -627,6 +781,177 @@ export default function RepMonitor({ onBack }: Props) {
           in, so the two compare directly. A day with no target shows one rather than
           implying it was missed.
         </div>
+        </>)}
+
+        {tab === 'report' && (<>
+        {/* ── FILTERS, one row of them ──────────────────────────────────── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <div style={{ marginBottom: 8 }}><Eyebrow>When</Eyebrow></div>
+            <div className="oc-wrap" style={{ gap: 6, alignItems: 'center' }}>
+              {(['week', 'month', 'custom'] as ReportRange[]).map(m => (
+                <button key={m} className="oc-action" onClick={() => setRMode(m)} style={chip(rMode === m)}>
+                  {m === 'week' ? 'A week' : m === 'month' ? 'A month' : 'A range'}
+                </button>
+              ))}
+              <div style={{ flex: '1 1 300px', display: 'flex', gap: 10, minWidth: 0 }}>
+                {rMode === 'week' && (
+                  <div style={{ flex: 1, minWidth: 140 }}>
+                    <DateInput type="date" value={rWeekStart} ariaLabel="Week of"
+                      onChange={d => setRWeekStart(mondayOf(d))} />
+                  </div>
+                )}
+                {rMode === 'month' && (
+                  <div style={{ flex: 1, minWidth: 140 }}>
+                    <DateInput type="month" value={rMonth} onChange={setRMonth} ariaLabel="Month" />
+                  </div>
+                )}
+                {rMode === 'custom' && (
+                  <>
+                    <div style={{ flex: 1, minWidth: 130 }}>
+                      <DateInput type="date" value={rFrom} onChange={setRFrom} ariaLabel="From" />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 130 }}>
+                      <DateInput type="date" value={rTo} onChange={setRTo} ariaLabel="To" />
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+            <div style={{ fontSize: 12, color: t.text3, marginTop: 6 }}>
+              {shortDay(repFrom)} – {shortDay(repTo)}{rMode === 'week' ? ' · Monday to Saturday' : ''}
+            </div>
+          </div>
+
+          <div className="oc-wrap" style={{ gap: 14 }}>
+            <div style={{ flex: 1, minWidth: 170 }}>
+              <div style={{ marginBottom: 8 }}><Eyebrow>Product</Eyebrow></div>
+              <CustomSelect
+                value={rProduct} onChange={setRProduct}
+                options={[{ value: '', label: 'All products' },
+                  ...products.map(x => ({ value: x.id!, label: x.name }))]}
+                placeholder="All products"
+              />
+            </div>
+            <div style={{ flex: 1, minWidth: 170 }}>
+              <div style={{ marginBottom: 8 }}><Eyebrow>Beat</Eyebrow></div>
+              <CustomSelect
+                value={rBeat} onChange={setRBeat}
+                options={[{ value: '', label: 'Any beat' },
+                  ...routes.filter(r => r.active !== false)
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map(r => ({ value: r.id!, label: r.name, sub: routePlaces(r).join(', ') }))]}
+                placeholder="Any beat"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* ── THE GRAPH ─────────────────────────────────────────────────── */}
+        <div style={{ border: `0.5px solid ${t.border}`, borderRadius: 6, padding: '16px 18px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <div style={{ fontSize: 15, fontWeight: 500, color: t.text }}>
+                {rank === 'packets' ? 'Packets ordered' : 'Order value'}
+              </div>
+              <div style={{ fontSize: 12, color: t.text3, marginTop: 2 }}>
+                {rProduct ? products.find(x => x.id === rProduct)?.name ?? 'One product' : 'All products'}
+                {rBeat ? ` · ${routes.find(x => x.id === rBeat)?.name ?? 'one beat'}` : ''}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 6 }} role="group" aria-label="Rank by">
+              {(['packets', 'value'] as Rank[]).map(k => (
+                <button key={k} className="oc-action" onClick={() => setRank(k)}
+                  aria-pressed={rank === k} style={chip(rank === k)}>
+                  {k === 'packets' ? 'Packets' : 'Order value'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <RankedBars
+            rows={report.map(r => ({
+              id: r.uid,
+              label: r.name,
+              value: rank === 'packets' ? r.packets : r.value,
+              detail: [
+                `${r.orders} order${r.orders === 1 ? '' : 's'}`,
+                r.daysTargeted > 0 ? `${r.daysMet} of ${r.daysTargeted} days met` : 'no target set',
+                `${r.shops} shop${r.shops === 1 ? '' : 's'}`,
+              ].join(' · '),
+            }))}
+            format={rank === 'packets'
+              ? (n => `${n.toLocaleString('en-IN')} pkts`)
+              : (n => `₹${n.toLocaleString('en-IN')}`)}
+            emptyText="No reps to show."
+          />
+        </div>
+
+        {/* ── THE TABLE: the same reps, in the graph's order ────────────── */}
+        {report.length > 0 && (
+          <div className="oc-scroll-x" style={{ border: `0.5px solid ${t.border}`, borderRadius: 6 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 740 }}>
+              <thead>
+                <tr>
+                  {['Rep', 'Area', 'Visits', 'Shops', 'Orders', 'Packets', 'Value', 'Target', 'Days met', 'Meter', 'Expenses']
+                    .map((h, i) => (
+                      <th key={h} style={{
+                        textAlign: i < 2 ? 'left' : 'right', padding: '10px 9px',
+                        fontSize: 11, fontWeight: 400, letterSpacing: '0.06em', textTransform: 'uppercase',
+                        color: t.text3, borderBottom: `0.5px solid ${t.border}`, whiteSpace: 'nowrap',
+                      }}>{h}</th>
+                    ))}
+                </tr>
+              </thead>
+              <tbody>
+                {report.map(r => {
+                  const num = { textAlign: 'right' as const, padding: '10px 9px', color: t.text,
+                                fontVariantNumeric: 'tabular-nums' as const, whiteSpace: 'nowrap' as const,
+                                borderBottom: `0.5px solid ${t.border}` }
+                  const allMet = r.daysTargeted > 0 && r.daysMet === r.daysTargeted
+                  return (
+                    <tr key={r.uid} data-testid={`report-row-${r.uid}`}>
+                      <td style={{ ...num, textAlign: 'left', fontWeight: 500 }}>
+                        {r.name}
+                        <div style={{ fontSize: 12, fontWeight: 400, color: t.text3 }}>
+                          {r.daysWorked} day{r.daysWorked === 1 ? '' : 's'} worked
+                        </div>
+                      </td>
+                      <td style={{ ...num, textAlign: 'left', whiteSpace: 'normal', color: r.areas.length ? t.text : t.text3, minWidth: 110 }}>
+                        {r.areas.length ? r.areas.join(', ') : '—'}
+                      </td>
+                      <td style={num}>{r.visits}</td>
+                      <td style={num}>{r.shops}</td>
+                      <td style={num}>{r.orders}</td>
+                      <td style={num}>{r.packets.toLocaleString('en-IN')}</td>
+                      <td style={num}>₹{r.value.toLocaleString('en-IN')}</td>
+                      <td style={{ ...num, color: r.target === null ? t.text3 : t.text }}>
+                        {r.target === null ? 'Not set' : r.target.toLocaleString('en-IN')}
+                      </td>
+                      <td style={{ ...num, color: r.daysTargeted === 0 ? t.text3 : allMet ? t.good : t.text,
+                                   fontWeight: allMet ? 500 : 400 }}>
+                        {r.daysTargeted === 0 ? '—' : `${r.daysMet} / ${r.daysTargeted}`}
+                      </td>
+                      <td style={{ ...num, color: r.meterKm ? t.text : t.text3 }}>
+                        {r.meterKm ? `${r.meterKm} km` : 'Nil'}
+                      </td>
+                      <td style={{ ...num, color: r.expenses ? t.text : t.text3 }}>
+                        {r.expenses ? `₹${Math.round(r.expenses).toLocaleString('en-IN')}` : 'None'}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div style={{ fontSize: 12, color: t.text3, lineHeight: 1.6, maxWidth: 600 }}>
+          The product filter narrows packets, value, targets and days met — the figures a
+          product owns. Visits, shops, the meter and expenses are the rep's whole day either
+          way. With a beat chosen, only the days that beat was assigned are counted.
+          Cancelled orders and abandoned visits are left out.
+        </div>
+        </>)}
       </div>
     </div>
   )

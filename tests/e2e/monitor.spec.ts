@@ -168,3 +168,55 @@ test.describe('travel and spend on the card', () => {
     await expect(page.getByText('Allowance ₹300 · Fuel ₹211.5')).toBeVisible()
   })
 })
+
+/**
+ * The report: who is leading, and what sits behind it.
+ *
+ * The range is set to today alone, so the spec says which day is under test
+ * rather than inheriting whatever week the suite happens to run in — on a
+ * Sunday the default Monday-to-Saturday week would not contain today at all.
+ */
+test.describe('the report', () => {
+  async function openReport(page: any) {
+    await page.getByRole('button', { name: /^Reports/ }).first().click()
+    await page.getByRole('button', { name: /^Monitor reps/ }).click()
+    await page.getByRole('button', { name: 'Report', exact: true }).click()
+    await page.getByRole('button', { name: 'A range' }).click()
+    await page.getByLabel('From').fill(todayLocal())
+    await page.getByLabel('To', { exact: true }).fill(todayLocal())
+  }
+
+  test('ranks the reps and lists what sits behind the bar', async ({ page, loginAs }) => {
+    await companyStock('prod_wipes', 500)
+    await companyAllocation()                                   // 24 packets, ₹1,440
+    await packetTarget('rep', todayLocal().slice(0, 7), 1000, { [todayLocal()]: 20 })
+
+    await loginAs('manager')
+    await openReport(page)
+
+    const row = page.getByTestId('report-row-e2e_rep')
+    await expect(row).toContainText('24')
+    await expect(row).toContainText('₹1,440')
+    await expect(row).toContainText('1 / 1')
+    // The bar carries its own number, and its readout the rest.
+    await expect(page.getByRole('group', { name: /^Ravi.*: 24 pkts\. 1 order · 1 of 1 days met/ }))
+      .toBeVisible()
+  })
+
+  test('a product filter narrows the orders and the target to that product', async ({ page, loginAs }) => {
+    await companyStock('prod_wipes', 500)
+    await companyAllocation()                                   // all of it prod_wipes
+    await packetTarget('rep', todayLocal().slice(0, 7), 1000, { [todayLocal()]: 20 })
+
+    await loginAs('manager')
+    await openReport(page)
+    await page.getByText('All products', { exact: true }).first().click()
+    await page.getByText('Baby Wet Wipes 30s', { exact: true }).click()
+
+    const row = page.getByTestId('report-row-e2e_rep')
+    await expect(row).toContainText('₹0')
+    // An old-shape target has no per-product split, so there is nothing for
+    // the 30s to have been held to — "Not set", not a miss.
+    await expect(row).toContainText('Not set')
+  })
+})
