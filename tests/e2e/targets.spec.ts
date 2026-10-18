@@ -117,8 +117,11 @@ test.describe('progress against it', () => {
     await expect(page.getByText(/24 of 100 packets ordered/)).toBeVisible()
 
     const repPage = await asAlso('rep')
+    // The card leads with today, and nobody gave today a figure — so it says
+    // so, rather than drawing "0 of 0" that reads as a target already missed.
+    // The month sits underneath as context, and the order counts there.
+    await expect(repPage.getByText('No target for today')).toBeVisible()
     await expect(repPage.getByText('This month · 24 of 100 packets')).toBeVisible()
-    await expect(repPage.getByText('76 to go.', { exact: false })).toBeVisible()
   })
 
   /**
@@ -209,8 +212,12 @@ test.describe('a target per product', () => {
     // each worked out from the month rather than stored.
     const repPage = await asAlso('rep')
     await expect(repPage.getByText('Baby Wet Wipes 72s')).toBeVisible()
-    await expect(repPage.getByText('24 / 600', { exact: false })).toBeVisible()
-    await expect(repPage.getByText('0 / 400', { exact: false })).toBeVisible()
+    // Today's share of a 38-packet day: 600 and 400 come to 22.8 and 15.2,
+    // and the spare packet goes to the larger fraction — 23 and 15. The order
+    // was 24 of the 72s, so that product is already over today and the other
+    // has not started.
+    await expect(repPage.getByText('24 / 23 today')).toBeVisible()
+    await expect(repPage.getByText('0 / 15 today')).toBeVisible()
   })
 
   /**

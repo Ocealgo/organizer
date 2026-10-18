@@ -88,6 +88,7 @@ export default function SalesView({ name }: Props) {
         target: by[prod.id] ?? 0,
         done: packetsOrdered(myAllocs, appUser?.uid ?? '', currentMonth(), prod.id),
         today: today?.[prod.id] ?? null,
+        doneToday: packetsOrderedOn(myAllocs, appUser?.uid ?? '', todayStr(), prod.id),
       }))
       .sort((a, b) => b.target - a.target)
   }, [myTarget, myProducts, myAllocs, appUser])
@@ -607,30 +608,37 @@ export default function SalesView({ name }: Props) {
           </div>
         )}
 
-        {/* Packets, for the month and for today.
-            Only when somebody set one — a card reading "0 of 0" is a feature
-            announcing itself rather than information. Today's figure is drawn
-            inside the same card rather than beside it, because two cards about
-            packets is how a rep ends up reading the wrong one. */}
+        {/* Packets — today first, the month underneath it.
+            Today leads because today is the only part of a target a rep can
+            still do anything about at nine in the morning; the month is
+            context for it, not the other way round. One card, not two,
+            because two cards about packets is how somebody reads the wrong
+            one. Only when somebody set a figure — a card reading "0 of 0" is
+            a feature announcing itself rather than information. */}
         {((myTarget && myTarget.units > 0) || dailyTargetFor(myTarget, todayStr()) !== null) && (() => {
           const monthGoal = myTarget?.units ?? 0
           // Off the rep's own month, not off the beat. A day spent away from
           // the round still owes its packets.
-          const dayGoal = dailyTargetFor(myTarget, todayStr()) ?? 0
-          const pct = monthGoal > 0
-            ? Math.min(100, Math.round((myOrdered / monthGoal) * 100))
-            : null
-          const left = Math.max(0, monthGoal - myOrdered)
+          const dayGoal = dailyTargetFor(myTarget, todayStr())
+          const hasDay = dayGoal !== null && dayGoal > 0
+          const pct = hasDay ? Math.min(100, Math.round((myOrderedToday / dayGoal!) * 100)) : null
+          const leftToday = hasDay ? Math.max(0, dayGoal! - myOrderedToday) : 0
+          // The products with something asked of them today. A product with a
+          // month but nothing on today is not today's business.
+          const todaysLines = myProductLines.filter(l => (l.today ?? 0) > 0)
           return (
             <div style={{ background: t.tint, borderRadius: 6, padding: '14px 16px' }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
                 <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: t.text }}>
-                  {monthGoal > 0
-                    ? `This month · ${myOrdered} of ${monthGoal} packets`
-                    : `This month · ${myOrdered} packets`}
+                  {hasDay
+                    ? `Today · ${myOrderedToday} of ${dayGoal} packets`
+                    // Said plainly rather than shown as a zero: a Sunday, or a
+                    // day nobody put a figure on, owes nothing — and "0 of 0"
+                    // would read as a target already failed.
+                    : 'No target for today'}
                 </span>
                 {pct !== null && (
-                  <span style={{ fontSize: 14, color: pct >= 100 ? t.text2 : t.text3 }}>
+                  <span style={{ fontSize: 14, color: pct >= 100 ? t.good : t.text3 }}>
                     {pct}%
                   </span>
                 )}
@@ -639,23 +647,17 @@ export default function SalesView({ name }: Props) {
               {/* A bar, because a percentage is read and a bar is seen. */}
               {pct !== null && (
                 <div style={{ marginTop: 10, height: 4, borderRadius: 2, background: t.border, overflow: 'hidden' }}>
-                  <div style={{ width: `${pct}%`, height: '100%', background: t.text2 }} />
+                  <div style={{ width: `${pct}%`, height: '100%',
+                                background: pct >= 100 ? t.good : t.text2 }} />
                 </div>
               )}
 
-              {dayGoal > 0 && (
-                <div style={{ fontSize: 13, color: t.text2, marginTop: 10, lineHeight: 1.5 }}>
-                  Today · {myOrderedToday} of {dayGoal} packets
-                  {myOrderedToday >= dayGoal ? ' — done' : ''}
-                </div>
-              )}
-
-              {/* Which products, when a manager said which. Compact on
-                  purpose: this is a phone, and four lines of product names is
-                  the card no longer being glanceable. */}
-              {myProductLines.length > 0 && (
+              {/* Which products, and what each owes today. Compact on purpose:
+                  this is a phone, and four lines of product names is the card
+                  no longer being glanceable. */}
+              {todaysLines.length > 0 && (
                 <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {myProductLines.map(line => (
+                  {todaysLines.map(line => (
                     <div key={line.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                       <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: t.text2,
                                      overflow: 'hidden', textOverflow: 'ellipsis',
@@ -663,21 +665,28 @@ export default function SalesView({ name }: Props) {
                         {line.name}
                       </span>
                       <span style={{ fontSize: 13, whiteSpace: 'nowrap',
-                                     color: line.done >= line.target ? t.good : t.text3 }}>
-                        {line.done} / {line.target}
-                        {line.today !== null ? ` · ${line.today} today` : ''}
+                                     color: line.doneToday >= (line.today ?? 0) ? t.good : t.text3 }}>
+                        {line.doneToday} / {line.today} today
                       </span>
                     </div>
                   ))}
                 </div>
               )}
 
-              {monthGoal > 0 && (
+              {hasDay && (
                 <div style={{ fontSize: 13, color: t.text3, marginTop: 9, lineHeight: 1.5 }}>
-                  {left === 0
-                    ? 'Target met.'
-                    : `${left} to go. Counted when you place the order — a cancelled one `
-                      + 'comes back off.'}
+                  {leftToday === 0
+                    ? 'Today’s target met.'
+                    : `${leftToday} to go today. Counted when you place the order — a `
+                      + 'cancelled one comes back off.'}
+                </div>
+              )}
+
+              {/* The month, as one quiet line of context underneath. */}
+              {monthGoal > 0 && (
+                <div style={{ fontSize: 12, color: t.text3, marginTop: 8,
+                              borderTop: `0.5px solid ${t.border}`, paddingTop: 8 }}>
+                  This month · {myOrdered} of {monthGoal} packets
                 </div>
               )}
 

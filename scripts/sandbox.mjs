@@ -111,6 +111,13 @@ async function sandboxExtras() {
   }
 
   const ravi = divideByProductAcrossDays({ prod_wipes: 600, prod_mini: 400 }, workable)
+  // Today carries a figure whatever weekday it is, for the same reason today
+  // is seeded as worked: the rep's card leads with today, and on a Sunday the
+  // division leaves it empty, so there would be nothing to look at. 23 and 14
+  // against the 24-packet order below puts one product over and one under —
+  // both states on one screen.
+  ravi.prod_wipes = { ...(ravi.prod_wipes ?? {}), [todayLocal()]: 23 }
+  ravi.prod_mini = { ...(ravi.prod_mini ?? {}), [todayLocal()]: 14 }
   const priya = divideByProductAcrossDays({ prod_wipes: 250, prod_mini: 350 }, workable)
 
   await db.doc(`sales_targets/${USERS.rep.uid}_${month}`).set({
