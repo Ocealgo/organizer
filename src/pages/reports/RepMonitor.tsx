@@ -424,7 +424,11 @@ export default function RepMonitor({ onBack }: Props) {
    */
   const report = useMemo((): RepWeek[] => {
     if (tab !== 'report') return []
-    const days = eachDay(repFrom, repTo)
+    // Up to today and no further. A month still under way is measured against
+    // the days that have happened: holding a rep to the 30th on the 18th makes
+    // every rep look a third short and every future day look missed.
+    const today = localDateStr()
+    const days = eachDay(repFrom, repTo).filter(d => d <= today)
     const placeOf = new Map(parties.map(pt => [pt.id!, pt.place || '']))
 
     return reps.map(r => {
@@ -820,6 +824,7 @@ export default function RepMonitor({ onBack }: Props) {
             </div>
             <div style={{ fontSize: 12, color: t.text3, marginTop: 6 }}>
               {shortDay(repFrom)} – {shortDay(repTo)}{rMode === 'week' ? ' · Monday to Saturday' : ''}
+              {repTo > localDateStr() ? ' · counted up to today' : ''}
             </div>
           </div>
 

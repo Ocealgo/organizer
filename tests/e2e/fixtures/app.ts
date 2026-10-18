@@ -158,5 +158,18 @@ export async function clickStable(locator: import('@playwright/test').Locator) {
   }).toPass({ timeout: 20_000 })
 }
 
+/**
+ * Open the app on the sign-in form, and wait for it.
+ *
+ * A fresh browser against the emulators can sit on "Loading Ocealgo" a little
+ * past the default 10s — about once a run, in whichever spec drew it. Waited
+ * for here, generously, so that spec does not fail for it; a real hang still
+ * fails, at 30s.
+ */
+export async function openSignIn(page: Page) {
+  await page.goto('/')
+  await page.getByPlaceholder('you@example.com').waitFor({ timeout: 30_000 })
+}
+
 export { expect }
 export type { Page }
