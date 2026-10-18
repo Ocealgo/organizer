@@ -693,6 +693,12 @@ service cloud.firestore {
       // `write`, because on a delete there is no request.resource to read a
       // units field from — the condition would have been false and removing a
       // target would have failed for no stated reason.
+      // `units` is the derived total and is checked. `byProduct` and `days`
+      // are maps, and rules cannot walk a map's values — so a negative figure
+      // inside either would be stored. Both are write-gated on assign_work, so
+      // only somebody who can already set targets can put nonsense in them,
+      // and the screen validates every box before it writes. Worth naming
+      // rather than leaving to be discovered.
       allow create, update: if hasPerm('assign_work')
         && request.resource.data.units >= 0
         && request.resource.data.uid is string

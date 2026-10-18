@@ -16,7 +16,7 @@ import LeaveHistory from './LeaveHistory'
 import {
   Party, DailyVisitLog, LeaveRecord, Holiday, SalesTarget,
   WorkPlan, SalesRoute, workPlanId, ManagerActivity, MANAGER_ACTIVITY_LABEL,
-  salesTargetId, packetsOrdered, packetsOrderedOn, dailyTargetFor,
+  salesTargetId, packetsOrdered, packetsOrderedOn, dailyTargetFor, productDailyTargets,
 } from '../../types'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr, localMonthStr, localTimeStr, isSunday } from '../../utils/date'
@@ -53,9 +53,43 @@ export default function SalesView({ name }: Props) {
    */
   const [myTarget, setMyTarget] = useState<SalesTarget | null>(null)
   const [myOrdered, setMyOrdered] = useState(0)
+  /**
+   * Their own month per product, and what today owes of each.
+   *
+   * A target a rep cannot see is not a target, and that holds for the
+   * breakdown as much as for the total — being told to sell a thousand packets
+   * without being told which ones is being told half of it.
+   */
+  const [myAllocs, setMyAllocs] = useState<any[]>([])
+  const [myProducts, setMyProducts] = useState<{ id: string; name: string }[]>([])
   /** Today's packets, against whatever the day's beat asks for. */
   const [myOrderedToday, setMyOrderedToday] = useState(0)
   const [todayLeave, setTodayLeave] = useState<LeaveRecord | null>(null)
+  /**
+   * The month per product, and what today owes of each.
+   *
+   * Derived from the target and the orders rather than stored, the same way
+   * every other figure on this card is — so a cancelled order drops out of the
+   * product line as readily as it drops out of the total.
+   *
+   * Products with no target are left out. A rep asked for six hundred of one
+   * thing does not need the other five listed at zero.
+   */
+  const myProductLines = React.useMemo(() => {
+    const by = myTarget?.byProduct
+    if (!by) return []
+    const today = productDailyTargets(myTarget, todayStr())
+    return myProducts
+      .filter(prod => (by[prod.id] ?? 0) > 0)
+      .map(prod => ({
+        id: prod.id,
+        name: prod.name,
+        target: by[prod.id] ?? 0,
+        done: packetsOrdered(myAllocs, appUser?.uid ?? '', currentMonth(), prod.id),
+        today: today?.[prod.id] ?? null,
+      }))
+      .sort((a, b) => b.target - a.target)
+  }, [myTarget, myProducts, myAllocs, appUser])
   const [allLeaveRecords, setAllLeaveRecords] = useState<LeaveRecord[]>([])
   const [visitLogLoaded, setVisitLogLoaded] = useState(false)
   const [monthlyVisitLogCount, setMonthlyVisitLogCount] = useState(0)
@@ -316,12 +350,18 @@ export default function SalesView({ name }: Props) {
       query(collection(db, 'allocations_v2'), where('createdBy', '==', appUser.uid)),
       snap => {
         const rows = snap.docs.map(d => d.data() as any)
+        setMyAllocs(rows)
         setMyOrdered(packetsOrdered(rows, appUser.uid, currentMonth()))
         setMyOrderedToday(packetsOrderedOn(rows, appUser.uid, todayStr()))
       },
-      () => { setMyOrdered(0); setMyOrderedToday(0) },
+      () => { setMyAllocs([]); setMyOrdered(0); setMyOrderedToday(0) },
     )
-    return () => { u1(); u2() }
+    // Only for the names. A breakdown keyed by document id would be a target
+    // in a language the rep does not speak.
+    const u3 = onSnapshot(collection(db, 'products'), snap =>
+      setMyProducts(snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }))
+        .filter(x => x.active)))
+    return () => { u1(); u2(); u3() }
   }, [appUser])
 
   useEffect(() => {
@@ -606,6 +646,28 @@ export default function SalesView({ name }: Props) {
                 <div style={{ fontSize: 13, color: t.text2, marginTop: 10, lineHeight: 1.5 }}>
                   Today · {myOrderedToday} of {dayGoal} packets
                   {myOrderedToday >= dayGoal ? ' — done' : ''}
+                </div>
+              )}
+
+              {/* Which products, when a manager said which. Compact on
+                  purpose: this is a phone, and four lines of product names is
+                  the card no longer being glanceable. */}
+              {myProductLines.length > 0 && (
+                <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {myProductLines.map(line => (
+                    <div key={line.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: t.text2,
+                                     overflow: 'hidden', textOverflow: 'ellipsis',
+                                     whiteSpace: 'nowrap' }}>
+                        {line.name}
+                      </span>
+                      <span style={{ fontSize: 13, whiteSpace: 'nowrap',
+                                     color: line.done >= line.target ? t.good : t.text3 }}>
+                        {line.done} / {line.target}
+                        {line.today !== null ? ` · ${line.today} today` : ''}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
 

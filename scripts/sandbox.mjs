@@ -115,6 +115,10 @@ async function sandboxExtras() {
     name: USERS.rep.name,
     month,
     units: 1000,
+    // Split across the two products, which is what makes the product filter
+    // answer anything. 600 and 400 rather than 500 each, so a reader can tell
+    // which column is which.
+    byProduct: { prod_wipes: 600, prod_mini: 400 },
     days: divideAcrossDays(1000, workable),
     note: 'Onam push — the month to make it up in.',
     setBy: USERS.manager.uid,
@@ -135,6 +139,7 @@ async function sandboxExtras() {
     name: USERS.rep2.name,
     month,
     units: 600,
+    byProduct: { prod_wipes: 250, prod_mini: 350 },
     days: divideAcrossDays(600, workable),
     setBy: USERS.manager.uid,
     setByName: USERS.manager.name,

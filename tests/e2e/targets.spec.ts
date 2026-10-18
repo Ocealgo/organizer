@@ -30,6 +30,20 @@ test.beforeEach(async () => {
   await noAllocations()
 })
 
+/**
+ * A day of this month that can actually carry a target.
+ *
+ * Sundays cannot: the division skips them and the day grid draws no box for
+ * them. Anything asserting on a specific day has to pick one that exists, or
+ * it passes six days a week and fails on the seventh — which is how both of
+ * these were written the first time.
+ */
+function aWorkableDay(): string {
+  const d = new Date()
+  while (d.getDay() === 0) d.setDate(d.getDate() - 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 async function openPlannerTargets(page: any) {
   await page.getByRole('button', { name: /^The week/ }).first().click()
   await expect(page.getByRole('heading', { name: 'The week' })).toBeVisible()
@@ -44,7 +58,7 @@ test.describe('setting a target', () => {
     // Addressed by name, not by position. Two reps are seeded and they sort
     // alphabetically, so "the first box" is Priya and the orders below belong
     // to Ravi — a test that works by position tests the wrong person.
-    await page.getByLabel('Packets for Ravi Rep').fill('2000')
+    await page.getByLabel('Baby Wet Wipes 72s packets for Ravi Rep').fill('2000')
     await page.getByRole('button', { name: 'Set target for Ravi Rep' }).click()
 
     await expect(page.getByText(/0 of 2000 packets ordered/)).toBeVisible()
@@ -61,7 +75,7 @@ test.describe('setting a target', () => {
     await loginAs('manager')
     await openPlannerTargets(page)
 
-    await page.getByLabel('Packets for Ravi Rep').fill('12.5')
+    await page.getByLabel('Baby Wet Wipes 72s packets for Ravi Rep').fill('12.5')
     await page.getByRole('button', { name: 'Set target for Ravi Rep' }).click()
 
     await expect(page.getByText(/packets has to be a whole number/)).toBeVisible()
@@ -82,7 +96,7 @@ test.describe('progress against it', () => {
 
     await loginAs('manager')
     await openPlannerTargets(page)
-    await page.getByLabel('Packets for Ravi Rep').fill('100')
+    await page.getByLabel('Baby Wet Wipes 72s packets for Ravi Rep').fill('100')
     await page.getByRole('button', { name: 'Set target for Ravi Rep' }).click()
 
     await expect(page.getByText(/24 of 100 packets ordered/)).toBeVisible()
@@ -104,7 +118,7 @@ test.describe('progress against it', () => {
 
     await loginAs('manager')
     await openPlannerTargets(page)
-    await page.getByLabel('Packets for Ravi Rep').fill('100')
+    await page.getByLabel('Baby Wet Wipes 72s packets for Ravi Rep').fill('100')
     await page.getByRole('button', { name: 'Set target for Ravi Rep' }).click()
 
     // 48 packets were ordered; one order of 24 was cancelled.
@@ -141,6 +155,78 @@ test.describe('progress against it', () => {
   })
 })
 
+test.describe('a target per product', () => {
+  /**
+   * The total is the sum and nothing else, which is what stops two numbers
+   * disagreeing about one month.
+   */
+  test('the month total is the sum of the products', async ({ page, loginAs }) => {
+    await loginAs('manager')
+    await openPlannerTargets(page)
+
+    await page.getByLabel('Baby Wet Wipes 72s packets for Ravi Rep').fill('600')
+    await page.getByLabel('Baby Wet Wipes 30s packets for Ravi Rep').fill('400')
+
+    // Said before it is saved, so a manager can see what they have built.
+    await expect(page.getByText('1000 packets for the month, across 2 products')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Set target for Ravi Rep' }).click()
+    await expect(page.getByText(/0 of 1000 packets ordered/)).toBeVisible()
+  })
+
+  /** An order counts against its own product, not against all of them. */
+  test('an order lands on the product it was for', async ({ page, loginAs, asAlso }) => {
+    await companyStock('prod_wipes', 500)
+    await companyAllocation()   // 24 packets of prod_wipes
+    await packetTarget('rep', todayLocal().slice(0, 7), 1000,
+      { [todayLocal()]: 38 }, { prod_wipes: 600, prod_mini: 400 })
+
+    await loginAs('manager')
+    await openPlannerTargets(page)
+
+    // 24 against the wipes. "0 ordered" is not asserted here: both officers
+    // have both products, so three boxes read zero and the locator would be
+    // ambiguous for a reason that has nothing to do with the test. The
+    // rep-side assertion below covers the untouched product precisely.
+    await expect(page.getByText('24 ordered')).toBeVisible()
+
+    // And the rep is told the split they are working to, with today's share of
+    // each worked out from the month rather than stored.
+    const repPage = await asAlso('rep')
+    await expect(repPage.getByText('Baby Wet Wipes 72s')).toBeVisible()
+    await expect(repPage.getByText('24 / 600', { exact: false })).toBeVisible()
+    await expect(repPage.getByText('0 / 400', { exact: false })).toBeVisible()
+  })
+
+  /**
+   * A day's per-product figures have to add up to the day, which floor
+   * division does not do: 600 and 400 of 38 are 22.8 and 15.2, and flooring
+   * both gives 37.
+   */
+  test('the day splits without losing a packet', async ({ page, loginAs }) => {
+    await packetTarget('rep', todayLocal().slice(0, 7), 1000,
+      { [todayLocal()]: 38 }, { prod_wipes: 600, prod_mini: 400 })
+
+    await loginAs('rep')
+    await expect(page.getByText('Today · 0 of 38 packets')).toBeVisible()
+    // 23 and 15 — the spare packet goes to the larger fraction, not nowhere.
+    await expect(page.getByText(/23 today/)).toBeVisible()
+    await expect(page.getByText(/15 today/)).toBeVisible()
+  })
+
+  /** A target set before products existed keeps working, unchanged. */
+  test('a target with no breakdown still reads as a total', async ({ page, loginAs }) => {
+    await companyStock('prod_wipes', 500)
+    await companyAllocation()
+    await packetTarget('rep', todayLocal().slice(0, 7), 1000, { [todayLocal()]: 80 })
+
+    await loginAs('rep')
+    await expect(page.getByText('This month · 24 of 1000 packets')).toBeVisible()
+    // No breakdown stored, so none is invented.
+    await expect(page.getByText(/ \/ 600/)).toHaveCount(0)
+  })
+})
+
 test.describe('dividing a month across its days', () => {
   test('equal division fills the days and adds up to the month', async ({
     page, loginAs, asAlso,
@@ -148,7 +234,7 @@ test.describe('dividing a month across its days', () => {
     await loginAs('manager')
     await openPlannerTargets(page)
 
-    await page.getByLabel('Packets for Ravi Rep').fill('1000')
+    await page.getByLabel('Baby Wet Wipes 72s packets for Ravi Rep').fill('1000')
     await page.getByRole('button', { name: 'Set target for Ravi Rep' }).click()
 
     // By name, not by position: the reps sort alphabetically, so the first
@@ -161,19 +247,25 @@ test.describe('dividing a month across its days', () => {
     await expect(page.getByText('1000 across the days')).toBeVisible()
     await page.getByRole('button', { name: 'Save days for Ravi Rep' }).click()
 
-    // And the rep is told what today owes, without anybody assigning a beat.
+    // It survives the write: the row still reads the same total back from the
+    // document rather than from the boxes. Today's own figure is not asserted
+    // here — a Sunday has none, by design — and the split landing on a day is
+    // covered by the test below, which picks a day that can carry one.
+    await expect(page.getByText('1000 across the days')).toBeVisible()
+
     const repPage = await asAlso('rep')
-    await expect(repPage.getByText(/^Today · 0 of \d+ packets$/)).toBeVisible()
+    await expect(repPage.getByText('This month · 0 of 1000 packets')).toBeVisible()
   })
 
   test('a day can be changed away from the even split', async ({ page, loginAs }) => {
-    await packetTarget('rep', todayLocal().slice(0, 7), 1000, { [todayLocal()]: 38 })
+    const day = aWorkableDay()
+    await packetTarget('rep', day.slice(0, 7), 1000, { [day]: 38 })
 
     await loginAs('manager')
     await openPlannerTargets(page)
     await page.getByRole('button', { name: 'Day by day for Ravi Rep' }).click()
 
-    await page.getByLabel(`Packets for Ravi Rep on ${todayLocal()}`).fill('120')
+    await page.getByLabel(`Packets for Ravi Rep on ${day}`).fill('120')
     await page.getByRole('button', { name: 'Save days for Ravi Rep' }).click()
 
     // Said out loud, because a breakdown that no longer adds up to its month is

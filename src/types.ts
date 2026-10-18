@@ -1507,7 +1507,27 @@ export interface SalesTarget {
   /** Denormalised so a report can render without joining users. */
   name: string
   month: string                   // YYYY-MM
-  /** Packets to sell. Zero is a real answer and means "no target this month". */
+  /**
+   * How many packets of each product. The figures a manager actually types.
+   *
+   * Per product because a target that is not is a target you cannot read a
+   * product filter against: ask "who is shifting the 30s" and an all-product
+   * figure is a number divided by an unrelated number.
+   *
+   * Optional, and that is what keeps every target set before this working.
+   * A document without it behaves exactly as it did — `units` is the whole
+   * answer and the product question simply has none.
+   */
+  byProduct?: Record<string, number>
+  /**
+   * Packets to sell across every product. Zero means no target this month.
+   *
+   * Derived from `byProduct` and written alongside it rather than typed, so
+   * there is one place to set a target and nothing to disagree with. Stored
+   * rather than computed at read time because every screen that does not care
+   * about products reads only this, and a sum on every row is a sum nobody
+   * asked for.
+   */
   units: number
   /**
    * What each day of the month is expected to contribute, keyed YYYY-MM-DD.
@@ -1553,12 +1573,18 @@ export function salesTargetId(uid: string, month: string): string {
  * next one would move their work into a month they had not started.
  */
 export function packetsOrdered(
-  allocations: { status: string; packets?: number; createdAt?: number; createdBy?: string }[],
+  allocations: {
+    status: string; packets?: number; createdAt?: number
+    createdBy?: string; productId?: string
+  }[],
   uid: string,
   month: string,
+  /** One product, or every product when absent. */
+  productId?: string,
 ): number {
   return allocations.reduce((n, a) => {
     if (a.createdBy !== uid || a.status === 'cancelled' || !a.createdAt) return n
+    if (productId && a.productId !== productId) return n
     return monthOfMs(a.createdAt) === month ? n + (a.packets || 0) : n
   }, 0)
 }
@@ -1601,14 +1627,79 @@ export function divideAcrossDays(units: number, dates: string[]): Record<string,
   return out
 }
 
+/**
+ * What each product owes on one day.
+ *
+ * Derived, never stored. A manager sets a month per product and one day split
+ * for the whole month; this is where the two meet. Storing it would mean a
+ * product-by-day grid — two products over twenty-seven days is fifty-four
+ * numbers per person — and every one of them another thing to keep in step
+ * with the two it came from.
+ *
+ * The remainder is given to the largest fraction rather than dropped or spread
+ * from the front. 600 and 400 of a 38-packet day come to 22.8 and 15.2; floor
+ * them and the day is 37, which is a day that does not add up to itself on
+ * screen. Largest-fraction-first is also the choice that puts the spare packet
+ * where it was most nearly earned, which front-loading by product id would
+ * not — products have no order, unlike days.
+ *
+ * Null when the day has no target or the month has no product breakdown.
+ */
+export function productDailyTargets(
+  target: { units?: number; byProduct?: Record<string, number>; days?: Record<string, number> }
+    | null | undefined,
+  date: string,
+): Record<string, number> | null {
+  const dayTotal = dailyTargetFor(target, date)
+  const by = target?.byProduct
+  if (dayTotal === null || !by) return null
+  const total = Object.values(by).reduce((n, v) => n + (v || 0), 0)
+  if (total <= 0) return null
+
+  const parts = Object.entries(by).map(([id, n]) => {
+    const exact = ((n || 0) * dayTotal) / total
+    const floor = Math.floor(exact)
+    return { id, floor, frac: exact - floor }
+  })
+  let spare = dayTotal - parts.reduce((n, p) => n + p.floor, 0)
+  parts.sort((a, b) => b.frac - a.frac)
+
+  const out: Record<string, number> = {}
+  for (const part of parts) {
+    out[part.id] = part.floor + (spare > 0 ? 1 : 0)
+    if (spare > 0) spare--
+  }
+  return out
+}
+
+/** A product's figure for the month, or null when none was set for it. */
+export function productMonthTarget(
+  target: { byProduct?: Record<string, number> } | null | undefined,
+  productId: string,
+): number | null {
+  const v = target?.byProduct?.[productId]
+  return typeof v === 'number' ? v : null
+}
+
+/** The total a per-product breakdown comes to. The stored `units` mirrors this. */
+export function sumByProduct(byProduct: Record<string, number>): number {
+  return Object.values(byProduct).reduce((n, v) => n + (Number(v) || 0), 0)
+}
+
 /** The same count for one day, against a per-day target. */
 export function packetsOrderedOn(
-  allocations: { status: string; packets?: number; createdAt?: number; createdBy?: string }[],
+  allocations: {
+    status: string; packets?: number; createdAt?: number
+    createdBy?: string; productId?: string
+  }[],
   uid: string,
   date: string,
+  /** One product, or every product when absent. */
+  productId?: string,
 ): number {
   return allocations.reduce((n, a) => {
     if (a.createdBy !== uid || a.status === 'cancelled' || !a.createdAt) return n
+    if (productId && a.productId !== productId) return n
     return dateOfMs(a.createdAt) === date ? n + (a.packets || 0) : n
   }, 0)
 }

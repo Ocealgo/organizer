@@ -6,8 +6,9 @@ import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
   AppUser, SalesRoute, WorkPlan, Holiday, LeaveRecord, SalesTarget, UnifiedAllocation,
+  Product,
   workPlanId, routePlaces, salesTargetId, packetsOrdered, packetsOrderedOn,
-  dailyTargetFor, divideAcrossDays,
+  dailyTargetFor, divideAcrossDays, sumByProduct,
 } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
@@ -76,8 +77,15 @@ export default function Planner({ onBack }: Props) {
   const [targets, setTargets] = useState<SalesTarget[]>([])
   const [allocations, setAllocations] = useState<UnifiedAllocation[]>([])
   const [targetMonth, setTargetMonth] = useState(localMonthStr())
-  /** uid → what is being typed, so a half-typed number is never saved. */
-  const [targetDraft, setTargetDraft] = useState<Record<string, string>>({})
+  const [products, setProducts] = useState<Product[]>([])
+  /**
+   * uid → product → what is being typed, so a half-typed number is never saved.
+   *
+   * The total is not in here because the total is not typed. It is the sum of
+   * these, which is the whole reason there is one place to set a target and
+   * nothing for a second number to disagree with.
+   */
+  const [targetDraft, setTargetDraft] = useState<Record<string, Record<string, string>>>({})
   const [targetNote, setTargetNote] = useState<Record<string, string>>({})
   const [targetSaving, setTargetSaving] = useState<string | null>(null)
   const [targetError, setTargetError] = useState<string | null>(null)
@@ -126,7 +134,11 @@ export default function Planner({ onBack }: Props) {
     // the month the money arrived — which is on the allocation, not in its id.
     const u4 = onSnapshot(collection(db, 'allocations_v2'), s =>
       setAllocations(s.docs.map(d => ({ id: d.id, ...d.data() } as UnifiedAllocation))))
-    return () => { u1(); u2(); u3(); u4() }
+    const u5 = onSnapshot(collection(db, 'products'), s =>
+      setProducts(s.docs.map(d => ({ id: d.id, ...d.data() } as Product))
+        .filter(x => x.active)
+        .sort((a, b) => a.name.localeCompare(b.name))))
+    return () => { u1(); u2(); u3(); u4(); u5() }
   }, [])
 
   useEffect(() => {
@@ -141,7 +153,12 @@ export default function Planner({ onBack }: Props) {
           const next = { ...prev }
           s.docs.forEach(d => {
             const v = d.data() as SalesTarget
-            if (next[v.uid] === undefined) next[v.uid] = String(v.units)
+            if (next[v.uid] !== undefined) return
+            // A target set before products were asked about has `units` and no
+            // breakdown. Rather than guess how to split it, the boxes open
+            // empty and the old total goes on showing until somebody sets one.
+            next[v.uid] = Object.fromEntries(
+              Object.entries(v.byProduct ?? {}).map(([id, n]) => [id, String(n)]))
           })
           return next
         })
@@ -385,12 +402,23 @@ export default function Planner({ onBack }: Props) {
    * deleted — a zero says somebody decided, an absence says nobody looked.
    */
   const saveTarget = async (rep: AppUser) => {
-    const raw = (targetDraft[rep.uid] ?? '').trim()
-    const units = raw === '' ? 0 : Number(raw)
-    if (!Number.isFinite(units) || units < 0 || !Number.isInteger(units)) {
-      setTargetError(`${rep.name}: packets has to be a whole number, zero or more.`)
-      return
+    const boxes = targetDraft[rep.uid] ?? {}
+    const byProduct: Record<string, number> = {}
+    for (const prod of products) {
+      const raw = (boxes[prod.id!] ?? '').trim()
+      if (raw === '') continue
+      const n = Number(raw)
+      if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
+        setTargetError(`${rep.name}, ${prod.name}: packets has to be a whole number, zero or more.`)
+        return
+      }
+      byProduct[prod.id!] = n
     }
+    // The total is not typed and not trusted from anywhere else: it is this sum,
+    // written beside the breakdown so every screen that does not care about
+    // products can read one field.
+    const units = sumByProduct(byProduct)
+
     setTargetError(null)
     setTargetSaving(rep.uid)
     try {
@@ -400,13 +428,14 @@ export default function Planner({ onBack }: Props) {
         uid: rep.uid,
         name: rep.name,
         month: targetMonth,
+        byProduct,
         units,
         ...(note ? { note } : {}),
         setBy: appUser!.uid,
         setByName: appUser!.name,
         setAt: existing?.setAt ?? Date.now(),
         ...(existing ? { updatedAt: Date.now() } : {}),
-      })
+      }, { merge: true })
     } catch (e: any) {
       setTargetError(e?.code === 'permission-denied'
         ? 'Firestore refused that. Setting a target needs the same permission as assigning the week.'
@@ -439,11 +468,19 @@ export default function Planner({ onBack }: Props) {
   }, [targetMonth, holidays])
 
   const dayBoxes = (uid: string) => dayDraft[uid] ?? {}
+  const productBoxes = (uid: string) => targetDraft[uid] ?? {}
+  /** What the product boxes currently add up to — the month's figure. */
+  const draftTotal = (uid: string) =>
+    Object.values(productBoxes(uid)).reduce((n, v) => n + (Number((v ?? '').trim()) || 0), 0)
 
   /** Fill the boxes from the month's figure. Not saved until Save is pressed. */
   const divideEqually = (rep: AppUser) => {
-    const raw = (targetDraft[rep.uid] ?? '').trim()
-    const units = raw === '' ? (targets.find(x => x.uid === rep.uid)?.units ?? 0) : Number(raw)
+    // The month's figure is the sum of the product boxes, falling back to what
+    // is stored when nothing has been typed yet. The day split is one set of
+    // weights for the whole month, not one per product — each product's daily
+    // figure is worked out from its share of the total.
+    const typed = draftTotal(rep.uid)
+    const units = typed > 0 ? typed : (targets.find(x => x.uid === rep.uid)?.units ?? 0)
     if (!Number.isFinite(units) || units <= 0) {
       setTargetError(`${rep.name}: set the month's packets first — there is nothing to divide.`)
       return
@@ -784,7 +821,12 @@ export default function Planner({ onBack }: Props) {
                     .filter(a => a.createdBy === r.uid && a.status === 'cancelled').length
                   const goal = existing?.units ?? 0
                   const pct = goal > 0 ? Math.round((ordered / goal) * 100) : null
-                  const dirty = (targetDraft[r.uid] ?? '') !== String(existing?.units ?? '')
+                  // Compared breakdown against breakdown. A total would call
+                  // 600/400 the same as 400/600, which is a different month.
+                  const storedBy = existing?.byProduct ?? {}
+                  const boxes = productBoxes(r.uid)
+                  const dirty = products.some(prod =>
+                    (boxes[prod.id!] ?? '').trim() !== String(storedBy[prod.id!] ?? ''))
                     || (targetNote[r.uid] ?? '') !== ''
 
                   return (
@@ -816,19 +858,51 @@ export default function Planner({ onBack }: Props) {
                           )}
                         </span>
 
-                        <span style={{ flex: '0 0 120px' }}>
-                          <Field label="Packets">
-                            {/* Named per person. Field renders its label as a
-                                div, so without this every box on the screen is
-                                an unnamed control called the same thing — to a
-                                screen reader and to anything else that looks a
-                                control up by what it is for. */}
-                            <input type="number" inputMode="numeric" min={0}
-                              aria-label={`Packets for ${r.name}`}
-                              value={targetDraft[r.uid] ?? ''}
-                              onChange={e => setTargetDraft(prev => ({ ...prev, [r.uid]: e.target.value }))}
-                              placeholder="0" style={inputStyle(t)} />
-                          </Field>
+                        {/* One box per product, and the total underneath them
+                            rather than in a box of its own. The total is the
+                            sum: giving it an input as well would be two places
+                            to set one thing, and whichever a manager edited
+                            second would silently win. */}
+                        <span style={{ flex: '1 1 260px', minWidth: 0 }}>
+                          {products.length === 0 ? (
+                            <Note tone="warn">
+                              No products to set a target against. Add one in Products first.
+                            </Note>
+                          ) : (
+                            <>
+                              <div className="oc-wrap" style={{ gap: 10 }}>
+                                {products.map(prod => {
+                                  // Progress per product, where the target is
+                                  // set. A manager setting four numbers wants
+                                  // to know which of the four is behind.
+                                  const did = packetsOrdered(
+                                    allocations as any, r.uid, targetMonth, prod.id!)
+                                  return (
+                                  <span key={prod.id} style={{ flex: '1 1 110px', minWidth: 0 }}>
+                                    <Field label={prod.name} hint={`${did} ordered`}>
+                                      {/* Named per person and per product. Field
+                                          renders its label as a div, so without
+                                          this every box on the screen is an
+                                          unnamed control called the same thing. */}
+                                      <input type="number" inputMode="numeric" min={0}
+                                        aria-label={`${prod.name} packets for ${r.name}`}
+                                        value={boxes[prod.id!] ?? ''}
+                                        onChange={e => setTargetDraft(prev => ({
+                                          ...prev,
+                                          [r.uid]: { ...(prev[r.uid] ?? {}), [prod.id!]: e.target.value },
+                                        }))}
+                                        placeholder="0" style={inputStyle(t)} />
+                                    </Field>
+                                  </span>
+                                  )
+                                })}
+                              </div>
+                              <div style={{ fontSize: 12, color: t.text3, marginTop: 6 }}>
+                                {draftTotal(r.uid)} packets for the month, across{' '}
+                                {products.length} product{products.length > 1 ? 's' : ''}
+                              </div>
+                            </>
+                          )}
                         </span>
 
                         <GhostButton onClick={() => saveTarget(r)}

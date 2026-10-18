@@ -163,11 +163,18 @@ export async function packetTarget(
   month: string,
   units: number,
   days?: Record<string, number>,
+  /**
+   * The per-product split. Omitted where a spec is not about products, which
+   * is the same shape every target set before products existed has — so these
+   * specs also cover that the old shape still works.
+   */
+  byProduct?: Record<string, number>,
 ): Promise<void> {
   const u = USERS[who]
   await getFirestore(admin()).doc(`sales_targets/${u.uid}_${month}`).set({
     uid: u.uid, name: u.name, month, units,
     ...(days ? { days } : {}),
+    ...(byProduct ? { byProduct } : {}),
     setBy: USERS.manager.uid, setByName: USERS.manager.name, setAt: Date.now(),
   })
 }
