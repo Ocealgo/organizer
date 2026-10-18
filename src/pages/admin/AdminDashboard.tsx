@@ -237,15 +237,33 @@ export default function AdminDashboard() {
       (snap) => setPlannedThisWeek(snap.docs.length),
       () => setPlannedThisWeek(0),
     );
-    const u12 = onSnapshot(
+    return () => {
+      u0(); u3(); u4(); u4b(); u5(); u5b(); u6(); u7(); u8(); u9(); u10(); u11();
+    };
+  }, []);
+
+  /**
+   * Today's manager logs, for admins only.
+   *
+   * This used to subscribe for everybody who lands on the dashboard, which
+   * includes sales managers — and a manager may only list their own entries,
+   * so a query for everybody's today was refused outright. The handler turned
+   * the refusal into an empty list, so the panel simply looked quiet, while
+   * the listener logged a permission failure every time the screen opened.
+   *
+   * The panel was never shown to a manager anyway (`isAdminRole` gates it
+   * below), so the read was being made for nothing and refused for it. Asked
+   * for only by the people it is drawn for, it is a query the rules can prove.
+   */
+  const seesManagerLogs = isAdminRole(appUser);
+  useEffect(() => {
+    if (!seesManagerLogs) { setManagerLogsToday([]); return; }
+    return onSnapshot(
       query(collection(db, "manager_activities"), where("date", "==", localDateStr())),
       (snap) => setManagerLogsToday(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
       () => setManagerLogsToday([]),
     );
-    return () => {
-      u0(); u3(); u4(); u4b(); u5(); u5b(); u6(); u7(); u8(); u9(); u10(); u11(); u12();
-    };
-  }, []);
+  }, [seesManagerLogs]);
 
   useEffect(() => {
     // Fetch offline sales users
