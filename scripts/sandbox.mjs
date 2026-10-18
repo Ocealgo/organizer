@@ -127,6 +127,139 @@ async function sandboxExtras() {
   await companyAllocation()
 }
 
+/**
+ * A week behind us, with days that landed and days that did not.
+ *
+ * The sandbox was a world with one order in it, which is enough to see a
+ * screen and not enough to see a report. A range only means something over
+ * several days, and a met/missed filter only means something when both exist —
+ * so the week is deliberately mixed rather than uniformly good.
+ *
+ * Shaped, not random. A fixed pattern per weekday means the same sandbox comes
+ * back every time it is reseeded, so a number somebody is puzzled by is still
+ * there when they go to look at it again.
+ */
+async function recentWeek() {
+  const db = getFirestore()
+
+  /** Parties to visit, with the type each one reports as. */
+  const OUTLETS = [
+    { id: 'party_shop', name: 'Anand Stores', type: 'general' },
+    { id: 'party_pharmacy', name: 'Guardian Pharmacy', type: 'pharmacy' },
+    { id: 'party_dist', name: 'Rajan Distributors', type: 'distributor' },
+  ]
+
+  /**
+   * What each of the last days looked like, oldest first.
+   *
+   * `packets` against a divided target of about 37 is what decides the flag, so
+   * the week carries two comfortable days, two short ones, a blank and a day
+   * nobody started — which is every state the monitor can draw.
+   */
+  const SHAPE = [
+    { back: 7, shops: 3, packets: 48, km: 62 },
+    { back: 6, shops: 2, packets: 24, km: 41 },   // short
+    { back: 5, shops: 4, packets: 72, km: 88 },
+    { back: 4, shops: 1, packets: 0, km: 23 },    // out, sold nothing
+    { back: 3, shops: 3, packets: 48, km: 55 },
+    { back: 2, shops: 0, packets: 0, km: null },  // never started
+    { back: 1, shops: 2, packets: 24, km: 37 },   // short
+  ]
+
+  const dayBack = (n) => {
+    const d = new Date()
+    d.setDate(d.getDate() - n)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+  /** A timestamp at a given hour on a given day, so the day it lands on is the day meant. */
+  const at = (date, hour, min = 0) =>
+    new Date(`${date}T${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}:00`).getTime()
+
+  let odo = 41200
+
+  for (const spec of SHAPE) {
+    const date = dayBack(spec.back)
+    // A Sunday is a day off, and inventing work on one would contradict every
+    // other screen — the monitor hides it, the planner refuses to target it.
+    if (new Date(date + 'T00:00:00').getDay() === 0) continue
+
+    const u = USERS.rep
+    const sessionId = `demo_${u.uid}_${date}`
+
+    if (spec.km !== null) {
+      const start = odo
+      odo += spec.km
+      await db.doc(`duty_sessions/${sessionId}`).set({
+        uid: u.uid, name: u.name, date,
+        routeId: 'route_demo', routeName: 'Beach Road',
+        startAt: at(date, 9, 10),
+        startOdometerKm: start,
+        odometerStatus: 'recorded',
+        startOdometerPhoto: 'demo/odometer.jpg',
+        startOdometerPhotoVerified: false,
+        endAt: at(date, 17, 40),
+        endOdometerKm: odo,
+        endOdometerPhoto: 'demo/odometer.jpg',
+        claimedDistanceKm: spec.km,
+        status: 'closed',
+      })
+
+      // The beat was assigned for the day, which is what puts a route on the
+      // card. Targets are not copied here — those live on the rep's month.
+      await db.doc(`work_plans/${u.uid}_${date}`).set({
+        uid: u.uid, name: u.name, date,
+        routeId: 'route_demo', routeName: 'Beach Road',
+        targets: { visits: 12, orderValue: 50000 },
+        assignedBy: USERS.manager.uid,
+        assignedByName: USERS.manager.name,
+        createdAt: at(date, 8, 0),
+      })
+    }
+
+    for (let i = 0; i < spec.shops; i++) {
+      const o = OUTLETS[i % OUTLETS.length]
+      const hour = 10 + i * 2
+      await db.doc(`outlet_visits/${sessionId}_${i}`).set({
+        sessionId, uid: u.uid, name: u.name, role: u.role, date,
+        partyId: o.id, partyName: o.name, outletType: o.type,
+        punchInAt: at(date, hour),
+        punchOutAt: at(date, hour, 24),
+        durationMinutes: 24,
+        stock: [], competitors: [], photos: [],
+        orderPlaced: spec.packets > 0 && i === 0,
+        remarksCategory: spec.packets > 0 && i === 0 ? 'order_booked' : 'no_order_stock_available',
+        remarksText: spec.packets > 0 && i === 0
+          ? 'Took a carton for the festival week.'
+          : 'Shelf still full from the last drop.',
+        status: 'closed',
+      })
+    }
+
+    if (spec.packets > 0) {
+      // Through the shared helper, so a demo order is the same document an
+      // order raised in the app would be — and counts the same everywhere.
+      await companyAllocation({
+        createdAt: at(date, 11, 30),
+        packets: spec.packets,
+        cartons: Math.round(spec.packets / 24),
+        totalAmount: spec.packets * 60,
+        status: 'sent',
+        sentAt: at(date, 15, 0),
+        sentDate: date,
+        month: date.slice(0, 7),
+      })
+    }
+  }
+
+  // One cancelled order, so the line that says cancellations are not counted
+  // has something to not count.
+  await companyAllocation({
+    createdAt: at(dayBack(3), 12, 0),
+    status: 'cancelled',
+    month: dayBack(3).slice(0, 7),
+  })
+}
+
 const PAD = Math.max(...Object.keys(USERS).map(k => k.length))
 
 async function main() {
@@ -134,6 +267,7 @@ async function main() {
   await resetWorld()
   await seedWorld()
   await sandboxExtras()
+  await recentWeek()
   await closeAdmin()
 
   console.log('\n  Signed-out and ready. Every account uses the same password.\n')
@@ -144,8 +278,9 @@ async function main() {
   console.log('\n  Either the email or the mobile number signs them in.')
   console.log('\n  App: http://127.0.0.1:5174')
   console.log('\n  Fuel rate is ₹4.50/km, so fuel is claimed as a distance.')
-  console.log('  Ravi Rep has a 1000-packet month divided across its working days,')
-  console.log('  a Beach Road day assigned, and one 24-packet order already placed.')
+  console.log('  Ravi Rep has a 1000-packet month divided across its working days and')
+  console.log('  a worked week behind him: days that met the target, days that fell')
+  console.log('  short, a blank one and one he never started. Reports \u2192 Monitor reps.')
   console.log('  Re-seed at any time without restarting: npm run sandbox:reseed\n')
 }
 
