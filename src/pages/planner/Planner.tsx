@@ -38,6 +38,9 @@ const dayLabel = (d: string) =>
   new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' })
 const longDay = (d: string) =>
   new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })
+/** Calendar headings, Monday first, the way the working week runs. */
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
 const monthLabel = (d: string) =>
   new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
 
@@ -482,6 +485,19 @@ export default function Planner({ onBack }: Props) {
     }
     return out
   }, [targetMonth, holidays])
+
+  /**
+   * The month laid out for a Monday-first calendar: blanks up to the 1st's
+   * weekday, then every date. Days off are included so they hold their column.
+   */
+  const calendarCells = useMemo(() => {
+    const [y, m] = targetMonth.split('-').map(Number)
+    const last = new Date(y, m, 0).getDate()
+    const lead = (new Date(y, m - 1, 1).getDay() + 6) % 7
+    const cells: (string | null)[] = Array(lead).fill(null)
+    for (let d = 1; d <= last; d++) cells.push(`${targetMonth}-${String(d).padStart(2, '0')}`)
+    return cells
+  }, [targetMonth])
 
   /**
    * The days a target may still be set for.
@@ -1137,16 +1153,56 @@ export default function Planner({ onBack }: Props) {
                                   })}
                                 </div>
 
-                                {/* A box per workable day, for the product above.
-                                    Sundays and holidays are absent rather than
-                                    disabled — a greyed box still reads as something
-                                    somebody forgot to fill in. */}
-                                <div style={{
-                                  display: 'grid',
-                                  gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))',
-                                  gap: 8,
-                                }}>
-                                  {workableDays.map(date => {
+                                {/* The month as a calendar, Monday first, so a
+                                    day sits under its weekday and a week reads
+                                    across. Sundays and holidays take their place
+                                    in the week but carry no box — a box on a day
+                                    off reads as one somebody forgot to fill in —
+                                    and are marked in red so the gaps explain
+                                    themselves. */}
+                                <div className="oc-scroll-x">
+                                <div role="grid" aria-label={`Days of ${targetMonth} for ${r.name}`}
+                                  style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+                                    gap: 6, minWidth: 300,
+                                  }}>
+                                  {WEEKDAYS.map((w, i) => (
+                                    <div key={w} role="columnheader" style={{
+                                      fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase',
+                                      color: i === 6 ? t.off : t.text3, padding: '0 2px 2px',
+                                    }}>{w}</div>
+                                  ))}
+                                  {calendarCells.map((date, i) => {
+                                    if (!date) return <div key={`blank_${i}`} aria-hidden />
+                                    const dayNo = Number(date.slice(8))
+                                    const holiday = holidays.find(h => h.date === date)?.name ?? null
+                                    if (isSunday(date) || holiday) {
+                                      const why = holiday ?? 'Sunday'
+                                      return (
+                                        <div key={date} role="gridcell"
+                                          aria-label={`${date}, ${why} — no target`}
+                                          title={why} style={{ minWidth: 0 }}>
+                                          {/* Same shape as a working day — the date
+                                              above, a box below — so the rows line up. */}
+                                          <span style={{ display: 'block', fontSize: 11, color: t.off,
+                                                         fontWeight: 500, marginBottom: 3 }}>
+                                            {dayNo}
+                                          </span>
+                                          <div style={{
+                                            border: `1px solid ${t.off}`, borderRadius: 6,
+                                            // The height of the input beside it, so a week is one even row.
+                                            height: 44, boxSizing: 'border-box', display: 'flex', alignItems: 'center',
+                                            padding: '0 6px', fontSize: 11, color: t.off, lineHeight: 1.3,
+                                            overflow: 'hidden',
+                                          }}>
+                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                                              {holiday ?? 'Holiday'}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      )
+                                    }
                                     // What was ordered of this product that day,
                                     // so the comparison on screen is like for like.
                                     const done = packetsOrderedOn(allocations as any, r.uid, date, pid)
@@ -1157,10 +1213,13 @@ export default function Planner({ onBack }: Props) {
                                     // would stop adding up to itself.
                                     const gone = date < today
                                     return (
-                                      <label key={date} style={{ display: 'block' }}>
+                                      <label key={date} role="gridcell" style={{ display: 'block', minWidth: 0 }}>
                                         <span style={{ display: 'block', fontSize: 11,
-                                                       color: t.text3, marginBottom: 3 }}>
-                                          {monthLabel(date)}
+                                                       color: date === today ? t.text : t.text3,
+                                                       fontWeight: date === today ? 500 : 400,
+                                                       marginBottom: 3, whiteSpace: 'nowrap',
+                                                       overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                          {dayNo}
                                           {done > 0 ? ` · ${done}` : ''}
                                         </span>
                                         <input type="number" inputMode="numeric" min={0}
@@ -1177,7 +1236,8 @@ export default function Planner({ onBack }: Props) {
                                           }))}
                                           placeholder={gone ? '·' : '—'}
                                           style={{
-                                            ...inputStyle(t), fontSize: 13, padding: '7px 9px',
+                                            ...inputStyle(t), fontSize: 13, padding: '7px 6px',
+                                            width: '100%', minWidth: 0, boxSizing: 'border-box',
                                             // Dimmed rather than greyed out: it is
                                             // still a figure worth reading, just
                                             // not one anybody can change now.
@@ -1190,6 +1250,7 @@ export default function Planner({ onBack }: Props) {
                                       </label>
                                     )
                                   })}
+                                </div>
                                 </div>
                               </div>
                             )}

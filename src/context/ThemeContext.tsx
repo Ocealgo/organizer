@@ -7,7 +7,7 @@ interface ThemeTokens {
   border: string; border2: string
   card: string; cardHover: string
   primary: string; primaryText: string
-  accent: string; warn: string; good: string; mark: string; tint: string; hover: string
+  accent: string; warn: string; good: string; mark: string; off: string; tint: string; hover: string
 }
 
 /**
@@ -79,6 +79,10 @@ const dark: ThemeTokens = {
   // surfaces: inside the lightness band, above the chroma floor, over 3:1.
   // The mint accent that bars used before failed the band and read as glare.
   mark: '#3987e5',
+  // A day nobody works — Sundays and holidays on the planner's calendar. The
+  // red the app already uses for errors in dark; read as text at 11px, so held
+  // above 4.5:1 on both dark surfaces.
+  off: '#f87171',
   tint: 'rgba(255,255,255,0.045)',
   hover: 'rgba(255,255,255,0.035)',
 }
@@ -99,6 +103,8 @@ const light: ThemeTokens = {
   // Validated against both light surfaces. The teal accent bars used before
   // fell under the chroma floor and read as grey.
   mark: '#2a78d6',
+  // The light red, darkened until it holds 4.5:1 as small text on white.
+  off: '#b91c1c',
   tint: 'rgba(15,23,42,0.04)',
   hover: 'rgba(15,23,42,0.03)',
 }

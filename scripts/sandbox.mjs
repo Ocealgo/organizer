@@ -35,6 +35,18 @@ import {
 import { divideByProductAcrossDays, dayTotalsFromProducts } from '../src/types.ts'
 
 /**
+ * Two public holidays, one gone and one ahead, so the planner's calendar shows
+ * both kinds of day off — Sundays and a holiday the admin declared — and the
+ * week and month reports have a day nobody was expected to work.
+ */
+const HOLIDAYS = [
+  { date: '2026-10-02', name: 'Gandhi Jayanti' },
+  { date: '2026-10-20', name: 'Vijayadashami' },
+]
+const isDayOff = (date) =>
+  new Date(date + 'T00:00:00').getDay() === 0 || HOLIDAYS.some(h => h.date === date)
+
+/**
  * Things the specs deliberately leave unset, and a person poking at the app
  * deliberately wants set.
  *
@@ -66,6 +78,12 @@ async function sandboxExtras() {
   // cannot dispatch an order is a sandbox with half its screens dead.
   await companyStock('prod_wipes', 2000)
   await companyStock('prod_mini', 2000)
+
+  for (const h of HOLIDAYS) {
+    await db.doc(`holidays/${h.date}`).set({
+      ...h, createdBy: USERS.admin.uid, createdByName: USERS.admin.name, createdAt: Date.now(),
+    })
+  }
 
   /**
    * A beat, a day assigned from it, and a month with its days divided.
@@ -107,7 +125,7 @@ async function sandboxExtras() {
   const workable = []
   for (let d = 1; d <= lastDay; d++) {
     const date = `${month}-${String(d).padStart(2, '0')}`
-    if (new Date(date + 'T00:00:00').getDay() === 0) continue
+    if (isDayOff(date)) continue
     workable.push(date)
   }
 
@@ -343,7 +361,7 @@ function monthTarget(u, month, byProduct, extra = {}) {
   const workable = []
   for (let d = 1; d <= new Date(y, m, 0).getDate(); d++) {
     const date = `${month}-${String(d).padStart(2, '0')}`
-    if (new Date(date + 'T00:00:00').getDay() !== 0) workable.push(date)
+    if (!isDayOff(date)) workable.push(date)
   }
   const daysByProduct = divideByProductAcrossDays(byProduct, workable)
   return {
@@ -428,7 +446,7 @@ async function recentMonth() {
 
     for (let back = DAYS_BACK; back >= 1; back--) {
       const date = dayBack(back)
-      if (new Date(date + 'T00:00:00').getDay() === 0) continue
+      if (isDayOff(date)) continue
 
       // What kind of day: mostly worked, now and then not started, now and
       // then out all day and nothing sold.
