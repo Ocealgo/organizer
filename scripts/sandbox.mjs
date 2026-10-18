@@ -147,126 +147,182 @@ async function sandboxExtras() {
 }
 
 /**
- * A week behind us, with days that landed and days that did not.
+ * A week behind us, for both officers, with days that landed and days that did not.
  *
  * The sandbox was a world with one order in it, which is enough to see a
  * screen and not enough to see a report. A range only means something over
- * several days, and a met/missed filter only means something when both exist —
- * so the week is deliberately mixed rather than uniformly good.
+ * several days; a met/missed filter only means something when both exist; and
+ * a per-person view only means something when more than one person has
+ * anything in it.
  *
- * Shaped, not random. A fixed pattern per weekday means the same sandbox comes
- * back every time it is reseeded, so a number somebody is puzzled by is still
- * there when they go to look at it again.
+ * Shaped, not random. A fixed pattern per person per day means the same
+ * sandbox comes back on every reseed, so a number somebody is puzzled by is
+ * still there when they go back to look at it.
  */
+
+/** Parties to visit, with the type each one reports as. */
+const OUTLETS = [
+  { id: 'party_shop', name: 'Anand Stores', type: 'general' },
+  { id: 'party_pharmacy', name: 'Guardian Pharmacy', type: 'pharmacy' },
+  { id: 'party_dist', name: 'Rajan Distributors', type: 'distributor' },
+]
+
+const dayBack = (n) => {
+  const d = new Date()
+  d.setDate(d.getDate() - n)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** A timestamp at an hour on a day, so the day it lands on is the day meant. */
+const at = (date, hour, min = 0) =>
+  new Date(`${date}T${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}:00`).getTime()
+
+/**
+ * Two people, two beats, two different weeks.
+ *
+ * Ravi works a 1000-packet month — about 37 a day — and has a mixed week
+ * against it. Priya works 600, about 22 a day, and mostly makes it. Different
+ * figures on different rounds is what makes the monitor's columns worth
+ * reading side by side rather than identical down the page.
+ *
+ * `packets` against each person's own divided target is what decides the flag,
+ * so between them the week carries every state the monitor can draw: met,
+ * short, out and sold nothing, and never started at all.
+ */
+const WEEKS = [
+  {
+    who: 'rep',
+    routeId: 'route_demo',
+    routeName: 'Beach Road',
+    odoFrom: 41200,
+    days: [
+      { back: 7, shops: 3, packets: 48, km: 62 },
+      { back: 6, shops: 2, packets: 24, km: 41 },   // short
+      { back: 5, shops: 4, packets: 72, km: 88 },
+      { back: 4, shops: 1, packets: 0, km: 23 },    // out, sold nothing
+      { back: 3, shops: 3, packets: 48, km: 55 },
+      { back: 2, shops: 0, packets: 0, km: null },  // never started
+      { back: 1, shops: 2, packets: 24, km: 37 },   // short
+    ],
+  },
+  {
+    who: 'rep2',
+    routeId: 'route_market',
+    routeName: 'Market Road',
+    odoFrom: 18650,
+    days: [
+      { back: 7, shops: 2, packets: 24, km: 28 },
+      { back: 6, shops: 3, packets: 48, km: 44 },
+      { back: 5, shops: 1, packets: 0, km: 16 },    // short
+      { back: 4, shops: 3, packets: 24, km: 39 },
+      { back: 3, shops: 2, packets: 48, km: 31 },
+      { back: 2, shops: 2, packets: 24, km: 26 },
+      { back: 1, shops: 0, packets: 0, km: null },  // never started
+    ],
+  },
+]
+
 async function recentWeek() {
   const db = getFirestore()
 
-  /** Parties to visit, with the type each one reports as. */
-  const OUTLETS = [
-    { id: 'party_shop', name: 'Anand Stores', type: 'general' },
-    { id: 'party_pharmacy', name: 'Guardian Pharmacy', type: 'pharmacy' },
-    { id: 'party_dist', name: 'Rajan Distributors', type: 'distributor' },
-  ]
-
   /**
-   * What each of the last days looked like, oldest first.
+   * A second beat, so the beat filter has something to filter.
    *
-   * `packets` against a divided target of about 37 is what decides the flag, so
-   * the week carries two comfortable days, two short ones, a blank and a day
-   * nobody started — which is every state the monitor can draw.
+   * One beat made the control decorative — every day matched it. Two, in
+   * different areas, is the smallest number that makes it a filter.
    */
-  const SHAPE = [
-    { back: 7, shops: 3, packets: 48, km: 62 },
-    { back: 6, shops: 2, packets: 24, km: 41 },   // short
-    { back: 5, shops: 4, packets: 72, km: 88 },
-    { back: 4, shops: 1, packets: 0, km: 23 },    // out, sold nothing
-    { back: 3, shops: 3, packets: 48, km: 55 },
-    { back: 2, shops: 0, packets: 0, km: null },  // never started
-    { back: 1, shops: 2, packets: 24, km: 37 },   // short
-  ]
+  await db.doc('sales_routes/route_market').set({
+    name: 'Market Road',
+    description: 'The other round, for looking at.',
+    places: ['Ernakulam'],
+    outletIds: ['party_shop', 'party_dist'],
+    defaultTargets: { visits: 9, orderValue: 35000 },
+    active: true,
+    createdBy: USERS.manager.uid,
+    createdByName: USERS.manager.name,
+    createdAt: Date.now(),
+  })
 
-  const dayBack = (n) => {
-    const d = new Date()
-    d.setDate(d.getDate() - n)
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  }
-  /** A timestamp at a given hour on a given day, so the day it lands on is the day meant. */
-  const at = (date, hour, min = 0) =>
-    new Date(`${date}T${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}:00`).getTime()
+  for (const week of WEEKS) {
+    const u = USERS[week.who]
+    let odo = week.odoFrom
 
-  let odo = 41200
+    for (const spec of week.days) {
+      const date = dayBack(spec.back)
+      // A Sunday is a day off, and inventing work on one would contradict
+      // every other screen — the monitor hides it, the planner refuses to
+      // target it.
+      if (new Date(date + 'T00:00:00').getDay() === 0) continue
 
-  for (const spec of SHAPE) {
-    const date = dayBack(spec.back)
-    // A Sunday is a day off, and inventing work on one would contradict every
-    // other screen — the monitor hides it, the planner refuses to target it.
-    if (new Date(date + 'T00:00:00').getDay() === 0) continue
+      const sessionId = `demo_${u.uid}_${date}`
 
-    const u = USERS.rep
-    const sessionId = `demo_${u.uid}_${date}`
+      if (spec.km !== null) {
+        const start = odo
+        odo += spec.km
+        await db.doc(`duty_sessions/${sessionId}`).set({
+          uid: u.uid, name: u.name, date,
+          routeId: week.routeId, routeName: week.routeName,
+          startAt: at(date, 9, 10),
+          startOdometerKm: start,
+          odometerStatus: 'recorded',
+          startOdometerPhoto: 'demo/odometer.jpg',
+          startOdometerPhotoVerified: false,
+          endAt: at(date, 17, 40),
+          endOdometerKm: odo,
+          endOdometerPhoto: 'demo/odometer.jpg',
+          claimedDistanceKm: spec.km,
+          status: 'closed',
+        })
 
-    if (spec.km !== null) {
-      const start = odo
-      odo += spec.km
-      await db.doc(`duty_sessions/${sessionId}`).set({
-        uid: u.uid, name: u.name, date,
-        routeId: 'route_demo', routeName: 'Beach Road',
-        startAt: at(date, 9, 10),
-        startOdometerKm: start,
-        odometerStatus: 'recorded',
-        startOdometerPhoto: 'demo/odometer.jpg',
-        startOdometerPhotoVerified: false,
-        endAt: at(date, 17, 40),
-        endOdometerKm: odo,
-        endOdometerPhoto: 'demo/odometer.jpg',
-        claimedDistanceKm: spec.km,
-        status: 'closed',
-      })
+        // The beat was assigned for the day, which is what puts a route on the
+        // card. Packet targets are not copied here — those live on the rep's
+        // month, because a day off the round still owes its packets.
+        await db.doc(`work_plans/${u.uid}_${date}`).set({
+          uid: u.uid, name: u.name, date,
+          routeId: week.routeId, routeName: week.routeName,
+          targets: { visits: 12, orderValue: 50000 },
+          assignedBy: USERS.manager.uid,
+          assignedByName: USERS.manager.name,
+          createdAt: at(date, 8, 0),
+        })
+      }
 
-      // The beat was assigned for the day, which is what puts a route on the
-      // card. Targets are not copied here — those live on the rep's month.
-      await db.doc(`work_plans/${u.uid}_${date}`).set({
-        uid: u.uid, name: u.name, date,
-        routeId: 'route_demo', routeName: 'Beach Road',
-        targets: { visits: 12, orderValue: 50000 },
-        assignedBy: USERS.manager.uid,
-        assignedByName: USERS.manager.name,
-        createdAt: at(date, 8, 0),
-      })
-    }
+      for (let i = 0; i < spec.shops; i++) {
+        const o = OUTLETS[i % OUTLETS.length]
+        const hour = 10 + i * 2
+        const sold = spec.packets > 0 && i === 0
+        await db.doc(`outlet_visits/${sessionId}_${i}`).set({
+          sessionId, uid: u.uid, name: u.name, role: u.role, date,
+          partyId: o.id, partyName: o.name, outletType: o.type,
+          punchInAt: at(date, hour),
+          punchOutAt: at(date, hour, 24),
+          durationMinutes: 24,
+          stock: [], competitors: [], photos: [],
+          orderPlaced: sold,
+          remarksCategory: sold ? 'order_booked' : 'no_order_stock_available',
+          remarksText: sold
+            ? 'Took a carton for the festival week.'
+            : 'Shelf still full from the last drop.',
+          status: 'closed',
+        })
+      }
 
-    for (let i = 0; i < spec.shops; i++) {
-      const o = OUTLETS[i % OUTLETS.length]
-      const hour = 10 + i * 2
-      await db.doc(`outlet_visits/${sessionId}_${i}`).set({
-        sessionId, uid: u.uid, name: u.name, role: u.role, date,
-        partyId: o.id, partyName: o.name, outletType: o.type,
-        punchInAt: at(date, hour),
-        punchOutAt: at(date, hour, 24),
-        durationMinutes: 24,
-        stock: [], competitors: [], photos: [],
-        orderPlaced: spec.packets > 0 && i === 0,
-        remarksCategory: spec.packets > 0 && i === 0 ? 'order_booked' : 'no_order_stock_available',
-        remarksText: spec.packets > 0 && i === 0
-          ? 'Took a carton for the festival week.'
-          : 'Shelf still full from the last drop.',
-        status: 'closed',
-      })
-    }
-
-    if (spec.packets > 0) {
-      // Through the shared helper, so a demo order is the same document an
-      // order raised in the app would be — and counts the same everywhere.
-      await companyAllocation({
-        createdAt: at(date, 11, 30),
-        packets: spec.packets,
-        cartons: Math.round(spec.packets / 24),
-        totalAmount: spec.packets * 60,
-        status: 'sent',
-        sentAt: at(date, 15, 0),
-        sentDate: date,
-        month: date.slice(0, 7),
-      })
+      if (spec.packets > 0) {
+        // Through the shared helper, so a demo order is the same document an
+        // order raised in the app would be — and counts the same everywhere.
+        await companyAllocation({
+          createdBy: u.uid,
+          createdByName: u.name,
+          createdAt: at(date, 11, 30),
+          packets: spec.packets,
+          cartons: Math.round(spec.packets / 24),
+          totalAmount: spec.packets * 60,
+          status: 'sent',
+          sentAt: at(date, 15, 0),
+          sentDate: date,
+          month: date.slice(0, 7),
+        })
+      }
     }
   }
 
