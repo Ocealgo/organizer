@@ -444,6 +444,13 @@ async function recentMonth() {
     const reports = new Map()   // weekStart → { id, total }
     let orders = 0, wipesOrders = 0
 
+    // The sandbox's "Working day" switch lands on the latest working day. For
+    // Ravi that day is worked and left unclaimed, so the end-of-day card has
+    // something to offer when you look.
+    let latestWork = 1
+    while (isDayOff(dayBack(latestWork))) latestWork++
+    const fresh = (back) => u.uid === USERS.rep.uid && back === latestWork
+
     for (let back = DAYS_BACK; back >= 1; back--) {
       const date = dayBack(back)
       if (isDayOff(date)) continue
@@ -451,7 +458,7 @@ async function recentMonth() {
       // What kind of day: mostly worked, now and then not started, now and
       // then out all day and nothing sold.
       const roll = r()
-      const kind = p.force[back] ?? (roll < 0.07 ? 'absent' : roll < 0.15 ? 'nothing' : 'sold')
+      const kind = fresh(back) ? 'sold' : p.force[back] ?? (roll < 0.07 ? 'absent' : roll < 0.15 ? 'nothing' : 'sold')
       if (kind === 'absent') continue
 
       const km = 18 + Math.round(r() * 60)
@@ -525,7 +532,7 @@ async function recentMonth() {
       // Expenses on most worked days. The allowance follows the meter, fuel is
       // the meter's distance — except one of Ravi's, claimed above it with a
       // reason, which is the line the monitor calls out.
-      if (r() < 0.8) {
+      if (r() < 0.8 && !fresh(back)) {
         const ws = weekStartOf(date)
         if (!reports.has(ws)) {
           const ref = db.collection('expense_reports').doc()
