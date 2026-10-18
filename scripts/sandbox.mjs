@@ -157,6 +157,32 @@ async function sandboxExtras() {
   // One order already placed, so both lines open on something other than zero
   // and cancelling it is one tap from showing what that does.
   await companyAllocation()
+
+  /**
+   * Today, already worked and closed, for Ravi.
+   *
+   * The end-of-day expenses appear only once the day is over, so a world where
+   * nobody has finished today is a world where that card cannot be looked at.
+   * Seeded whatever weekday it is — including a Sunday, which is the one
+   * exception to the rule the rest of this file keeps — because a sandbox
+   * exists to put screens in front of somebody, and waiting until Monday to
+   * see one is not that.
+   *
+   * 47 km: beyond 25, so the allowance opens on EX, and an odd number so the
+   * fuel line shows paise rather than a round figure that hides the arithmetic.
+   */
+  const today = todayLocal()
+  await db.doc(`duty_sessions/sandbox_today_${USERS.rep.uid}`).set({
+    uid: USERS.rep.uid, name: USERS.rep.name, date: today,
+    routeId: 'route_demo', routeName: 'Beach Road',
+    startAt: new Date(`${today}T09:05:00`).getTime(),
+    startOdometerKm: 42100, startOdometerPhoto: 'demo/odometer.jpg',
+    odometerStatus: 'recorded',
+    endAt: new Date(`${today}T17:50:00`).getTime(),
+    endOdometerKm: 42147, endOdometerPhoto: 'demo/odometer.jpg',
+    claimedDistanceKm: 47,
+    status: 'closed',
+  })
 }
 
 /**
