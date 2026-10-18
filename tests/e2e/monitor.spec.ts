@@ -199,8 +199,32 @@ test.describe('the report', () => {
     await expect(row).toContainText('₹1,440')
     await expect(row).toContainText('1 / 1')
     // The bar carries its own number, and its readout the rest.
-    await expect(page.getByRole('group', { name: /^Ravi.*: 24 pkts\. 1 order · 1 of 1 days met/ }))
+    await expect(page.getByRole('group', { name: /^1st, Ravi.*: 24 pkts\. 1 order · 1 of 1 days met/ }))
       .toBeVisible()
+    await expect(page.getByText('Leading:')).toContainText('Ravi Rep · 24 pkts')
+  })
+
+  /**
+   * The leaderboard can be read three ways, and they need not agree: more
+   * orders is not more packets. Level reps share a place.
+   */
+  test('ranks by orders placed, and level reps share first', async ({ page, loginAs }) => {
+    await companyStock('prod_wipes', 500)
+    await companyAllocation()                                          // Ravi: one order, 24
+    await companyAllocation({ createdBy: 'e2e_rep2', createdByName: 'Priya Rep', packets: 12 })
+
+    await loginAs('manager')
+    await openReport(page)
+    await page.getByRole('group', { name: 'Rank by' }).getByRole('button', { name: 'Orders placed' }).click()
+
+    await expect(page.getByText('Level at the top:')).toContainText('1 order')
+    await expect(page.getByRole('group', { name: /^1st, Ravi Rep: 1 order/ })).toBeVisible()
+    await expect(page.getByRole('group', { name: /^1st, Priya Rep: 1 order/ })).toBeVisible()
+
+    // By packets they are not level, and the places say so.
+    await page.getByRole('group', { name: 'Rank by' }).getByRole('button', { name: 'Packets' }).click()
+    await expect(page.getByRole('group', { name: /^1st, Ravi Rep: 24 pkts/ })).toBeVisible()
+    await expect(page.getByRole('group', { name: /^2nd, Priya Rep: 12 pkts/ })).toBeVisible()
   })
 
   test('a product filter narrows the orders and the target to that product', async ({ page, loginAs }) => {

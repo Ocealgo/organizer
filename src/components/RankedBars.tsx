@@ -40,9 +40,21 @@ interface Props {
   format?: (n: number) => string
   /** Shown when nothing has happened yet. */
   emptyText?: string
+  /**
+   * Put each row's place in front of it — 1st, 2nd, 3rd — for a leaderboard.
+   * Ties share a place and the next one skips (1st, 1st, 3rd), the way a race
+   * is scored; a row at zero has no place, since nobody comes third at nothing.
+   */
+  showRank?: boolean
 }
 
-export default function RankedBars({ rows, format, emptyText }: Props) {
+const ordinal = (n: number) => {
+  const tail = n % 100 >= 11 && n % 100 <= 13 ? 'th'
+    : n % 10 === 1 ? 'st' : n % 10 === 2 ? 'nd' : n % 10 === 3 ? 'rd' : 'th'
+  return `${n}${tail}`
+}
+
+export default function RankedBars({ rows, format, emptyText, showRank }: Props) {
   const { t } = useTheme()
   const fmt = format ?? ((n: number) => n.toLocaleString('en-IN'))
   /** The bar being read — by pointer or by keyboard, the same readout either way. */
@@ -50,6 +62,12 @@ export default function RankedBars({ rows, format, emptyText }: Props) {
 
   const sorted = [...rows].sort((a, b) => b.value - a.value)
   const max = Math.max(...sorted.map(r => r.value), 0)
+  const placeOf = (i: number) => {
+    if (sorted[i].value <= 0) return null
+    let j = i
+    while (j > 0 && sorted[j - 1].value === sorted[i].value) j--
+    return j + 1
+  }
 
   if (sorted.length === 0 || max === 0) {
     return (
@@ -61,8 +79,9 @@ export default function RankedBars({ rows, format, emptyText }: Props) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      {sorted.map(r => {
+      {sorted.map((r, i) => {
         const on = active === r.id
+        const place = showRank ? placeOf(i) : null
         // A true zero draws no bar at all. The track still shows, so it reads
         // as "none" — where the old 2% floor drew a sliver that said a rep who
         // sold nothing had sold something.
@@ -74,7 +93,7 @@ export default function RankedBars({ rows, format, emptyText }: Props) {
           <div key={r.id}
             tabIndex={0}
             role="group"
-            aria-label={`${r.label}: ${fmt(r.value)}${r.detail ? `. ${r.detail}` : ''}`}
+            aria-label={`${place ? `${ordinal(place)}, ` : ''}${r.label}: ${fmt(r.value)}${r.detail ? `. ${r.detail}` : ''}`}
             onPointerEnter={() => setActive(r.id)}
             onPointerLeave={() => setActive(a => (a === r.id ? null : a))}
             onFocus={() => setActive(r.id)}
@@ -84,7 +103,17 @@ export default function RankedBars({ rows, format, emptyText }: Props) {
               background: on ? t.hover : 'transparent', cursor: r.detail ? 'default' : undefined,
             }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 5 }}>
+              {/* The place, in text, so who is first never rests on a colour. */}
+              {showRank && (
+                <span style={{ width: 34, flexShrink: 0, fontSize: 13, whiteSpace: 'nowrap',
+                               fontVariantNumeric: 'tabular-nums',
+                               color: place === 1 ? t.text : t.text3,
+                               fontWeight: place === 1 ? 600 : 400 }}>
+                  {place ? ordinal(place) : '—'}
+                </span>
+              )}
               <span style={{ flex: 1, minWidth: 0, fontSize: 14, color: t.text,
+                             fontWeight: showRank && place === 1 ? 500 : 400,
                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {r.label}
               </span>

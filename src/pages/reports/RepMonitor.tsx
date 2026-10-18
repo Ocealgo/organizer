@@ -21,7 +21,18 @@ type RangeMode = 'day' | 'week' | 'month' | 'custom'
 type Outcome = 'all' | 'met' | 'missed' | 'untargeted'
 type Tab = 'eod' | 'report'
 type ReportRange = 'week' | 'month' | 'custom'
-type Rank = 'packets' | 'value'
+type Rank = 'packets' | 'orders' | 'value'
+const RANK_TITLE: Record<Rank, string> = {
+  packets: 'Packets ordered', orders: 'Orders placed', value: 'Order value',
+}
+const RANK_CHIP: Record<Rank, string> = {
+  packets: 'Packets', orders: 'Orders placed', value: 'Order value',
+}
+const RANK_FORMAT: Record<Rank, (n: number) => string> = {
+  packets: n => `${n.toLocaleString('en-IN')} pkts`,
+  orders: n => `${n.toLocaleString('en-IN')} order${n === 1 ? '' : 's'}`,
+  value: n => `₹${n.toLocaleString('en-IN')}`,
+}
 
 /**
  * One rep over the report's range — everything the table shows and the graph
@@ -422,6 +433,10 @@ export default function RepMonitor({ onBack }: Props) {
    * beat was the one assigned to them, which is the only way "how did Beach
    * Road go" has an answer when the same person works three beats a week.
    */
+  /** The figure the graph ranks by, and the table sorts by. */
+  const rankValue = (r: RepWeek) =>
+    rank === 'packets' ? r.packets : rank === 'orders' ? r.orders : r.value
+
   const report = useMemo((): RepWeek[] => {
     if (tab !== 'report') return []
     // Up to today and no further. A month still under way is measured against
@@ -487,10 +502,16 @@ export default function RepMonitor({ onBack }: Props) {
     })
     // The table reads in the graph's order, so the two say the same thing in
     // the same sequence.
-    .sort((a, b) => (rank === 'packets' ? b.packets - a.packets : b.value - a.value)
+    .sort((a, b) => (rankValue(b) - rankValue(a))
       || a.name.localeCompare(b.name))
   }, [tab, repFrom, repTo, reps, plans, visits, allocations, sessions, expenses, targets,
       parties, rProduct, rBeat, rank])
+
+  /** Who is first — more than one when they are level. Nobody, when nothing was ordered. */
+  const leaders = useMemo(() => {
+    const top = report.length ? rankValue(report[0]) : 0
+    return top > 0 ? report.filter(r => rankValue(r) === top) : []
+  }, [report, rank])
 
   const tally = useMemo(() => ({
     met: cards.filter(c => c.target !== null && c.packets >= c.target).length,
@@ -857,18 +878,25 @@ export default function RepMonitor({ onBack }: Props) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
             <div style={{ flex: 1, minWidth: 180 }}>
               <div style={{ fontSize: 15, fontWeight: 500, color: t.text }}>
-                {rank === 'packets' ? 'Packets ordered' : 'Order value'}
+                {RANK_TITLE[rank]}
               </div>
+              {leaders.length > 0 && (
+                <div style={{ fontSize: 13, color: t.text, marginTop: 4 }}>
+                  {leaders.length === 1 ? 'Leading: ' : 'Level at the top: '}
+                  <span style={{ fontWeight: 500 }}>{leaders.map(l => l.name).join(' and ')}</span>
+                  {' · '}{RANK_FORMAT[rank](rankValue(leaders[0]))}
+                </div>
+              )}
               <div style={{ fontSize: 12, color: t.text3, marginTop: 2 }}>
                 {rProduct ? products.find(x => x.id === rProduct)?.name ?? 'One product' : 'All products'}
                 {rBeat ? ` · ${routes.find(x => x.id === rBeat)?.name ?? 'one beat'}` : ''}
               </div>
             </div>
             <div style={{ display: 'flex', gap: 6 }} role="group" aria-label="Rank by">
-              {(['packets', 'value'] as Rank[]).map(k => (
+              {(['packets', 'orders', 'value'] as Rank[]).map(k => (
                 <button key={k} className="oc-action" onClick={() => setRank(k)}
                   aria-pressed={rank === k} style={chip(rank === k)}>
-                  {k === 'packets' ? 'Packets' : 'Order value'}
+                  {RANK_CHIP[k]}
                 </button>
               ))}
             </div>
@@ -877,17 +905,19 @@ export default function RepMonitor({ onBack }: Props) {
             rows={report.map(r => ({
               id: r.uid,
               label: r.name,
-              value: rank === 'packets' ? r.packets : r.value,
+              value: rankValue(r),
               detail: [
-                `${r.orders} order${r.orders === 1 ? '' : 's'}`,
+                // Whatever the bar is not already saying.
+                rank === 'orders'
+                  ? `${r.packets.toLocaleString('en-IN')} packets`
+                  : `${r.orders} order${r.orders === 1 ? '' : 's'}`,
                 r.daysTargeted > 0 ? `${r.daysMet} of ${r.daysTargeted} days met` : 'no target set',
                 `${r.shops} shop${r.shops === 1 ? '' : 's'}`,
               ].join(' · '),
             }))}
-            format={rank === 'packets'
-              ? (n => `${n.toLocaleString('en-IN')} pkts`)
-              : (n => `₹${n.toLocaleString('en-IN')}`)}
-            emptyText="No reps to show."
+            format={RANK_FORMAT[rank]}
+            showRank
+            emptyText="Nothing ordered in this window yet."
           />
         </div>
 
