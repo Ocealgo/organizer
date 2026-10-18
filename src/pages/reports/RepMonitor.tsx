@@ -269,15 +269,22 @@ export default function RepMonitor({ onBack }: Props) {
     color: active ? t.text : t.text3, cursor: 'pointer', whiteSpace: 'nowrap' as const,
   })
 
-  /** One line of the card. Labelled on the left, value on the right, always. */
+  /**
+   * One line of the card. Labelled on the left, value on the right, always.
+   *
+   * `strong` is emphasis and `met` is meaning, and they are separate tones for
+   * that reason — the rep's name wants weight, not a colour that says they
+   * succeeded.
+   */
   const Line = ({ label, value, tone }: {
-    label: string; value: React.ReactNode; tone?: 'warn' | 'good'
+    label: string; value: React.ReactNode; tone?: 'warn' | 'met' | 'strong'
   }) => (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '3px 0' }}>
       <span style={{ fontSize: 12, color: t.text3, width: 104, flexShrink: 0 }}>{label}</span>
       <span style={{
         fontSize: 13, minWidth: 0,
-        color: tone === 'warn' ? t.warn : tone === 'good' ? t.text : t.text2,
+        color: tone === 'warn' ? t.warn : tone === 'met' ? t.good
+          : tone === 'strong' ? t.text : t.text2,
         fontWeight: tone ? 500 : 400,
       }}>
         {value}
@@ -403,7 +410,7 @@ export default function RepMonitor({ onBack }: Props) {
                 return (
                   <div key={`${c.uid}_${c.date}`} style={{
                     border: `0.5px solid ${missed ? t.border2 : t.border}`,
-                    borderLeft: `2px solid ${met ? t.text2 : missed ? t.warn : t.border}`,
+                    borderLeft: `2px solid ${met ? t.good : missed ? t.warn : t.border}`,
                     borderRadius: 6, padding: '14px 16px',
                   }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
@@ -413,12 +420,12 @@ export default function RepMonitor({ onBack }: Props) {
                       {/* The indication, in words as well as colour. Colour
                           alone is not an answer for everybody reading it. */}
                       <span style={{ fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap',
-                                     color: met ? t.text2 : missed ? t.warn : t.text3 }}>
+                                     color: met ? t.good : missed ? t.warn : t.text3 }}>
                         {met ? '✓ Target met' : missed ? '✗ Short' : 'No target'}
                       </span>
                     </div>
 
-                    <Line label="Name" value={c.name} tone="good" />
+                    <Line label="Name" value={c.name} tone="strong" />
                     <Line label="Date" value={plainDate(c.date)} />
                     <Line
                       label="Route"
@@ -454,7 +461,7 @@ export default function RepMonitor({ onBack }: Props) {
                           </span>
                         </>
                       )}
-                      tone={missed ? 'warn' : met ? 'good' : undefined}
+                      tone={missed ? 'warn' : met ? 'met' : undefined}
                     />
 
                     {!c.present && (

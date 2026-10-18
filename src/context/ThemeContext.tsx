@@ -7,7 +7,7 @@ interface ThemeTokens {
   border: string; border2: string
   card: string; cardHover: string
   primary: string; primaryText: string
-  accent: string; warn: string; tint: string; hover: string
+  accent: string; warn: string; good: string; tint: string; hover: string
 }
 
 /**
@@ -65,9 +65,14 @@ const dark: ThemeTokens = {
   border: 'rgba(255,255,255,0.08)', border2: 'rgba(255,255,255,0.14)',
   card: '#161b22', cardHover: '#1e2530',
   primary: '#1a5c42', primaryText: '#6ee7b7',
-  // Colour is reserved for meaning: accent = links, warn = needs action.
+  // Colour is reserved for meaning: accent = links, warn = needs action,
+  // good = a thing that was achieved. Three is the ceiling — a fourth and
+  // none of them mean anything on their own any more.
   accent: '#6ee7b7',
   warn: '#e0a458',
+  // Greener than accent on purpose, so "met" is not mistaken for a link.
+  // 10.9 on bg, 9.9 on card.
+  good: '#4ade80',
   tint: 'rgba(255,255,255,0.045)',
   hover: 'rgba(255,255,255,0.035)',
 }
@@ -82,6 +87,9 @@ const light: ThemeTokens = {
   // #b45309 came to 4.44 on tint — a hair under, and warn is the one colour
   // that carries meaning on its own.
   warn: '#a1490a',
+  // 6.8 on bg, 7.1 on card. #16a34a is the obvious green and comes to 3.15,
+  // which fails at the 12px this is read at.
+  good: '#166534',
   tint: 'rgba(15,23,42,0.04)',
   hover: 'rgba(15,23,42,0.03)',
 }
