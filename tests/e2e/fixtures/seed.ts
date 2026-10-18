@@ -186,6 +186,37 @@ export async function closedDay(
   return id
 }
 
+/**
+ * A claim already on somebody's week, for a spec about what the day shows
+ * rather than about how the claim was made.
+ */
+export async function claimedExpense(
+  who: UserKey,
+  date: string,
+  lines: { allowance?: number; fuel?: number },
+): Promise<void> {
+  const u = USERS[who]
+  const db = getFirestore(admin())
+  const report = db.collection('expense_reports').doc()
+  const total = (lines.allowance ?? 0) + (lines.fuel ?? 0)
+  await report.set({
+    userId: u.uid, userName: u.name, userRole: u.role,
+    weekStart: date, weekEnd: date, status: 'draft', totalAmount: total, createdAt: Date.now(),
+  })
+  if (lines.allowance) {
+    await db.collection('expense_entries').add({
+      reportId: report.id, userId: u.uid, date, type: 'allowance',
+      allowanceType: 'EX', amount: lines.allowance, createdAt: Date.now(),
+    })
+  }
+  if (lines.fuel) {
+    await db.collection('expense_entries').add({
+      reportId: report.id, userId: u.uid, date, type: 'variable', category: 'fuel',
+      amount: lines.fuel, createdAt: Date.now(),
+    })
+  }
+}
+
 /** The ₹ per km rate, which the standard world leaves unset on purpose. */
 export async function fuelRate(rate: number): Promise<void> {
   await getFirestore(admin()).doc('expense_config/main').set({ ratePerKm: rate }, { merge: true })

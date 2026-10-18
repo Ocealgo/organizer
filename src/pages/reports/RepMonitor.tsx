@@ -4,7 +4,7 @@ import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
   AppUser, OutletVisit, DutySession, WorkPlan, SalesRoute, SalesTarget,
-  UnifiedAllocation, OutletType, OUTLET_TYPE_LABEL,
+  UnifiedAllocation, OutletType, OUTLET_TYPE_LABEL, ExpenseEntry,
   dailyTargetFor, packetsOrderedOn, dateOfMs, routePlaces,
 } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
@@ -12,6 +12,7 @@ import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
 import { PageHeader, Eyebrow, EmptyState, Note } from '../../components/ui'
 import { localDateStr, localMonthStr, isSunday } from '../../utils/date'
+import { pathLengthKm } from '../../device/location'
 
 interface Props { onBack: () => void }
 
@@ -86,6 +87,26 @@ interface Eod {
   orders: number
   /** Whether they started the day at all — a card with no session says so. */
   present: boolean
+  /**
+   * What the odometer said. Null whenever there is no reading to give — no
+   * session, a broken meter, no vehicle, or a day closed automatically with no
+   * closing reading — and the card says "Nil" rather than guessing.
+   */
+  meterKm: number | null
+  /**
+   * Straight-line kilometres through the day's stops: where it started, each
+   * shop punched into in order, where it finished.
+   *
+   * Not a road distance and not claimed as one. Nothing records which roads
+   * anybody took, so this is the shortest the day could have been — a floor
+   * under the meter, never a substitute for it. Null when there are fewer
+   * than two positions to join.
+   */
+  visitKm: number | null
+  /** What the rep claimed for the day, if anything. */
+  expense: { total: number; allowance: number; fuel: number; other: number } | null
+  /** A fuel claim above what the meter said — the one worth a second look. */
+  fuelAboveMeter: boolean
 }
 
 export default function RepMonitor({ onBack }: Props) {
@@ -98,6 +119,7 @@ export default function RepMonitor({ onBack }: Props) {
   const [routes, setRoutes] = useState<SalesRoute[]>([])
   const [targets, setTargets] = useState<SalesTarget[]>([])
   const [allocations, setAllocations] = useState<UnifiedAllocation[]>([])
+  const [expenses, setExpenses] = useState<ExpenseEntry[]>([])
   const [readError, setReadError] = useState<string | null>(null)
 
   // ── filters ───────────────────────────────────────────────────────────────
@@ -191,6 +213,12 @@ export default function RepMonitor({ onBack }: Props) {
         s => setTargets(s.docs.map(d => ({ id: d.id, ...d.data() } as SalesTarget))),
         fail('the targets'),
       ),
+      // Dated by the day the money was spent, a string, like visits.
+      onSnapshot(
+        query(collection(db, 'expense_entries'), where('date', '>=', from), where('date', '<=', to)),
+        s => setExpenses(s.docs.map(d => ({ id: d.id, ...d.data() } as ExpenseEntry))),
+        fail('the expenses'),
+      ),
     ]
     return () => unsubs.forEach(u => u())
   }, [from, to])
@@ -222,7 +250,42 @@ export default function RepMonitor({ onBack }: Props) {
         const orders = allocations.filter(a =>
           a.createdBy === r.uid && a.status !== 'cancelled'
           && a.createdAt && dateOfMs(a.createdAt) === date).length
-        const present = sessions.some(s => s.uid === r.uid && s.date === date)
+        const session = sessions.find(s => s.uid === r.uid && s.date === date)
+        const present = !!session
+
+        const meterKm = session
+          && (session.odometerStatus ?? 'recorded') === 'recorded'
+          && typeof session.claimedDistanceKm === 'number'
+          ? session.claimedDistanceKm
+          : null
+
+        // The day's positions, in the order they happened. A stop without a
+        // fix is left out rather than guessed at.
+        const points = [
+          ...(session?.startLocation ? [session.startLocation] : []),
+          ...theirs
+            .filter(v => v.punchInLocation)
+            .sort((a, b) => a.punchInAt - b.punchInAt)
+            .map(v => v.punchInLocation!),
+          ...(session?.endLocation && !session.autoClosed ? [session.endLocation] : []),
+        ]
+        const visitKm = points.length >= 2
+          ? Math.round(pathLengthKm(points) * 10) / 10
+          : null
+
+        const spent = expenses.filter(e => e.userId === r.uid && e.date === date)
+        const sum = (f: (e: ExpenseEntry) => boolean) =>
+          Math.round(spent.filter(f).reduce((n, e) => n + (e.amount || 0), 0) * 100) / 100
+        const expense = spent.length === 0 ? null : {
+          total: sum(() => true),
+          allowance: sum(e => e.type === 'allowance'),
+          fuel: sum(e => e.type === 'variable' && e.category === 'fuel'),
+          other: sum(e => e.type === 'variable' && e.category !== 'fuel'),
+        }
+        const fuelAboveMeter = spent.some(e =>
+          e.category === 'fuel' && typeof e.distanceKm === 'number'
+          && typeof (e.meterKm ?? meterKm) === 'number'
+          && e.distanceKm > (e.meterKm ?? meterKm)!)
 
         /**
          * A day nobody expected anything of and nothing happened on.
@@ -236,9 +299,19 @@ export default function RepMonitor({ onBack }: Props) {
          * reason — if somebody put a number on a Sunday they meant it.
          */
         const expected = target !== null
-        const nothingHappened = !expected && !present && theirs.length === 0
-          && packets === 0 && !plan
-        if (!showQuiet && (nothingHappened || (isSunday(date) && !expected))) continue
+        const happened = present || theirs.length > 0 || packets > 0
+        /**
+         * Quiet: nothing was asked of the day and nothing happened on it.
+         *
+         * A Sunday was hidden on the first half alone — no target, so quiet —
+         * which made a rep who actually worked a Sunday invisible to the
+         * manager monitoring them. That is the least quiet Sunday there is.
+         * So a day only goes quiet when nothing happened as well, and on a
+         * weekday also only when no beat was assigned: a day somebody planned
+         * and nobody showed up for is worth seeing.
+         */
+        const quiet = !expected && !happened && (isSunday(date) || !plan)
+        if (!showQuiet && quiet) continue
 
         if (outcome === 'met' && !(target !== null && packets >= target)) continue
         if (outcome === 'missed' && !(target !== null && packets < target)) continue
@@ -253,13 +326,14 @@ export default function RepMonitor({ onBack }: Props) {
             .map(([type, n]) => ({ type, n }))
             .sort((a, b) => b.n - a.n),
           target, packets, orders, present,
+          meterKm, visitKm, expense, fuelAboveMeter,
         })
       }
     }
     // Newest day first, people alphabetical inside it.
     return out.sort((a, b) => b.date.localeCompare(a.date) || a.name.localeCompare(b.name))
   }, [from, to, reps, who, beat, outcome, showQuiet, visits, sessions, plans, routes,
-      targets, allocations])
+      targets, allocations, expenses])
 
   const byDay = useMemo(() => {
     const m = new Map<string, Eod[]>()
@@ -488,6 +562,49 @@ export default function RepMonitor({ onBack }: Props) {
                         tone={missed ? 'warn' : met ? 'met' : undefined}
                       />
                     </div>
+
+                    {/* Travel and spend, on a row of their own under a rule.
+                        The row above is what was sold; this is what it took,
+                        and keeping them apart is what lets either be read at a
+                        glance. */}
+                    <div className="oc-wrap" style={{
+                      gap: 18, alignItems: 'flex-start', marginTop: 12, paddingTop: 12,
+                      borderTop: `0.5px solid ${t.border}`,
+                    }}>
+                      <Cell
+                        label="Meter"
+                        value={c.meterKm === null ? 'Nil' : `${c.meterKm} km`}
+                        sub={c.meterKm === null
+                          ? (c.present ? 'no reading' : 'day not started')
+                          : 'on the odometer'}
+                      />
+                      <Cell
+                        label="Between shops"
+                        value={c.visitKm === null ? 'Nil' : `${c.visitKm} km`}
+                        // Said on the card, because two distances side by side
+                        // invite the question of why they differ — and the
+                        // answer has to be where the question is asked.
+                        sub={c.visitKm === null ? 'not enough positions' : 'straight line, a floor'}
+                      />
+                      <Cell
+                        label="Expenses"
+                        grow
+                        value={c.expense === null ? 'No' : `Yes · ₹${c.expense.total.toLocaleString('en-IN')}`}
+                        sub={c.expense === null ? 'nothing claimed for the day' : [
+                          c.expense.allowance ? `Allowance ₹${c.expense.allowance.toLocaleString('en-IN')}` : null,
+                          c.expense.fuel ? `Fuel ₹${c.expense.fuel.toLocaleString('en-IN')}` : null,
+                          c.expense.other ? `Other ₹${c.expense.other.toLocaleString('en-IN')}` : null,
+                        ].filter(Boolean).join(' · ')}
+                      />
+                    </div>
+
+                    {c.fuelAboveMeter && (
+                      // The one combination worth a second look, said where
+                      // the person monitoring will read it.
+                      <div style={{ fontSize: 12, color: t.warn, marginTop: 10, lineHeight: 1.5 }}>
+                        Fuel claimed above the meter — the reason is on the expense sheet.
+                      </div>
+                    )}
 
                     {!c.present && (
                       // Worth saying rather than leaving as a row of zeroes: a

@@ -206,6 +206,22 @@ async function sandboxExtras() {
  * still there when they go back to look at it.
  */
 
+/**
+ * Where things are, so a day has positions to join.
+ *
+ * Without them every "between shops" figure is Nil, which is true of a day with
+ * no fixes and useless for seeing what the figure is for. A few kilometres
+ * apart, so the straight-line distance comes out well under the meter — which
+ * is the honest relationship between the two, and the one worth seeing.
+ */
+const DEPOT = { lat: 9.9312, lng: 76.2673 }
+const STOPS = [
+  { lat: 9.9658, lng: 76.2421 },
+  { lat: 9.9816, lng: 76.2999 },
+  { lat: 10.0089, lng: 76.3110 },
+]
+const fix = (p, t) => ({ lat: p.lat, lng: p.lng, accuracy: 18, capturedAt: t })
+
 /** Parties to visit, with the type each one reports as. */
 const OUTLETS = [
   { id: 'party_shop', name: 'Anand Stores', type: 'general' },
@@ -309,11 +325,13 @@ async function recentWeek() {
           uid: u.uid, name: u.name, date,
           routeId: week.routeId, routeName: week.routeName,
           startAt: at(date, 9, 10),
+          startLocation: fix(DEPOT, at(date, 9, 10)),
           startOdometerKm: start,
           odometerStatus: 'recorded',
           startOdometerPhoto: 'demo/odometer.jpg',
           startOdometerPhotoVerified: false,
           endAt: at(date, 17, 40),
+          endLocation: fix(DEPOT, at(date, 17, 40)),
           endOdometerKm: odo,
           endOdometerPhoto: 'demo/odometer.jpg',
           claimedDistanceKm: spec.km,
@@ -341,6 +359,7 @@ async function recentWeek() {
           sessionId, uid: u.uid, name: u.name, role: u.role, date,
           partyId: o.id, partyName: o.name, outletType: o.type,
           punchInAt: at(date, hour),
+          punchInLocation: fix(STOPS[i % STOPS.length], at(date, hour)),
           punchOutAt: at(date, hour, 24),
           durationMinutes: 24,
           stock: [], competitors: [], photos: [],
@@ -369,6 +388,76 @@ async function recentWeek() {
           month: date.slice(0, 7),
         })
       }
+    }
+  }
+
+  /**
+   * Expenses for some of the worked days, not all.
+   *
+   * A card reading "Expenses: Yes" on every day would hide whether the field
+   * works at all, so some days are left unclaimed. One of Ravi's fuel lines
+   * goes above the meter with a reason, which is the one combination the
+   * monitor calls out.
+   */
+  const CLAIMS = {
+    rep: [
+      { back: 6, fuelKm: 41 },
+      { back: 5, fuelKm: 88 },
+      { back: 3, fuelKm: 70, reason: 'Meter reset at the garage at noon' },  // meter said 55
+      { back: 1, fuelKm: 37 },
+    ],
+    rep2: [
+      { back: 6, fuelKm: 44 },
+      { back: 3, fuelKm: 31 },
+    ],
+  }
+  const cfg = { hq: 200, ex: 300, ratePerKm: 4.5 }
+  for (const [who, claims] of Object.entries(CLAIMS)) {
+    const u = USERS[who]
+    const week = WEEKS.find(w => w.who === who)
+    // One report per week, created the way the app would — draft, the rep's own.
+    const byWeek = new Map()
+    for (const c of claims) {
+      const date = dayBack(c.back)
+      if (new Date(date + 'T00:00:00').getDay() === 0) continue
+      const meter = week.days.find(d => d.back === c.back)?.km ?? null
+      const ws = (() => {
+        const d = new Date(date + 'T00:00:00')
+        d.setDate(d.getDate() - (d.getDay() === 0 ? 6 : d.getDay() - 1))
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      })()
+      if (!byWeek.has(ws)) {
+        const ref = db.collection('expense_reports').doc()
+        const we = new Date(ws + 'T00:00:00'); we.setDate(we.getDate() + 6)
+        await ref.set({
+          userId: u.uid, userName: u.name, userRole: u.role,
+          weekStart: ws,
+          weekEnd: `${we.getFullYear()}-${String(we.getMonth() + 1).padStart(2, '0')}-${String(we.getDate()).padStart(2, '0')}`,
+          status: 'draft', totalAmount: 0, createdAt: Date.now(),
+        })
+        byWeek.set(ws, { id: ref.id, total: 0 })
+      }
+      const r = byWeek.get(ws)
+      const band = meter !== null && meter <= 25 ? 'HQ' : 'EX'
+      const allowance = cfg[band.toLowerCase()]
+      const fuel = Math.round(c.fuelKm * cfg.ratePerKm * 100) / 100
+      await db.collection('expense_entries').add({
+        reportId: r.id, userId: u.uid, date, type: 'allowance', allowanceType: band,
+        amount: allowance,
+        ...(meter !== null ? { allowanceFromKm: meter, allowanceSuggested: band } : {}),
+        createdAt: Date.now(),
+      })
+      await db.collection('expense_entries').add({
+        reportId: r.id, userId: u.uid, date, type: 'variable', category: 'fuel',
+        amount: fuel, autoCalculated: true, distanceKm: c.fuelKm, ratePerKm: cfg.ratePerKm,
+        ...(meter !== null ? { meterKm: meter } : {}),
+        ...(c.reason ? { aboveMeterReason: c.reason } : {}),
+        createdAt: Date.now(),
+      })
+      r.total += allowance + fuel
+    }
+    for (const r of byWeek.values()) {
+      await db.doc(`expense_reports/${r.id}`).update({ totalAmount: Math.round(r.total * 100) / 100 })
     }
   }
 

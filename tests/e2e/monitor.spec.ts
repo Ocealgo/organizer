@@ -1,7 +1,7 @@
 import { test, expect } from './fixtures/app'
 import {
   companyAllocation, companyStock, noAllocations, noTargetsSet,
-  packetTarget, todayLocal,
+  packetTarget, todayLocal, closedDay, claimedExpense, noOneOnDuty, noWeeksFiled,
 } from './fixtures/seed'
 
 /**
@@ -122,5 +122,49 @@ test.describe('the end of a day', () => {
   test('a rep cannot open it', async ({ page, loginAs }) => {
     await loginAs('rep')
     await expect(page.getByRole('button', { name: /^Reports/ })).toHaveCount(0)
+  })
+})
+
+/**
+ * What the day took, under what it sold: the meter, the distance between
+ * shops, and whether anything was claimed.
+ */
+test.describe('travel and spend on the card', () => {
+  test.beforeEach(async () => {
+    await noOneOnDuty()
+    await noWeeksFiled()
+  })
+
+  test('a worked day shows the meter, and Nil where nothing was recorded', async ({
+    page, loginAs,
+  }) => {
+    await closedDay('rep', todayLocal(), { km: 47 })
+    await loginAs('manager')
+    await openMonitor(page)
+
+    await expect(page.getByText('47 km', { exact: true })).toBeVisible()
+    // No positions were recorded, so there is nothing to join — said, not zero.
+    await expect(page.getByText('not enough positions')).toBeVisible()
+    await expect(page.getByText('nothing claimed for the day')).toBeVisible()
+  })
+
+  /** "Nil", as asked for, rather than a 0 km that reads as a day spent standing still. */
+  test('a day never started reads Nil on the meter', async ({ page, loginAs }) => {
+    await packetTarget('rep', todayLocal().slice(0, 7), 1000, { [todayLocal()]: 80 })
+    await loginAs('manager')
+    await openMonitor(page)
+
+    await expect(page.getByText('day not started')).toBeVisible()
+    await expect(page.getByText('Nil').first()).toBeVisible()
+  })
+
+  test('a claimed day says yes, and how much', async ({ page, loginAs }) => {
+    await closedDay('rep', todayLocal(), { km: 47 })
+    await claimedExpense('rep', todayLocal(), { allowance: 300, fuel: 211.5 })
+    await loginAs('manager')
+    await openMonitor(page)
+
+    await expect(page.getByText('Yes · ₹511.5')).toBeVisible()
+    await expect(page.getByText('Allowance ₹300 · Fuel ₹211.5')).toBeVisible()
   })
 })
