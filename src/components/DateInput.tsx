@@ -11,10 +11,20 @@ interface Props {
   min?: string
   /** Latest selectable value. */
   max?: string
+  /**
+   * An accessible name.
+   *
+   * These sit under a Field, which renders its label as a div, so without one
+   * a date filter is an unnamed control — to a screen reader and to anything
+   * else that looks a control up by what it is for.
+   */
+  ariaLabel?: string
 }
 
 // Makes entire field clickable — not just the icon
-export default function DateInput({ type, value, onChange, style, placeholder, min, max }: Props) {
+export default function DateInput({
+  type, value, onChange, style, placeholder, min, max, ariaLabel,
+}: Props) {
   const ref = useRef<HTMLInputElement>(null)
   const { theme, t } = useTheme()
 
@@ -52,6 +62,7 @@ export default function DateInput({ type, value, onChange, style, placeholder, m
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
+        aria-label={ariaLabel}
         min={min}
         max={max}
         style={base}

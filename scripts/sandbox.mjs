@@ -122,6 +122,25 @@ async function sandboxExtras() {
     setAt: Date.now(),
   })
 
+  /**
+   * The second officer gets one too, and a smaller one.
+   *
+   * Only one rep had a target, so half of every "Everybody" view read "No
+   * target" — which reads as the feature being broken rather than as a gap in
+   * the seed. Two different figures also make the monitor's columns worth
+   * comparing rather than identical down the page.
+   */
+  await db.doc(`sales_targets/${USERS.rep2.uid}_${month}`).set({
+    uid: USERS.rep2.uid,
+    name: USERS.rep2.name,
+    month,
+    units: 600,
+    days: divideAcrossDays(600, workable),
+    setBy: USERS.manager.uid,
+    setByName: USERS.manager.name,
+    setAt: Date.now(),
+  })
+
   // One order already placed, so both lines open on something other than zero
   // and cancelling it is one tap from showing what that does.
   await companyAllocation()

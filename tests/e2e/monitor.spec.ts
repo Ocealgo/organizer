@@ -18,10 +18,19 @@ test.beforeEach(async () => {
   await noAllocations()
 })
 
+/**
+ * Open it and point it at today, explicitly.
+ *
+ * The screen opens on the last day that could have been worked, which is not
+ * today when today is a Sunday — right for a person and wrong for a spec that
+ * seeded today. Setting the date says which day is under test instead of
+ * inheriting whatever day the suite happens to run on.
+ */
 async function openMonitor(page: any) {
   await page.getByRole('button', { name: /^Reports/ }).first().click()
   await page.getByRole('button', { name: /^Monitor reps/ }).click()
   await expect(page.getByRole('heading', { name: 'Monitor reps' })).toBeVisible()
+  await page.getByLabel('Day').fill(todayLocal())
 }
 
 test.describe('the end of a day', () => {
@@ -34,8 +43,12 @@ test.describe('the end of a day', () => {
     await openMonitor(page)
 
     await expect(page.getByText('✓ Target met')).toBeVisible()
-    await expect(page.getByText('20 packets')).toBeVisible()
-    await expect(page.getByText(/24 packets/)).toBeVisible()
+    // Label above figure, each in its own element — the card reads across now,
+    // so the unit is no longer part of the same string as the number.
+    await expect(page.getByText('Daily target')).toBeVisible()
+    await expect(page.getByText('20', { exact: true })).toBeVisible()
+    await expect(page.getByText('Order placed')).toBeVisible()
+    await expect(page.getByText('24', { exact: true })).toBeVisible()
   })
 
   test('a day that fell short says that instead', async ({ page, loginAs }) => {
@@ -47,7 +60,7 @@ test.describe('the end of a day', () => {
     await openMonitor(page)
 
     await expect(page.getByText('✗ Short')).toBeVisible()
-    await expect(page.getByText('80 packets')).toBeVisible()
+    await expect(page.getByText('80', { exact: true })).toBeVisible()
   })
 
   /**

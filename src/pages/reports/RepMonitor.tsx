@@ -102,7 +102,19 @@ export default function RepMonitor({ onBack }: Props) {
 
   // ── filters ───────────────────────────────────────────────────────────────
   const [mode, setMode] = useState<RangeMode>('day')
-  const [day, setDay] = useState(localDateStr())
+  /**
+   * The last day that could have been worked, not literally today.
+   *
+   * Opening on a Sunday meant opening on a day with no target on it by
+   * definition — every card read "No target" and the screen looked broken on
+   * one day in seven. A monitor should open on the last day there was
+   * something to monitor.
+   */
+  const [day, setDay] = useState(() => {
+    let d = localDateStr()
+    while (isSunday(d)) d = addDays(d, -1)
+    return d
+  })
   const [weekStart, setWeekStart] = useState(mondayOf(localDateStr()))
   const [month, setMonth] = useState(localMonthStr())
   const [customFrom, setCustomFrom] = useState(addDays(localDateStr(), -6))
@@ -270,25 +282,41 @@ export default function RepMonitor({ onBack }: Props) {
   })
 
   /**
-   * One line of the card. Labelled on the left, value on the right, always.
+   * One figure of the card, label above value, sitting beside the next.
    *
-   * `strong` is emphasis and `met` is meaning, and they are separate tones for
-   * that reason — the rep's name wants weight, not a colour that says they
-   * succeeded.
+   * Across rather than down, which is what makes a stack of these scannable:
+   * the same figure is in the same column on every card, so a week of them
+   * reads as four columns rather than as twenty-eight lines. Wrapping is left
+   * to the row — on a phone they fall into two columns and then one.
+   *
+   * `met` carries meaning and nothing else does. A name wants weight, not a
+   * colour saying the person succeeded.
    */
-  const Line = ({ label, value, tone }: {
-    label: string; value: React.ReactNode; tone?: 'warn' | 'met' | 'strong'
+  const Cell = ({ label, value, sub, tone, grow }: {
+    label: string
+    value: React.ReactNode
+    sub?: string
+    tone?: 'warn' | 'met'
+    /** Route is prose and needs the room; the numbers do not. */
+    grow?: boolean
   }) => (
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '3px 0' }}>
-      <span style={{ fontSize: 12, color: t.text3, width: 104, flexShrink: 0 }}>{label}</span>
-      <span style={{
-        fontSize: 13, minWidth: 0,
-        color: tone === 'warn' ? t.warn : tone === 'met' ? t.good
-          : tone === 'strong' ? t.text : t.text2,
+    <div style={{ flex: grow ? '2 1 190px' : '1 1 120px', minWidth: 0 }}>
+      <div style={{ fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase',
+                    color: t.text3, marginBottom: 4 }}>
+        {label}
+      </div>
+      <div style={{
+        fontSize: 14, lineHeight: 1.35,
+        color: tone === 'warn' ? t.warn : tone === 'met' ? t.good : t.text,
         fontWeight: tone ? 500 : 400,
       }}>
         {value}
-      </span>
+      </div>
+      {sub && (
+        <div style={{ fontSize: 12, color: t.text3, marginTop: 2, lineHeight: 1.4 }}>
+          {sub}
+        </div>
+      )}
     </div>
   )
 
@@ -317,7 +345,7 @@ export default function RepMonitor({ onBack }: Props) {
           <div className="oc-wrap" style={{ gap: 12 }}>
             {mode === 'day' && (
               <div style={{ flex: 1, minWidth: 150 }}>
-                <DateInput type="date" value={day} onChange={setDay} />
+                <DateInput type="date" value={day} onChange={setDay} ariaLabel="Day" />
               </div>
             )}
             {mode === 'week' && (
@@ -403,7 +431,7 @@ export default function RepMonitor({ onBack }: Props) {
         ) : byDay.map(([date, rows]) => (
           <div key={date}>
             <div style={{ marginBottom: 10 }}><Eyebrow>{longDay(date)}</Eyebrow></div>
-            <div className="oc-modules">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {rows.map(c => {
                 const met = c.target !== null && c.packets >= c.target
                 const missed = c.target !== null && c.packets < c.target
@@ -413,62 +441,59 @@ export default function RepMonitor({ onBack }: Props) {
                     borderLeft: `2px solid ${met ? t.good : missed ? t.warn : t.border}`,
                     borderRadius: 6, padding: '14px 16px',
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
-                      <span style={{ flex: 1, minWidth: 0 }}>
-                        <Eyebrow>EOD</Eyebrow>
+                    {/* Who and when, across the top. They are identity rather
+                        than figures, so they head the card instead of taking a
+                        column in the row below. */}
+                    <div className="oc-wrap" style={{ alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
+                      <span style={{ fontSize: 11, letterSpacing: '0.06em',
+                                     textTransform: 'uppercase', color: t.text3 }}>
+                        EOD
                       </span>
-                      {/* The indication, in words as well as colour. Colour
-                          alone is not an answer for everybody reading it. */}
+                      <span style={{ fontSize: 15, fontWeight: 500, color: t.text }}>{c.name}</span>
+                      <span style={{ fontSize: 13, color: t.text3 }}>{plainDate(c.date)}</span>
+                      <span style={{ flex: 1 }} />
+                      {/* The verdict, in words as well as colour. Colour alone
+                          is not an answer for everybody reading it. */}
                       <span style={{ fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap',
                                      color: met ? t.good : missed ? t.warn : t.text3 }}>
                         {met ? '✓ Target met' : missed ? '✗ Short' : 'No target'}
                       </span>
                     </div>
 
-                    <Line label="Name" value={c.name} tone="strong" />
-                    <Line label="Date" value={plainDate(c.date)} />
-                    <Line
-                      label="Route"
-                      value={c.routeName
-                        ? c.routePlaces.length
-                          ? `${c.routeName} · ${c.routePlaces.join(', ')}`
-                          : c.routeName
-                        : 'No beat assigned'}
-                    />
-                    <Line
-                      label="No of shops"
-                      value={c.shops === 0 ? '0' : (
-                        <>
-                          {c.shops}
-                          <span style={{ color: t.text3 }}>
-                            {' · '}
-                            {c.byType.map(b => `${b.n} ${OUTLET_TYPE_LABEL[b.type]}`).join(' · ')}
-                          </span>
-                        </>
-                      )}
-                    />
-                    <Line
-                      label="Daily target"
-                      value={c.target === null ? 'Not set' : `${c.target} packets`}
-                    />
-                    <Line
-                      label="Order placed"
-                      value={c.packets === 0 && c.orders === 0 ? '0' : (
-                        <>
-                          {c.packets} packets
-                          <span style={{ color: t.text3 }}>
-                            {` · ${c.orders} ${c.orders === 1 ? 'order' : 'orders'}`}
-                          </span>
-                        </>
-                      )}
-                      tone={missed ? 'warn' : met ? 'met' : undefined}
-                    />
+                    <div className="oc-wrap" style={{ gap: 18, alignItems: 'flex-start' }}>
+                      <Cell
+                        label="Route"
+                        grow
+                        value={c.routeName || 'No beat assigned'}
+                        sub={c.routeName && c.routePlaces.length
+                          ? c.routePlaces.join(', ')
+                          : undefined}
+                      />
+                      <Cell
+                        label="Shops"
+                        value={c.shops}
+                        sub={c.shops === 0
+                          ? undefined
+                          : c.byType.map(b => `${b.n} ${OUTLET_TYPE_LABEL[b.type]}`).join(' · ')}
+                      />
+                      <Cell
+                        label="Daily target"
+                        value={c.target === null ? 'Not set' : c.target}
+                        sub={c.target === null ? undefined : 'packets'}
+                      />
+                      <Cell
+                        label="Order placed"
+                        value={c.packets}
+                        sub={`packets · ${c.orders} ${c.orders === 1 ? 'order' : 'orders'}`}
+                        tone={missed ? 'warn' : met ? 'met' : undefined}
+                      />
+                    </div>
 
                     {!c.present && (
                       // Worth saying rather than leaving as a row of zeroes: a
                       // day nobody punched in on is a different fact from a day
                       // that went badly.
-                      <div style={{ fontSize: 12, color: t.warn, marginTop: 8, lineHeight: 1.5 }}>
+                      <div style={{ fontSize: 12, color: t.warn, marginTop: 10, lineHeight: 1.5 }}>
                         Never started the day.
                       </div>
                     )}
