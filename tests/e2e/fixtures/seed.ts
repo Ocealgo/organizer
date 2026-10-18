@@ -152,6 +152,46 @@ export async function companyStock(productId: string, total: number): Promise<vo
 }
 
 /**
+ * A day already worked and closed, with a distance on the meter.
+ *
+ * The end-of-day expenses start from exactly this, and producing it by
+ * clicking means an opening reading, a photo, a closing reading and another
+ * photo — four steps of setup for an assertion about a fifth.
+ */
+export async function closedDay(
+  who: UserKey,
+  date: string,
+  opts: { km?: number | null; autoClosed?: boolean } = {},
+): Promise<string> {
+  const u = USERS[who]
+  const km = opts.km === undefined ? 47 : opts.km
+  const id = `eod_${u.uid}_${date}`
+  await getFirestore(admin()).doc(`duty_sessions/${id}`).set({
+    uid: u.uid, name: u.name, date,
+    startAt: Date.now() - 8 * 3600_000,
+    endAt: Date.now(),
+    status: 'closed',
+    ...(km === null
+      // No reading at all: the meter was broken, so there is no distance and
+      // nothing to work fuel or an allowance band out from.
+      ? { odometerStatus: 'broken', odometerIssueNote: 'Needle stuck at zero' }
+      : {
+          odometerStatus: 'recorded',
+          startOdometerKm: 41000, endOdometerKm: 41000 + km,
+          startOdometerPhoto: 'demo/odometer.jpg', endOdometerPhoto: 'demo/odometer.jpg',
+          claimedDistanceKm: km,
+        }),
+    ...(opts.autoClosed ? { autoClosed: true } : {}),
+  })
+  return id
+}
+
+/** The ₹ per km rate, which the standard world leaves unset on purpose. */
+export async function fuelRate(rate: number): Promise<void> {
+  await getFirestore(admin()).doc('expense_config/main').set({ ratePerKm: rate }, { merge: true })
+}
+
+/**
  * A product nobody had when the world was built.
  *
  * For the thing that is easy to claim and hard to be sure of: that a product

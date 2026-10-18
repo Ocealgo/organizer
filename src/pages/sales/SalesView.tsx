@@ -13,6 +13,7 @@ import AllocationManager from '../distributors/AllocationManager'
 import VisitLogger from './VisitLogger'
 import ActivityScreen from './ActivityScreen'
 import LeaveHistory from './LeaveHistory'
+import EodExpenses from '../../components/EodExpenses'
 import {
   Party, DailyVisitLog, LeaveRecord, Holiday, SalesTarget,
   WorkPlan, SalesRoute, workPlanId, ManagerActivity, MANAGER_ACTIVITY_LABEL,
@@ -688,6 +689,19 @@ export default function SalesView({ name }: Props) {
             </div>
           )
         })()}
+
+        {/* The day's expenses, the moment the day is over.
+            Not on an auto-closed day: there was no closing reading, so no
+            distance to work anything out from, and the rep never saw the
+            end of that day in the app at all. */}
+        {isDayClosed && dutySession && !dutySession.autoClosed && appUser && (
+          <EodExpenses
+            appUser={appUser}
+            session={dutySession}
+            date={todayStr()}
+            onOpenExpenses={() => { setExpenseDefaultToDay(true); setScreen('expenses') }}
+          />
+        )}
 
         {/* Leave status */}
         {todayLeave && (todayLeave.status === 'pending_approval' || todayLeave.status === 'active' || todayLeave.status === 'unmark_requested') && (

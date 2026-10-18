@@ -499,6 +499,16 @@ export interface ExpenseEntry {
    */
   ratePerKm?: number
   dutySessionId?: string
+  /**
+   * What the odometer said that day, recorded on a fuel claim.
+   *
+   * Beside `distanceKm` rather than instead of it, because the two are allowed
+   * to differ: a rep may claim less than they drove, or more with a reason.
+   * Keeping both is what lets a reviewer see a departure rather than infer one.
+   */
+  meterKm?: number
+  /** Why the claim is above the meter. Required whenever it is. */
+  aboveMeterReason?: string
 }
 
 // ── ALERT ─────────────────────────────────────────────────────────────────────
