@@ -483,6 +483,29 @@ export default function Planner({ onBack }: Props) {
     return out
   }, [targetMonth, holidays])
 
+  /**
+   * The days a target may still be set for.
+   *
+   * Forward only. A figure written onto a day that has already happened is not
+   * a target, it is a mark awarded afterwards — and the one thing that makes a
+   * daily target worth anything is that the rep knew it before the day
+   * started. The same reasoning the work plan already carries: a beat edited in
+   * November must not rewrite what September was measured against.
+   *
+   * Today counts. A target set this morning is a target; the alternative is a
+   * manager who cannot plan the day they are standing in.
+   *
+   * Past days stay on screen, read-only, because a month whose earlier days
+   * vanished would stop adding up to itself and the figure beside the toggle
+   * would look wrong for a reason nobody could see.
+   */
+  const today = localDateStr()
+  const settableDays = useMemo(
+    () => workableDays.filter(d => d >= today),
+    [workableDays, today],
+  )
+  const monthIsPast = settableDays.length === 0
+
   /** One product's day boxes for one rep. */
   const dayBoxes = (uid: string, productId: string) => dayDraft[uid]?.[productId] ?? {}
   /** Every product's day boxes for one rep. */
@@ -507,23 +530,55 @@ export default function Planner({ onBack }: Props) {
    */
   const divideEqually = (rep: AppUser) => {
     const typedBoxes = productBoxes(rep.uid)
-    const stored = targets.find(x => x.uid === rep.uid)?.byProduct ?? {}
+    const storedMonths = targets.find(x => x.uid === rep.uid)?.byProduct ?? {}
     const byProduct: Record<string, number> = {}
     for (const prod of products) {
       const raw = (typedBoxes[prod.id!] ?? '').trim()
-      const n = raw === '' ? (stored[prod.id!] ?? 0) : Number(raw)
+      const n = raw === '' ? (storedMonths[prod.id!] ?? 0) : Number(raw)
       if (Number.isFinite(n) && n > 0) byProduct[prod.id!] = n
     }
     if (Object.keys(byProduct).length === 0) {
       setTargetError(`${rep.name}: set a product's packets first — there is nothing to divide.`)
       return
     }
+    if (settableDays.length === 0) {
+      setTargetError(`${rep.name}: every day of this month has already happened.`)
+      return
+    }
     setTargetError(null)
-    const split = divideByProductAcrossDays(byProduct, workableDays)
+
+    /**
+     * What is left of each product, across the days that are left.
+     *
+     * Mid-month, spreading the whole month over the remaining days would put a
+     * hundred packets on a Tuesday. Spreading only the unallocated remainder
+     * is the arithmetic a person would do: take what the earlier days already
+     * carry off the month, and divide the rest over what is still to come.
+     */
+    const stored = targets.find(x => x.uid === rep.uid)?.daysByProduct ?? {}
+    const remaining: Record<string, number> = {}
+    for (const [pid, units] of Object.entries(byProduct)) {
+      const already = Object.entries(stored[pid] ?? {})
+        .filter(([d]) => d < today)
+        .reduce((n, [, v]) => n + (Number(v) || 0), 0)
+      remaining[pid] = Math.max(0, units - already)
+    }
+
+    const split = divideByProductAcrossDays(remaining, settableDays)
     setDayDraft(prev => ({
       ...prev,
-      [rep.uid]: Object.fromEntries(Object.entries(split).map(([pid, perDay]) =>
-        [pid, Object.fromEntries(Object.entries(perDay).map(([d, n]) => [d, String(n)]))])),
+      // The days already gone keep whatever they carried. Only what is still
+      // to come is rewritten.
+      [rep.uid]: Object.fromEntries(products.map(prod => {
+        const pid = prod.id!
+        const past = Object.fromEntries(
+          Object.entries(stored[pid] ?? {})
+            .filter(([d]) => d < today)
+            .map(([d, n]) => [d, String(n)]))
+        const future = Object.fromEntries(
+          Object.entries(split[pid] ?? {}).map(([d, n]) => [d, String(n)]))
+        return [pid, { ...past, ...future }]
+      })),
     }))
   }
 
@@ -552,6 +607,20 @@ export default function Planner({ onBack }: Props) {
           return
         }
         perDay[date] = n
+      }
+      /**
+       * The past is taken from the document, not from the boxes.
+       *
+       * The boxes for days gone by are read-only, so in practice they hold
+       * what was stored anyway — but a draft that has sat open since before
+       * midnight holds yesterday as editable, and a save then would quietly
+       * rewrite a day the rep had already worked to. Reading the stored value
+       * back over it means only one of those can win, and it is the one that
+       * was already true.
+       */
+      const storedPast = targets.find(x => x.uid === rep.uid)?.daysByProduct?.[prod.id!] ?? {}
+      for (const [date, n] of Object.entries(storedPast)) {
+        if (date < today) perDay[date] = Number(n) || 0
       }
       if (Object.keys(perDay).length) daysByProduct[prod.id!] = perDay
     }
@@ -1006,8 +1075,14 @@ export default function Planner({ onBack }: Props) {
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                                 <div className="oc-wrap" style={{ gap: 10 }}>
                                   <GhostButton onClick={() => divideEqually(r)}
-                                    ariaLabel={`Divide equally for ${r.name}`}>
-                                    Divide every product across {workableDays.length} days
+                                    ariaLabel={`Divide equally for ${r.name}`}
+                                    disabled={monthIsPast}>
+                                    {/* The count is the days it can actually
+                                        write, not the days in the month —
+                                        mid-month those are different numbers
+                                        and the button should say which one it
+                                        means. */}
+                                    Divide every product across {settableDays.length} days
                                   </GhostButton>
                                   <GhostButton
                                     onClick={() => setDayDraft(prev => ({ ...prev, [r.uid]: {} }))}
@@ -1019,6 +1094,16 @@ export default function Planner({ onBack }: Props) {
                                     disabled={targetSaving === r.uid}>
                                     {targetSaving === r.uid ? 'Saving…' : 'Save days'}
                                   </GhostButton>
+                                </div>
+
+                                <div style={{ fontSize: 12, color: t.text3, lineHeight: 1.55 }}>
+                                  {monthIsPast
+                                    ? 'Every day of this month has already happened, so none of '
+                                      + 'them can be given a target. They are here to read.'
+                                    : `Days already gone are shown but cannot be changed — a `
+                                      + `figure written onto a day somebody has already worked is `
+                                      + `not a target. ${settableDays.length} of `
+                                      + `${workableDays.length} days are still ahead.`}
                                 </div>
 
                                 {/* Which product's month is on screen.
@@ -1066,15 +1151,23 @@ export default function Planner({ onBack }: Props) {
                                     // so the comparison on screen is like for like.
                                     const done = packetsOrderedOn(allocations as any, r.uid, date, pid)
                                     const dayGoal = Number((boxes[date] ?? '').trim()) || 0
+                                    // A day that has happened cannot be given a
+                                    // target, only read. Shown rather than
+                                    // removed: a month missing its earlier days
+                                    // would stop adding up to itself.
+                                    const gone = date < today
                                     return (
                                       <label key={date} style={{ display: 'block' }}>
-                                        <span style={{ display: 'block', fontSize: 11, color: t.text3, marginBottom: 3 }}>
+                                        <span style={{ display: 'block', fontSize: 11,
+                                                       color: t.text3, marginBottom: 3 }}>
                                           {monthLabel(date)}
                                           {done > 0 ? ` · ${done}` : ''}
                                         </span>
                                         <input type="number" inputMode="numeric" min={0}
                                           aria-label={`Packets for ${r.name} on ${date}`}
                                           value={boxes[date] ?? ''}
+                                          readOnly={gone}
+                                          tabIndex={gone ? -1 : undefined}
                                           onChange={e => setDayDraft(prev => ({
                                             ...prev,
                                             [r.uid]: {
@@ -1082,9 +1175,14 @@ export default function Planner({ onBack }: Props) {
                                               [pid]: { ...(prev[r.uid]?.[pid] ?? {}), [date]: e.target.value },
                                             },
                                           }))}
-                                          placeholder="—"
+                                          placeholder={gone ? '·' : '—'}
                                           style={{
                                             ...inputStyle(t), fontSize: 13, padding: '7px 9px',
+                                            // Dimmed rather than greyed out: it is
+                                            // still a figure worth reading, just
+                                            // not one anybody can change now.
+                                            opacity: gone ? 0.5 : 1,
+                                            cursor: gone ? 'default' : undefined,
                                             // Met days are quietly marked, so a manager
                                             // scanning the month sees where it is going.
                                             borderColor: dayGoal > 0 && done >= dayGoal ? t.good : undefined,

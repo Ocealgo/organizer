@@ -39,9 +39,23 @@ test.beforeEach(async () => {
  * it passes six days a week and fails on the seventh — which is how both of
  * these were written the first time.
  */
-function aWorkableDay(): string {
+/**
+ * The next day a target may be set for.
+ *
+ * Forward to the first non-Sunday, which on a Sunday is tomorrow. "Today" is
+ * not a safe stand-in: a Sunday has no box at all, because the division never
+ * offers one and the grid draws only the days it offers.
+ */
+/** A date this many days back, for asserting on days that have gone. */
+function dayBefore(n: number): string {
   const d = new Date()
-  while (d.getDay() === 0) d.setDate(d.getDate() - 1)
+  d.setDate(d.getDate() - n)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function aSettableDay(): string {
+  const d = new Date()
+  while (d.getDay() === 0) d.setDate(d.getDate() + 1)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
@@ -310,6 +324,70 @@ test.describe('each product has its own days', () => {
   })
 })
 
+test.describe('a target can only be set forwards', () => {
+  /**
+   * A figure written onto a day somebody has already worked is not a target,
+   * it is a mark awarded afterwards — and the only thing that makes a daily
+   * target worth anything is that the rep knew it before the day began.
+   */
+  test('a day already gone cannot be changed, but can be read', async ({ page, loginAs }) => {
+    const gone = dayBefore(3)
+    await packetTarget('rep', gone.slice(0, 7), 1000, undefined,
+      { prod_wipes: 600, prod_mini: 400 },
+      { prod_wipes: { [gone]: 44 } })
+
+    await loginAs('manager')
+    await openPlannerTargets(page)
+    await page.getByRole('button', { name: 'Day by day for Ravi Rep' }).click()
+    // The chips open on the alphabetically first product — the 30s — and the
+    // day above was seeded against the 72s. One grid is on screen at a time,
+    // so the product has to be chosen before its days can be read.
+    await page.getByRole('button', { name: /Days for Baby Wet Wipes 72s, Ravi Rep/ }).click()
+
+    const past = page.getByLabel(`Packets for Ravi Rep on ${gone}`)
+    // Still on screen, and still carrying its figure: a month missing its
+    // earlier days would stop adding up to itself.
+    await expect(past).toHaveValue('44')
+    await expect(past).toHaveAttribute('readonly', '')
+
+    await expect(page.getByText(/Days already gone are shown but cannot be changed/))
+      .toBeVisible()
+  })
+
+  test('today can still be set', async ({ page, loginAs }) => {
+    await loginAs('manager')
+    await openPlannerTargets(page)
+    await page.getByRole('button', { name: 'Day by day for Ravi Rep' }).click()
+
+    // The next day that can carry one. Today qualifies on a weekday; on a
+    // Sunday there is no box, because a Sunday is never offered a target.
+    const now = page.getByLabel(`Packets for Ravi Rep on ${aSettableDay()}`)
+    await expect(now).not.toHaveAttribute('readonly', '')
+    await now.fill('42')
+    await expect(now).toHaveValue('42')
+  })
+
+  /** Dividing fills what is ahead, and says how many days that is. */
+  test('dividing only covers the days still to come', async ({ page, loginAs }) => {
+    await loginAs('manager')
+    await openPlannerTargets(page)
+
+    await page.getByLabel('Baby Wet Wipes 72s packets for Ravi Rep').fill('600')
+    await page.getByRole('button', { name: 'Set target for Ravi Rep' }).click()
+    await page.getByRole('button', { name: 'Day by day for Ravi Rep' }).click()
+
+    // The button counts the days it can write, not the days in the month.
+    const label = await page.getByRole('button', { name: 'Divide equally for Ravi Rep' })
+      .textContent()
+    const ahead = Number(/across (\d+) days/.exec(label ?? '')?.[1])
+    const stated = /(\d+) of (\d+) days are still ahead/.exec(
+      (await page.getByText(/days are still ahead/).textContent()) ?? '')
+    expect(ahead).toBe(Number(stated?.[1]))
+    // Mid-month those two differ; at the start of one they do not.
+    expect(ahead).toBeLessThanOrEqual(Number(stated?.[2]))
+  })
+})
+
 test.describe('dividing a month across its days', () => {
   test('equal division fills the days and adds up to the month', async ({
     page, loginAs, asAlso,
@@ -341,7 +419,8 @@ test.describe('dividing a month across its days', () => {
   })
 
   test('a day can be changed away from the even split', async ({ page, loginAs }) => {
-    const day = aWorkableDay()
+    // Still ahead, or the box is read-only and there is nothing to change.
+    const day = aSettableDay()
     await packetTarget('rep', day.slice(0, 7), 1000, { [day]: 38 })
 
     await loginAs('manager')
