@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures/app'
+import { test, expect, openSignIn } from './fixtures/app'
 import { USERS, PASSWORD, UNKNOWN_PHONE, latestSmsCode } from './fixtures/seed'
 
 /**
@@ -22,7 +22,7 @@ test.describe('signing in', () => {
   })
 
   test('a pending account is held at the door', async ({ page }) => {
-    await page.goto('/')
+    await openSignIn(page)
     await page.getByPlaceholder('you@example.com').fill(USERS.pending.email)
     await page.getByPlaceholder(/^your password$/i).fill(PASSWORD)
     await page.getByRole('button', { name: /^sign in$/i }).click()
@@ -37,7 +37,7 @@ test.describe('signing in', () => {
   })
 
   test('a wrong password does not sign anyone in', async ({ page }) => {
-    await page.goto('/')
+    await openSignIn(page)
     await page.getByPlaceholder('you@example.com').fill(USERS.rep.email)
     await page.getByPlaceholder(/^your password$/i).fill('not-the-password')
     await page.getByRole('button', { name: /^sign in$/i }).click()
@@ -59,7 +59,7 @@ test.describe('the same account, either username', () => {
   // by a Cloud Function, because that map may not sit anywhere a stranger can
   // read it.
   test('a rep signs in with their mobile number instead of their email', async ({ page }) => {
-    await page.goto('/')
+    await openSignIn(page)
     await page.getByPlaceholder('you@example.com').fill(USERS.rep.phone)
     await page.getByPlaceholder(/^your password$/i).fill(PASSWORD)
     await page.getByRole('button', { name: /^sign in$/i }).click()
@@ -71,7 +71,7 @@ test.describe('the same account, either username', () => {
   })
 
   test('a number nobody registered is refused', async ({ page }) => {
-    await page.goto('/')
+    await openSignIn(page)
     await page.getByPlaceholder('you@example.com').fill(UNKNOWN_PHONE)
     await page.getByPlaceholder(/^your password$/i).fill(PASSWORD)
     await page.getByRole('button', { name: /^sign in$/i }).click()
@@ -83,7 +83,7 @@ test.describe('the same account, either username', () => {
     // Two different failures must read identically, or this screen becomes a
     // way to find out which numbers belong to staff.
     const message = async (identifier: string, password: string) => {
-      await page.goto('/')
+      await openSignIn(page)
       await page.getByPlaceholder('you@example.com').fill(identifier)
       await page.getByPlaceholder(/^your password$/i).fill(password)
       await page.getByRole('button', { name: /^sign in$/i }).click()

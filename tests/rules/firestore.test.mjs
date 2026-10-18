@@ -28,17 +28,20 @@ const U = {
   mgrPlus: 'manager_2',  // sales_manager with every permission granted
 }
 
-// Mirrors DEFAULT_SALES_MANAGER_PERMISSIONS in src/auth/permissions.ts
-const MGR_DEFAULT = {
-  view_parties: true, view_allocations: true, view_stock: true, view_products: true,
-  view_credit: true, view_expenses: true, view_leave: true, view_reports: true,
-  view_users: true, view_workspace: false,
-  edit_parties: true, approve_leave: true, approve_sales_users: true,
-  dispatch_allocations: true,
-  manage_products: false, edit_stock: false,
-  mark_paid: false, approve_payments: false,
-  clear_expenses: false, delete_parties: false,
-}
+/**
+ * The shipped manager defaults, imported rather than copied.
+ *
+ * This was a hand-kept copy, and it had drifted: `assign_work` was added to
+ * the real default and never added here, so every rule gated on it was
+ * untested — the suite had a manager who could not plan a week and nothing
+ * said so. The copy was found out by the first test that needed the
+ * permission, which is a slow way to learn.
+ *
+ * Node strips the types on the way in, so the constant the app ships is the
+ * constant the rules are tested against and there is nothing left to keep in
+ * step.
+ */
+import { DEFAULT_SALES_MANAGER_PERMISSIONS as MGR_DEFAULT } from '../../src/auth/permissions.ts'
 
 const MGR_FULL = Object.fromEntries(Object.keys(MGR_DEFAULT).map(k => [k, true]))
 
@@ -810,6 +813,68 @@ describe('expenses', () => {
     await assertFails(updateDoc(doc(asUser(U.rep), 'expense_reports', 'r2'), {
       status: 'submitted', totalAmount: 0, nilReturn: true, submittedAt: 2,
     }))
+  })
+})
+
+describe('monthly sales targets', () => {
+  const target = (over = {}) => ({
+    uid: U.rep, name: 'rep_1', month: '2026-10', units: 2000,
+    setBy: U.mgr, setByName: 'manager_1', setAt: 1,
+    ...over,
+  })
+
+  it('a manager on defaults CAN set a target', async () => {
+    await assertSucceeds(setDoc(doc(asUser(U.mgr), 'sales_targets', `${U.rep}_2026-10`), target()))
+  })
+
+  it('an admin CAN set a target', async () => {
+    await assertSucceeds(setDoc(doc(asUser(U.admin), 'sales_targets', `${U.rep}_2026-10`), target()))
+  })
+
+  // A target somebody sets for themselves is not a target, it is an intention.
+  it('a rep CANNOT set their own target', async () => {
+    await assertFails(setDoc(doc(asUser(U.rep), 'sales_targets', `${U.rep}_2026-10`), target()))
+  })
+
+  it('a rep CANNOT set a target for anybody else either', async () => {
+    await assertFails(setDoc(doc(asUser(U.rep), 'sales_targets', `${U.rep2}_2026-10`),
+      target({ uid: U.rep2 })))
+  })
+
+  it('a rep CAN read their own', async () => {
+    await seed((db) => setDoc(doc(db, 'sales_targets', `${U.rep}_2026-10`), target()))
+    await assertSucceeds(getDoc(doc(asUser(U.rep), 'sales_targets', `${U.rep}_2026-10`)))
+  })
+
+  // Nobody's number is secret from the team, but it is not theirs to change.
+  it('a manager CAN list a whole month', async () => {
+    await seed((db) => setDoc(doc(db, 'sales_targets', `${U.rep}_2026-10`), target()))
+    await assertSucceeds(getDocs(query(collection(asUser(U.mgr), 'sales_targets'),
+      where('month', '==', '2026-10'))))
+  })
+
+  // Zero is a real answer meaning "no target this month". Below zero is not.
+  it('a negative target is refused', async () => {
+    await assertFails(setDoc(doc(asUser(U.mgr), 'sales_targets', `${U.rep}_2026-10`),
+      target({ units: -5 })))
+  })
+
+  it('zero is allowed, because deciding on none is a decision', async () => {
+    await assertSucceeds(setDoc(doc(asUser(U.mgr), 'sales_targets', `${U.rep}_2026-10`),
+      target({ units: 0 })))
+  })
+
+  // Separated from create/update in the rules on purpose: on a delete there is
+  // no request.resource to read units from, so a single `write` would have
+  // refused this for no stated reason.
+  it('a manager CAN remove a target', async () => {
+    await seed((db) => setDoc(doc(db, 'sales_targets', `${U.rep}_2026-10`), target()))
+    await assertSucceeds(deleteDoc(doc(asUser(U.mgr), 'sales_targets', `${U.rep}_2026-10`)))
+  })
+
+  it('a rep CANNOT remove one', async () => {
+    await seed((db) => setDoc(doc(db, 'sales_targets', `${U.rep}_2026-10`), target()))
+    await assertFails(deleteDoc(doc(asUser(U.rep), 'sales_targets', `${U.rep}_2026-10`)))
   })
 })
 

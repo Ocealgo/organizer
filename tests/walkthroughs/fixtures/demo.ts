@@ -1,5 +1,6 @@
 import { test as base, expect, Page } from '@playwright/test'
 import { resetWorld, seedWorld, USERS, PASSWORD, UserKey } from '../../e2e/fixtures/seed'
+import { shiftClock } from '../../e2e/fixtures/clock'
 
 /**
  * The walkthrough recorder.
@@ -22,6 +23,8 @@ const READ_MS = 2200
 const BEAT_MS = 700
 
 export interface DemoFixtures {
+  /** Reset and reseed before each walkthrough; see the fixture. */
+  world: void
   /** Sign in as a seeded account, silently — the login is its own walkthrough. */
   signIn: (who: UserKey) => Promise<void>
   /** Put a caption on screen and hold it long enough to read. */
@@ -69,10 +72,29 @@ async function showCaption(page: Page, text: string) {
 }
 
 export const test = base.extend<DemoFixtures>({
+  // Automatic, not a beforeEach here: a hook in a shared module attaches only
+  // to the first file that imports it.
+  world: [async ({}, use) => {
+    await resetWorld()
+    await seedWorld()
+    await use()
+  }, { auto: true }],
+
+  // The suite's clock, so a walkthrough recorded on a Sunday still has a day to work.
+  context: async ({ context }, use) => {
+    await shiftClock(context)
+    await use(context)
+  },
+
   signIn: async ({ page }, use) => {
     await use(async (who: UserKey) => {
       const u = USERS[who]
       await page.goto('/')
+      // A fresh browser against the emulators can sit on "Loading Ocealgo" a
+      // little past the default 10s while auth reports in — about once a run.
+      // Waited for here, generously, rather than failing the spec that
+      // happened to draw it; a real hang still fails, at 30s.
+      await page.getByPlaceholder('you@example.com').waitFor({ timeout: 30_000 })
       await page.getByPlaceholder('you@example.com').fill(u.email)
       await page.getByPlaceholder(/password/i).first().fill(PASSWORD)
       await page.getByRole('button', { name: /sign in/i }).click()
@@ -101,11 +123,6 @@ export const test = base.extend<DemoFixtures>({
       })
     })
   },
-})
-
-test.beforeEach(async () => {
-  await resetWorld()
-  await seedWorld()
 })
 
 export { expect }

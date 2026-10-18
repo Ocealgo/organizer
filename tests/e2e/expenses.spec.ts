@@ -56,6 +56,10 @@ test.describe('fuel by distance', () => {
     await expect(repPage.getByText('Paid at ₹4.5 per km. You do not enter the amount — it is worked out from this.')).toBeVisible()
     await repPage.getByPlaceholder('Kilometres').fill('12')
     await expect(repPage.getByText('That is ₹54.')).toBeVisible()
+    // The rep has no duty session that day, and spending on a day not worked
+    // has to say why — the claim is still allowed, with the reason on it.
+    await repPage.getByPlaceholder('Travelled the night before an outstation market')
+      .fill('Fuel for the depot run')
 
     await repPage.getByRole('button', { name: 'Add', exact: true }).click()
     await expect(repPage.getByText('12 km at ₹4.5 per km')).toBeVisible()

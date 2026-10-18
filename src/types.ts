@@ -499,6 +499,16 @@ export interface ExpenseEntry {
    */
   ratePerKm?: number
   dutySessionId?: string
+  /**
+   * What the odometer said that day, recorded on a fuel claim.
+   *
+   * Beside `distanceKm` rather than instead of it, because the two are allowed
+   * to differ: a rep may claim less than they drove, or more with a reason.
+   * Keeping both is what lets a reviewer see a departure rather than infer one.
+   */
+  meterKm?: number
+  /** Why the claim is above the meter. Required whenever it is. */
+  aboveMeterReason?: string
 }
 
 // ── ALERT ─────────────────────────────────────────────────────────────────────
@@ -1421,6 +1431,12 @@ export interface StockLedgerEntry {
  * Deliberately two numbers. Every extra target is another thing a rep is
  * measured on and another column in a grid nobody then reads, and these are
  * the two the business actually steers by.
+ *
+ * A packet figure briefly lived here too, on the beat, and it was wrong: a rep
+ * sent to a shop off their round still owes the day's packets, so a target
+ * fixed to the beat is a target that stops applying the moment the day stops
+ * going to plan. The day's packets live on the rep's month instead, in
+ * `SalesTarget.days`, and need no beat to exist.
  */
 export interface PlanTargets {
   /** Shops visited — all of them, beat or not. */
@@ -1462,6 +1478,333 @@ export interface WorkPlan {
 /** Deterministic id: one plan per person per day, enforced by the key itself. */
 export function workPlanId(uid: string, date: string): string {
   return `${uid}_${date}`
+}
+
+/**
+ * How many packets a rep is expected to sell in a month.
+ *
+ * Its own collection rather than a third field on PlanTargets, and the reason
+ * is the horizon. A day's plan is advisory and often absent — a rep works days
+ * nobody assigned, and summing daily targets over a month would quietly
+ * measure them against whatever happened to be filled in. A month is a figure
+ * somebody decides once, and it is the horizon a packet number is actually set
+ * on.
+ *
+ * Packets, not rupees. PlanTargets already carries `orderValue` for the money
+ * question; this is the volume one, and the two answer differently when the
+ * cheap line sells.
+ *
+ * WHAT COUNTS TOWARD IT
+ * Packets on orders the rep placed, in the month they placed them. A
+ * cancelled order counts for nothing.
+ *
+ * Measured on the order rather than on the payment because this is the rep's
+ * number and placing the order is the part they control — whether it ships
+ * depends on the warehouse and whether it is paid depends on the shop. It also
+ * means the figure moves while they are standing in the shop, which is the
+ * only point at which a target changes what somebody does.
+ *
+ * Derived from the orders every time, never accumulated into a stored total.
+ * That is what makes a cancellation correct for free: the packets stop being
+ * counted the moment the order is cancelled, with no running figure to adjust
+ * and nothing to drift out of step. A stored counter would need every path
+ * that cancels, edits or re-raises an order to remember to adjust it, and the
+ * first one that forgot would be wrong quietly and for ever.
+ */
+export interface SalesTarget {
+  id?: string
+  uid: string
+  /** Denormalised so a report can render without joining users. */
+  name: string
+  month: string                   // YYYY-MM
+  /**
+   * How many packets of each product. The figures a manager actually types.
+   *
+   * Per product because a target that is not is a target you cannot read a
+   * product filter against: ask "who is shifting the 30s" and an all-product
+   * figure is a number divided by an unrelated number.
+   *
+   * Optional, and that is what keeps every target set before this working.
+   * A document without it behaves exactly as it did — `units` is the whole
+   * answer and the product question simply has none.
+   */
+  byProduct?: Record<string, number>
+  /**
+   * Packets to sell across every product. Zero means no target this month.
+   *
+   * Derived from `byProduct` and written alongside it rather than typed, so
+   * there is one place to set a target and nothing to disagree with. Stored
+   * rather than computed at read time because every screen that does not care
+   * about products reads only this, and a sum on every row is a sum nobody
+   * asked for.
+   */
+  units: number
+  /**
+   * Each product's own day-by-day figures: product → date → packets.
+   *
+   * Per product rather than one split shared between them, because the two
+   * products do not move together — a festival week is a wipes week, and
+   * telling somebody their Tuesday is thirty-eight packets of something
+   * unspecified is not a target they can act on.
+   *
+   * Driven entirely by the products collection, which is what makes a product
+   * added next month work without anybody touching this: a new product has no
+   * entry here, the planner draws it an empty column, and dividing fills it.
+   * Nothing anywhere names a product.
+   *
+   * Sparse on purpose at both levels. A date absent for a product has no
+   * target for that product rather than a target of zero, so a manager who
+   * filled in three days has set three days and not silently excused the rest.
+   */
+  daysByProduct?: Record<string, Record<string, number>>
+  /**
+   * What the whole day is expected to contribute, keyed YYYY-MM-DD.
+   *
+   * Derived — the sum across products — and written beside them so every
+   * screen that does not care which product reads one field. It was once the
+   * figure a manager typed, which is why a document that predates
+   * `daysByProduct` still has it and still works: this is the fallback when
+   * there is no per-product breakdown to add up.
+   */
+  days?: Record<string, number>
+  /** Anything the number cannot say — "Onam push", "covering Priya's beat". */
+  note?: string
+  setBy: string
+  setByName: string
+  setAt: number
+  updatedAt?: number
+}
+
+/** One target per person per month, enforced by the key rather than by hope. */
+export function salesTargetId(uid: string, month: string): string {
+  return `${uid}_${month}`
+}
+
+/**
+ * Packets a rep has ordered in a month, by the definition the target uses.
+ *
+ * Here rather than in a screen because three of them ask — the planner where
+ * the target is set, the report, and the rep's own home — and a target
+ * measured one way in one place and another way in the next is worse than no
+ * target.
+ *
+ * Bucketed by when the order was placed, not by `month`, which carries the
+ * planned send date. An order taken on the thirtieth for dispatch on the
+ * second belongs to the month the rep was in the shop; crediting it to the
+ * next one would move their work into a month they had not started.
+ */
+export function packetsOrdered(
+  allocations: {
+    status: string; packets?: number; createdAt?: number
+    createdBy?: string; productId?: string
+  }[],
+  uid: string,
+  month: string,
+  /** One product, or every product when absent. */
+  productId?: string,
+): number {
+  return allocations.reduce((n, a) => {
+    if (a.createdBy !== uid || a.status === 'cancelled' || !a.createdAt) return n
+    if (productId && a.productId !== productId) return n
+    return monthOfMs(a.createdAt) === month ? n + (a.packets || 0) : n
+  }, 0)
+}
+
+/**
+ * What this day is expected to contribute, or null when nothing was set.
+ *
+ * Null rather than zero, because the two mean different things on screen: no
+ * figure shows no line, and a figure of zero is somebody saying today does not
+ * count.
+ */
+export function dailyTargetFor(
+  target: {
+    days?: Record<string, number>
+    daysByProduct?: Record<string, Record<string, number>>
+  } | null | undefined,
+  date: string,
+): number | null {
+  // The per-product figures are what a manager sets, so they decide. `days` is
+  // the stored sum and the answer for anything written before products had
+  // their own splits.
+  const byProd = target?.daysByProduct
+  if (byProd) {
+    let total = 0
+    let found = false
+    for (const perDay of Object.values(byProd)) {
+      const v = perDay?.[date]
+      if (typeof v === 'number') { total += v; found = true }
+    }
+    if (found) return total
+  }
+  const v = target?.days?.[date]
+  return typeof v === 'number' ? v : null
+}
+
+/**
+ * Spread a month's packets across the days that can be worked.
+ *
+ * Whole packets only, and the remainder goes to the earliest days rather than
+ * being dropped — twenty-six days of 38 against a target of 1000 leaves 12
+ * packets that have to live somewhere, and quietly losing them would make the
+ * daily figures add up to less than the month they came from.
+ *
+ * Front-loaded rather than spread at random so the arithmetic is checkable by
+ * looking: the first twelve days carry 39, the rest 38.
+ */
+export function divideAcrossDays(units: number, dates: string[]): Record<string, number> {
+  const out: Record<string, number> = {}
+  if (dates.length === 0 || units <= 0) return out
+  const base = Math.floor(units / dates.length)
+  let extra = units - base * dates.length
+  for (const d of [...dates].sort()) {
+    out[d] = base + (extra > 0 ? 1 : 0)
+    if (extra > 0) extra--
+  }
+  return out
+}
+
+/**
+ * What each product owes on one day.
+ *
+ * Derived, never stored. A manager sets a month per product and one day split
+ * for the whole month; this is where the two meet. Storing it would mean a
+ * product-by-day grid — two products over twenty-seven days is fifty-four
+ * numbers per person — and every one of them another thing to keep in step
+ * with the two it came from.
+ *
+ * The remainder is given to the largest fraction rather than dropped or spread
+ * from the front. 600 and 400 of a 38-packet day come to 22.8 and 15.2; floor
+ * them and the day is 37, which is a day that does not add up to itself on
+ * screen. Largest-fraction-first is also the choice that puts the spare packet
+ * where it was most nearly earned, which front-loading by product id would
+ * not — products have no order, unlike days.
+ *
+ * Null when the day has no target or the month has no product breakdown.
+ */
+export function productDailyTargets(
+  target: {
+    units?: number
+    byProduct?: Record<string, number>
+    days?: Record<string, number>
+    daysByProduct?: Record<string, Record<string, number>>
+  } | null | undefined,
+  date: string,
+): Record<string, number> | null {
+  // Set per product: that is the answer, and no arithmetic is needed.
+  const byProd = target?.daysByProduct
+  if (byProd) {
+    const out: Record<string, number> = {}
+    let found = false
+    for (const [id, perDay] of Object.entries(byProd)) {
+      const v = perDay?.[date]
+      if (typeof v === 'number') { out[id] = v; found = true }
+    }
+    if (found) return out
+  }
+
+  // Otherwise a document from before products had their own splits: one day
+  // figure, shared out by each product's share of the month.
+  const dayTotal = dailyTargetFor(target, date)
+  const by = target?.byProduct
+  if (dayTotal === null || !by) return null
+  const total = Object.values(by).reduce((n, v) => n + (v || 0), 0)
+  if (total <= 0) return null
+
+  const parts = Object.entries(by).map(([id, n]) => {
+    const exact = ((n || 0) * dayTotal) / total
+    const floor = Math.floor(exact)
+    return { id, floor, frac: exact - floor }
+  })
+  let spare = dayTotal - parts.reduce((n, p) => n + p.floor, 0)
+  parts.sort((a, b) => b.frac - a.frac)
+
+  const out: Record<string, number> = {}
+  for (const part of parts) {
+    out[part.id] = part.floor + (spare > 0 ? 1 : 0)
+    if (spare > 0) spare--
+  }
+  return out
+}
+
+/** A product's figure for the month, or null when none was set for it. */
+export function productMonthTarget(
+  target: { byProduct?: Record<string, number> } | null | undefined,
+  productId: string,
+): number | null {
+  const v = target?.byProduct?.[productId]
+  return typeof v === 'number' ? v : null
+}
+
+/**
+ * Every product's month, divided across the days that can be worked.
+ *
+ * Each product independently, so each one's remainder lands inside its own
+ * figures and every product still adds up to the month it came from. Dividing
+ * the total once and sharing it out afterwards would push the rounding error
+ * across products, where it is nobody's.
+ *
+ * Takes whatever products it is given, which is the whole point: a product
+ * added next month arrives here as another key and needs no code to follow it.
+ */
+export function divideByProductAcrossDays(
+  byProduct: Record<string, number>,
+  dates: string[],
+): Record<string, Record<string, number>> {
+  const out: Record<string, Record<string, number>> = {}
+  for (const [id, units] of Object.entries(byProduct)) {
+    const split = divideAcrossDays(Number(units) || 0, dates)
+    if (Object.keys(split).length) out[id] = split
+  }
+  return out
+}
+
+/** The day totals a per-product set of splits comes to, date by date. */
+export function dayTotalsFromProducts(
+  daysByProduct: Record<string, Record<string, number>>,
+): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const perDay of Object.values(daysByProduct)) {
+    for (const [date, n] of Object.entries(perDay)) {
+      out[date] = (out[date] ?? 0) + (Number(n) || 0)
+    }
+  }
+  return out
+}
+
+/** The total a per-product breakdown comes to. The stored `units` mirrors this. */
+export function sumByProduct(byProduct: Record<string, number>): number {
+  return Object.values(byProduct).reduce((n, v) => n + (Number(v) || 0), 0)
+}
+
+/** The same count for one day, against a per-day target. */
+export function packetsOrderedOn(
+  allocations: {
+    status: string; packets?: number; createdAt?: number
+    createdBy?: string; productId?: string
+  }[],
+  uid: string,
+  date: string,
+  /** One product, or every product when absent. */
+  productId?: string,
+): number {
+  return allocations.reduce((n, a) => {
+    if (a.createdBy !== uid || a.status === 'cancelled' || !a.createdAt) return n
+    if (productId && a.productId !== productId) return n
+    return dateOfMs(a.createdAt) === date ? n + (a.packets || 0) : n
+  }, 0)
+}
+
+/** YYYY-MM-DD for a timestamp, in local time. */
+export function dateOfMs(ms: number): string {
+  const d = new Date(ms)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** YYYY-MM for a timestamp, in local time — the same month a person would say. */
+export function monthOfMs(ms: number): string {
+  const d = new Date(ms)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
 /**

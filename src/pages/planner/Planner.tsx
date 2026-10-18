@@ -1,10 +1,15 @@
 import { useState, useEffect, useMemo } from 'react'
-import { collection, query, where, writeBatch, doc, deleteDoc, updateDoc } from 'firebase/firestore'
+import {
+  collection, query, where, writeBatch, doc, deleteDoc, updateDoc, setDoc,
+} from 'firebase/firestore'
 import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
-  AppUser, SalesRoute, WorkPlan, Holiday, LeaveRecord,
-  workPlanId, routePlaces,
+  AppUser, SalesRoute, WorkPlan, Holiday, LeaveRecord, SalesTarget, UnifiedAllocation,
+  Product,
+  workPlanId, routePlaces, salesTargetId, packetsOrdered, packetsOrderedOn,
+  dailyTargetFor, divideAcrossDays, sumByProduct,
+  divideByProductAcrossDays, dayTotalsFromProducts,
 } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
@@ -14,11 +19,11 @@ import {
   PageHeader, TabBar, Eyebrow, EmptyState, Note, Field,
   GhostButton, PrimaryButton, inputStyle,
 } from '../../components/ui'
-import { localDateStr, isSunday } from '../../utils/date'
+import { localDateStr, localMonthStr, isSunday } from '../../utils/date'
 
 interface Props { onBack: () => void }
 
-type Tab = 'assign' | 'assigned'
+type Tab = 'assign' | 'assigned' | 'targets'
 
 /** Monday of the week containing `d`. */
 function mondayOf(d: string): string {
@@ -33,6 +38,9 @@ const dayLabel = (d: string) =>
   new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' })
 const longDay = (d: string) =>
   new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })
+/** Calendar headings, Monday first, the way the working week runs. */
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
 const monthLabel = (d: string) =>
   new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
 
@@ -66,6 +74,39 @@ export default function Planner({ onBack }: Props) {
   const [holidays, setHolidays] = useState<Holiday[]>([])
   const [leaves, setLeaves] = useState<LeaveRecord[]>([])
   const [readError, setReadError] = useState<string | null>(null)
+
+  // Monthly targets. Their own month, not the week above them — a target is
+  // set once for a month and the week navigator would make it look as though
+  // it changed every Monday.
+  const [targets, setTargets] = useState<SalesTarget[]>([])
+  const [allocations, setAllocations] = useState<UnifiedAllocation[]>([])
+  const [targetMonth, setTargetMonth] = useState(localMonthStr())
+  const [products, setProducts] = useState<Product[]>([])
+  /**
+   * uid → product → what is being typed, so a half-typed number is never saved.
+   *
+   * The total is not in here because the total is not typed. It is the sum of
+   * these, which is the whole reason there is one place to set a target and
+   * nothing for a second number to disagree with.
+   */
+  const [targetDraft, setTargetDraft] = useState<Record<string, Record<string, string>>>({})
+  const [targetNote, setTargetNote] = useState<Record<string, string>>({})
+  const [targetSaving, setTargetSaving] = useState<string | null>(null)
+  const [targetError, setTargetError] = useState<string | null>(null)
+  /** Whose day-by-day breakdown is open. One at a time — a month of boxes for
+   *  five reps at once is a spreadsheet, and a worse one than a spreadsheet. */
+  const [daysOpenFor, setDaysOpenFor] = useState<string | null>(null)
+  /**
+   * uid → product → date → what is being typed.
+   *
+   * A product dimension deeper than it was, because each product carries its
+   * own days now. Keyed by product id throughout, so a product added next
+   * month simply appears as another key.
+   */
+  const [dayDraft, setDayDraft] =
+    useState<Record<string, Record<string, Record<string, string>>>>({})
+  /** Which product's grid is on screen inside an open breakdown. */
+  const [dayProduct, setDayProduct] = useState<Record<string, string>>({})
 
   /** '' means everybody. Shared by both tabs — a filter you set once holds. */
   const [whoFilter, setWhoFilter] = useState('')
@@ -102,8 +143,61 @@ export default function Planner({ onBack }: Props) {
         .sort((a, b) => a.name.localeCompare(b.name))))
     const u3 = onSnapshot(collection(db, 'holidays'), s =>
       setHolidays(s.docs.map(d => ({ id: d.id, ...d.data() } as Holiday))))
-    return () => { u1(); u2(); u3() }
+    // Whole collection, filtered here, because what counts toward a target is
+    // the month the money arrived — which is on the allocation, not in its id.
+    const u4 = onSnapshot(collection(db, 'allocations_v2'), s =>
+      setAllocations(s.docs.map(d => ({ id: d.id, ...d.data() } as UnifiedAllocation))))
+    const u5 = onSnapshot(collection(db, 'products'), s =>
+      setProducts(s.docs.map(d => ({ id: d.id, ...d.data() } as Product))
+        .filter(x => x.active)
+        .sort((a, b) => a.name.localeCompare(b.name))))
+    return () => { u1(); u2(); u3(); u4(); u5() }
   }, [])
+
+  useEffect(() => {
+    setTargetError(null)
+    return onSnapshot(
+      query(collection(db, 'sales_targets'), where('month', '==', targetMonth)),
+      s => {
+        setTargets(s.docs.map(d => ({ id: d.id, ...d.data() } as SalesTarget)))
+        // Only seed the boxes that are not being typed in, so a listener
+        // firing mid-edit does not snatch the number back.
+        setTargetDraft(prev => {
+          const next = { ...prev }
+          s.docs.forEach(d => {
+            const v = d.data() as SalesTarget
+            if (next[v.uid] !== undefined) return
+            // A target set before products were asked about has `units` and no
+            // breakdown. Rather than guess how to split it, the boxes open
+            // empty and the old total goes on showing until somebody sets one.
+            next[v.uid] = Object.fromEntries(
+              Object.entries(v.byProduct ?? {}).map(([id, n]) => [id, String(n)]))
+          })
+          return next
+        })
+        setDayDraft(prev => {
+          const next = { ...prev }
+          s.docs.forEach(d => {
+            const v = d.data() as SalesTarget
+            if (next[v.uid] !== undefined) return
+            if (v.daysByProduct) {
+              next[v.uid] = Object.fromEntries(
+                Object.entries(v.daysByProduct).map(([pid, perDay]) =>
+                  [pid, Object.fromEntries(
+                    Object.entries(perDay).map(([k, n]) => [k, String(n)]))]))
+            }
+            // A document from before products had their own splits keeps its
+            // `days`, and the boxes open empty rather than guessing which
+            // product those packets were for. Dividing fills them.
+          })
+          return next
+        })
+      },
+      err => setTargetError(err?.code === 'permission-denied'
+        ? 'Firestore turned down the read. The deployed rules may be older than this build.'
+        : 'Could not load the targets.'),
+    )
+  }, [targetMonth])
 
   useEffect(() => {
     setReadError(null)
@@ -318,6 +412,273 @@ export default function Planner({ onBack }: Props) {
     )
   }
 
+  /**
+   * Set or clear one rep's month.
+   *
+   * Written at a deterministic id so the same rep-month cannot end up with two
+   * targets, the way work plans are keyed. A blank box or a zero is a real
+   * answer meaning "no target this month", and it is stored rather than
+   * deleted — a zero says somebody decided, an absence says nobody looked.
+   */
+  const saveTarget = async (rep: AppUser) => {
+    const boxes = targetDraft[rep.uid] ?? {}
+    const byProduct: Record<string, number> = {}
+    for (const prod of products) {
+      const raw = (boxes[prod.id!] ?? '').trim()
+      if (raw === '') continue
+      const n = Number(raw)
+      if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
+        setTargetError(`${rep.name}, ${prod.name}: packets has to be a whole number, zero or more.`)
+        return
+      }
+      byProduct[prod.id!] = n
+    }
+    // The total is not typed and not trusted from anywhere else: it is this sum,
+    // written beside the breakdown so every screen that does not care about
+    // products can read one field.
+    const units = sumByProduct(byProduct)
+
+    setTargetError(null)
+    setTargetSaving(rep.uid)
+    try {
+      const note = (targetNote[rep.uid] ?? '').trim()
+      const existing = targets.find(x => x.uid === rep.uid)
+      await setDoc(doc(db, 'sales_targets', salesTargetId(rep.uid, targetMonth)), {
+        uid: rep.uid,
+        name: rep.name,
+        month: targetMonth,
+        byProduct,
+        units,
+        ...(note ? { note } : {}),
+        setBy: appUser!.uid,
+        setByName: appUser!.name,
+        setAt: existing?.setAt ?? Date.now(),
+        ...(existing ? { updatedAt: Date.now() } : {}),
+      }, { merge: true })
+    } catch (e: any) {
+      setTargetError(e?.code === 'permission-denied'
+        ? 'Firestore refused that. Setting a target needs the same permission as assigning the week.'
+        : e?.message || 'Could not save it.')
+    } finally { setTargetSaving(null) }
+  }
+
+  /**
+   * The days of the chosen month a rep could actually work.
+   *
+   * Sundays are off and a public holiday is off, so neither can carry a
+   * target — dividing a month across days nobody works would hand back a
+   * figure that was wrong on every one of them.
+   *
+   * Approved leave is deliberately not excluded. Leave is decided and changed
+   * after a month is planned, so a breakdown that moved every time somebody
+   * took a day would never match what the rep was told at the start.
+   */
+  const workableDays = useMemo(() => {
+    const [y, m] = targetMonth.split('-').map(Number)
+    const last = new Date(y, m, 0).getDate()
+    const out: string[] = []
+    for (let d = 1; d <= last; d++) {
+      const date = `${targetMonth}-${String(d).padStart(2, '0')}`
+      if (isSunday(date)) continue
+      if (holidays.some(h => h.date === date)) continue
+      out.push(date)
+    }
+    return out
+  }, [targetMonth, holidays])
+
+  /**
+   * The month laid out for a Monday-first calendar: blanks up to the 1st's
+   * weekday, then every date. Days off are included so they hold their column.
+   */
+  const calendarCells = useMemo(() => {
+    const [y, m] = targetMonth.split('-').map(Number)
+    const last = new Date(y, m, 0).getDate()
+    const lead = (new Date(y, m - 1, 1).getDay() + 6) % 7
+    const cells: (string | null)[] = Array(lead).fill(null)
+    for (let d = 1; d <= last; d++) cells.push(`${targetMonth}-${String(d).padStart(2, '0')}`)
+    return cells
+  }, [targetMonth])
+
+  /**
+   * The days a target may still be set for.
+   *
+   * Forward only. A figure written onto a day that has already happened is not
+   * a target, it is a mark awarded afterwards — and the one thing that makes a
+   * daily target worth anything is that the rep knew it before the day
+   * started. The same reasoning the work plan already carries: a beat edited in
+   * November must not rewrite what September was measured against.
+   *
+   * Today counts. A target set this morning is a target; the alternative is a
+   * manager who cannot plan the day they are standing in.
+   *
+   * Past days stay on screen, read-only, because a month whose earlier days
+   * vanished would stop adding up to itself and the figure beside the toggle
+   * would look wrong for a reason nobody could see.
+   */
+  const today = localDateStr()
+  const settableDays = useMemo(
+    () => workableDays.filter(d => d >= today),
+    [workableDays, today],
+  )
+  const monthIsPast = settableDays.length === 0
+
+  /** One product's day boxes for one rep. */
+  const dayBoxes = (uid: string, productId: string) => dayDraft[uid]?.[productId] ?? {}
+  /** Every product's day boxes for one rep. */
+  const allDayBoxes = (uid: string) => dayDraft[uid] ?? {}
+  /** Which product's grid is showing — the first product until one is picked. */
+  const shownProduct = (uid: string) => dayProduct[uid] ?? products[0]?.id ?? ''
+  const productBoxes = (uid: string) => targetDraft[uid] ?? {}
+  /** What the product boxes currently add up to — the month's figure. */
+  const draftTotal = (uid: string) =>
+    Object.values(productBoxes(uid)).reduce((n, v) => n + (Number((v ?? '').trim()) || 0), 0)
+
+  /**
+   * Fill every product's days from its own month. Not saved until Save is.
+   *
+   * Every product in one press, each divided by its own figure, because the
+   * alternative is a manager dividing four products one at a time and
+   * discovering on the fifth that the button only did one of them.
+   *
+   * Each product is divided independently so its remainder lands inside its
+   * own days — dividing the total once and sharing it out afterwards would put
+   * the rounding error across products, where it belongs to nobody.
+   */
+  const divideEqually = (rep: AppUser) => {
+    const typedBoxes = productBoxes(rep.uid)
+    const storedMonths = targets.find(x => x.uid === rep.uid)?.byProduct ?? {}
+    const byProduct: Record<string, number> = {}
+    for (const prod of products) {
+      const raw = (typedBoxes[prod.id!] ?? '').trim()
+      const n = raw === '' ? (storedMonths[prod.id!] ?? 0) : Number(raw)
+      if (Number.isFinite(n) && n > 0) byProduct[prod.id!] = n
+    }
+    if (Object.keys(byProduct).length === 0) {
+      setTargetError(`${rep.name}: set a product's packets first — there is nothing to divide.`)
+      return
+    }
+    if (settableDays.length === 0) {
+      setTargetError(`${rep.name}: every day of this month has already happened.`)
+      return
+    }
+    setTargetError(null)
+
+    /**
+     * What is left of each product, across the days that are left.
+     *
+     * Mid-month, spreading the whole month over the remaining days would put a
+     * hundred packets on a Tuesday. Spreading only the unallocated remainder
+     * is the arithmetic a person would do: take what the earlier days already
+     * carry off the month, and divide the rest over what is still to come.
+     */
+    const stored = targets.find(x => x.uid === rep.uid)?.daysByProduct ?? {}
+    const remaining: Record<string, number> = {}
+    for (const [pid, units] of Object.entries(byProduct)) {
+      const already = Object.entries(stored[pid] ?? {})
+        .filter(([d]) => d < today)
+        .reduce((n, [, v]) => n + (Number(v) || 0), 0)
+      remaining[pid] = Math.max(0, units - already)
+    }
+
+    const split = divideByProductAcrossDays(remaining, settableDays)
+    setDayDraft(prev => ({
+      ...prev,
+      // The days already gone keep whatever they carried. Only what is still
+      // to come is rewritten.
+      [rep.uid]: Object.fromEntries(products.map(prod => {
+        const pid = prod.id!
+        const past = Object.fromEntries(
+          Object.entries(stored[pid] ?? {})
+            .filter(([d]) => d < today)
+            .map(([d, n]) => [d, String(n)]))
+        const future = Object.fromEntries(
+          Object.entries(split[pid] ?? {}).map(([d, n]) => [d, String(n)]))
+        return [pid, { ...past, ...future }]
+      })),
+    }))
+  }
+
+  /**
+   * Save one rep's day-by-day breakdown.
+   *
+   * Written as a whole map rather than day by day: the breakdown is one
+   * decision about a month, and a half-written one is a month that adds up to
+   * the wrong number. A box left blank clears that day rather than storing a
+   * zero — absent means nobody set it, zero means somebody said today does not
+   * count, and those read differently on the rep's screen.
+   */
+  const saveDays = async (rep: AppUser) => {
+    const all = allDayBoxes(rep.uid)
+    const daysByProduct: Record<string, Record<string, number>> = {}
+    for (const prod of products) {
+      const boxes = all[prod.id!] ?? {}
+      const perDay: Record<string, number> = {}
+      for (const [date, raw] of Object.entries(boxes)) {
+        const v = (raw ?? '').trim()
+        if (v === '') continue
+        const n = Number(v)
+        if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
+          setTargetError(
+            `${rep.name}, ${prod.name}, ${date}: packets has to be a whole number, zero or more.`)
+          return
+        }
+        perDay[date] = n
+      }
+      /**
+       * The past is taken from the document, not from the boxes.
+       *
+       * The boxes for days gone by are read-only, so in practice they hold
+       * what was stored anyway — but a draft that has sat open since before
+       * midnight holds yesterday as editable, and a save then would quietly
+       * rewrite a day the rep had already worked to. Reading the stored value
+       * back over it means only one of those can win, and it is the one that
+       * was already true.
+       */
+      const storedPast = targets.find(x => x.uid === rep.uid)?.daysByProduct?.[prod.id!] ?? {}
+      for (const [date, n] of Object.entries(storedPast)) {
+        if (date < today) perDay[date] = Number(n) || 0
+      }
+      if (Object.keys(perDay).length) daysByProduct[prod.id!] = perDay
+    }
+    // `days` is the sum, written beside the breakdown so the screens that do
+    // not care which product still read one field.
+    const days = dayTotalsFromProducts(daysByProduct)
+
+    setTargetError(null)
+    setTargetSaving(rep.uid)
+    try {
+      const existing = targets.find(x => x.uid === rep.uid)
+      await setDoc(doc(db, 'sales_targets', salesTargetId(rep.uid, targetMonth)), {
+        uid: rep.uid,
+        name: rep.name,
+        month: targetMonth,
+        units: existing?.units ?? 0,
+        daysByProduct,
+        days,
+        setBy: appUser!.uid,
+        setByName: appUser!.name,
+        setAt: existing?.setAt ?? Date.now(),
+        ...(existing ? { updatedAt: Date.now() } : {}),
+      }, { merge: true })
+    } catch (e: any) {
+      setTargetError(e?.code === 'permission-denied'
+        ? 'Firestore refused that. Setting a target needs the same permission as assigning the week.'
+        : e?.message || 'Could not save the days.')
+    } finally { setTargetSaving(null) }
+  }
+
+  const shiftTargetMonth = (delta: number) => {
+    const [y, m] = targetMonth.split('-').map(Number)
+    const d = new Date(y, m - 1 + delta, 1)
+    setTargetMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+    // The boxes belong to the month that was on screen, so they go with it.
+    setTargetDraft({})
+    setTargetNote({})
+    setDayDraft({})
+    setDayProduct({})
+    setDaysOpenFor(null)
+  }
+
   return (
     <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 56 }}>
       {modal}
@@ -333,12 +694,13 @@ export default function Planner({ onBack }: Props) {
         tabs={[
           { id: 'assign' as Tab, label: 'Assign' },
           { id: 'assigned' as Tab, label: 'Everything assigned' },
+          { id: 'targets' as Tab, label: 'Targets' },
         ]}
       />
 
       <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 760 }}>
-        {weekNav}
-        {readError && <Note tone="warn">{readError}</Note>}
+        {tab !== 'targets' && weekNav}
+        {tab !== 'targets' && readError && <Note tone="warn">{readError}</Note>}
 
         {/* ── ASSIGN ────────────────────────────────────────────────────── */}
         {tab === 'assign' && (
@@ -535,6 +897,371 @@ export default function Planner({ onBack }: Props) {
                 </div>
               )
             })}
+          </>
+        )}
+
+        {/* ── TARGETS ───────────────────────────────────────────────────── */}
+        {tab === 'targets' && (
+          <>
+            <div className="oc-wrap" style={{ alignItems: 'center', gap: 10 }}>
+              <button className="oc-action" onClick={() => shiftTargetMonth(-1)}
+                aria-label="Previous month"
+                style={{ background: 'none', border: 'none', padding: '0 6px', fontSize: 18, color: t.text2, cursor: 'pointer' }}>
+                ‹
+              </button>
+              <span style={{ fontSize: 15, fontWeight: 500, color: t.text, minWidth: 140 }}>
+                {new Date(targetMonth + '-02').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
+              </span>
+              <button className="oc-action" onClick={() => shiftTargetMonth(1)}
+                aria-label="Next month"
+                style={{ background: 'none', border: 'none', padding: '0 6px', fontSize: 18, color: t.text2, cursor: 'pointer' }}>
+                ›
+              </button>
+            </div>
+
+            <Note>
+              Packets each rep is expected to sell this month. Progress counts packets on
+              orders they placed, in the month they placed them, and a cancelled order
+              counts for nothing — the figure is worked out from the orders every time,
+              so cancelling one takes its packets straight back out.
+              <br /><br />
+              Open <strong>Day by day</strong> on a rep to say what each day owes.
+              <strong> Divide equally</strong> spreads the month across the days that can be
+              worked — Sundays and holidays are left out, and the remainder goes to the
+              earliest days so the dailies still add up to the month. Change any of them
+              afterwards: a day off the usual round still owes its packets, so the figure
+              belongs to the rep and the day rather than to a beat.
+            </Note>
+
+            {targetError && <Note tone="warn">{targetError}</Note>}
+
+            {reps.length === 0 ? (
+              <EmptyState
+                title="Nobody to set a target for"
+                body="Approved sales officers appear here."
+              />
+            ) : (
+              <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+                {reps.map(r => {
+                  const existing = targets.find(x => x.uid === r.uid)
+                  const ordered = packetsOrdered(allocations as any, r.uid, targetMonth)
+                  // Cancelled orders are simply absent from the count above,
+                  // which is the whole reason it is derived rather than stored.
+                  // Said out loud so the number is not only a number.
+                  const cancelled = allocations
+                    .filter(a => a.createdBy === r.uid && a.status === 'cancelled').length
+                  const goal = existing?.units ?? 0
+                  const pct = goal > 0 ? Math.round((ordered / goal) * 100) : null
+                  // Compared breakdown against breakdown. A total would call
+                  // 600/400 the same as 400/600, which is a different month.
+                  const storedBy = existing?.byProduct ?? {}
+                  const boxes = productBoxes(r.uid)
+                  const dirty = products.some(prod =>
+                    (boxes[prod.id!] ?? '').trim() !== String(storedBy[prod.id!] ?? ''))
+                    || (targetNote[r.uid] ?? '') !== ''
+
+                  return (
+                    <div key={r.uid} style={{
+                      borderTop: `0.5px solid ${t.border}`, padding: '15px 0',
+                      display: 'flex', flexDirection: 'column', gap: 10,
+                    }}>
+                      <div className="oc-wrap" style={{ alignItems: 'flex-end', gap: 14 }}>
+                        <span style={{ flex: '1 1 180px', minWidth: 0 }}>
+                          <span style={{ display: 'block', fontSize: 15, fontWeight: 500, color: t.text }}>
+                            {r.name}
+                          </span>
+                          <span style={{ display: 'block', fontSize: 13, color: t.text3, marginTop: 3 }}>
+                            {goal > 0
+                              ? `${ordered} of ${goal} packets ordered${pct !== null ? ` · ${pct}%` : ''}`
+                              : `${ordered} packets ordered · no target set`}
+                          </span>
+                          <span style={{ display: 'block', fontSize: 12, color: t.text3, marginTop: 2 }}>
+                            {cancelled > 0
+                              ? `${cancelled} cancelled, not counted`
+                              : 'Cancelled orders are not counted'}
+                            {existing?.setByName ? ` · set by ${existing.setByName}` : ''}
+                            {existing?.updatedAt ? ' · edited' : ''}
+                          </span>
+                          {existing?.note && (
+                            <span style={{ display: 'block', fontSize: 12, color: t.text2, marginTop: 4, lineHeight: 1.5 }}>
+                              {existing.note}
+                            </span>
+                          )}
+                        </span>
+
+                        {/* One box per product, and the total underneath them
+                            rather than in a box of its own. The total is the
+                            sum: giving it an input as well would be two places
+                            to set one thing, and whichever a manager edited
+                            second would silently win. */}
+                        <span style={{ flex: '1 1 260px', minWidth: 0 }}>
+                          {products.length === 0 ? (
+                            <Note tone="warn">
+                              No products to set a target against. Add one in Products first.
+                            </Note>
+                          ) : (
+                            <>
+                              <div className="oc-wrap" style={{ gap: 10 }}>
+                                {products.map(prod => {
+                                  // Progress per product, where the target is
+                                  // set. A manager setting four numbers wants
+                                  // to know which of the four is behind.
+                                  const did = packetsOrdered(
+                                    allocations as any, r.uid, targetMonth, prod.id!)
+                                  return (
+                                  <span key={prod.id} style={{ flex: '1 1 110px', minWidth: 0 }}>
+                                    <Field label={prod.name} hint={`${did} ordered`}>
+                                      {/* Named per person and per product. Field
+                                          renders its label as a div, so without
+                                          this every box on the screen is an
+                                          unnamed control called the same thing. */}
+                                      <input type="number" inputMode="numeric" min={0}
+                                        aria-label={`${prod.name} packets for ${r.name}`}
+                                        value={boxes[prod.id!] ?? ''}
+                                        onChange={e => setTargetDraft(prev => ({
+                                          ...prev,
+                                          [r.uid]: { ...(prev[r.uid] ?? {}), [prod.id!]: e.target.value },
+                                        }))}
+                                        placeholder="0" style={inputStyle(t)} />
+                                    </Field>
+                                  </span>
+                                  )
+                                })}
+                              </div>
+                              <div style={{ fontSize: 12, color: t.text3, marginTop: 6 }}>
+                                {draftTotal(r.uid)} packets for the month, across{' '}
+                                {products.length} product{products.length > 1 ? 's' : ''}
+                              </div>
+                            </>
+                          )}
+                        </span>
+
+                        <GhostButton onClick={() => saveTarget(r)}
+                          ariaLabel={`${existing ? 'Update' : 'Set'} target for ${r.name}`}
+                          disabled={targetSaving === r.uid || !dirty}>
+                          {targetSaving === r.uid ? 'Saving…' : existing ? 'Update' : 'Set'}
+                        </GhostButton>
+                      </div>
+
+                      <input
+                        aria-label={`Note for ${r.name}`}
+                        value={targetNote[r.uid] ?? ''}
+                        onChange={e => setTargetNote(prev => ({ ...prev, [r.uid]: e.target.value }))}
+                        placeholder="Why, if it is not the usual — Onam push, covering a beat"
+                        style={{ ...inputStyle(t), fontSize: 13 }} />
+
+                      {/* ── The day-by-day breakdown ── */}
+                      {(() => {
+                        const open = daysOpenFor === r.uid
+                        const all = allDayBoxes(r.uid)
+                        const pid = shownProduct(r.uid)
+                        const boxes = dayBoxes(r.uid, pid)
+                        // Across every product, because the line beside the
+                        // toggle is about the month and the month is every
+                        // product. The grid below is one product at a time.
+                        const setSum = Object.values(all).reduce((n, perDay) =>
+                          n + Object.values(perDay).reduce((m, v) => m + (Number((v ?? '').trim()) || 0), 0), 0)
+                        const filled = new Set(
+                          Object.values(all).flatMap(perDay =>
+                            Object.entries(perDay).filter(([, v]) => (v ?? '').trim() !== '')
+                              .map(([d]) => d))).size
+                        return (
+                          <>
+                            <div className="oc-wrap" style={{ alignItems: 'center', gap: 12 }}>
+                              <button className="oc-action"
+                                onClick={() => setDaysOpenFor(open ? null : r.uid)}
+                                aria-label={`Day by day for ${r.name}`}
+                                aria-expanded={open}
+                                style={{ background: 'none', border: 'none', padding: 0,
+                                         fontSize: 13, color: t.text2, cursor: 'pointer' }}>
+                                {open ? 'Hide' : 'Day by day'}
+                                {filled > 0 ? ` · ${filled} day${filled > 1 ? 's' : ''} set` : ''}
+                              </button>
+                              {filled > 0 && (
+                                <span style={{ fontSize: 12, color: setSum === goal || goal === 0 ? t.text3 : t.warn }}>
+                                  {setSum} across the days
+                                  {goal > 0 && setSum !== goal
+                                    ? ` · ${setSum > goal ? 'over' : 'under'} the month by ${Math.abs(setSum - goal)}`
+                                    : ''}
+                                </span>
+                              )}
+                            </div>
+
+                            {open && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                <div className="oc-wrap" style={{ gap: 10 }}>
+                                  <GhostButton onClick={() => divideEqually(r)}
+                                    ariaLabel={`Divide equally for ${r.name}`}
+                                    disabled={monthIsPast}>
+                                    {/* The count is the days it can actually
+                                        write, not the days in the month —
+                                        mid-month those are different numbers
+                                        and the button should say which one it
+                                        means. */}
+                                    Divide every product across {settableDays.length} days
+                                  </GhostButton>
+                                  <GhostButton
+                                    onClick={() => setDayDraft(prev => ({ ...prev, [r.uid]: {} }))}
+                                    ariaLabel={`Clear days for ${r.name}`}>
+                                    Clear
+                                  </GhostButton>
+                                  <GhostButton onClick={() => saveDays(r)}
+                                    ariaLabel={`Save days for ${r.name}`}
+                                    disabled={targetSaving === r.uid}>
+                                    {targetSaving === r.uid ? 'Saving…' : 'Save days'}
+                                  </GhostButton>
+                                </div>
+
+                                <div style={{ fontSize: 12, color: t.text3, lineHeight: 1.55 }}>
+                                  {monthIsPast
+                                    ? 'Every day of this month has already happened, so none of '
+                                      + 'them can be given a target. They are here to read.'
+                                    : `Days already gone are shown but cannot be changed — a `
+                                      + `figure written onto a day somebody has already worked is `
+                                      + `not a target. ${settableDays.length} of `
+                                      + `${workableDays.length} days are still ahead.`}
+                                </div>
+
+                                {/* Which product's month is on screen.
+                                    One grid at a time: four products over
+                                    twenty-seven days is a hundred boxes, and a
+                                    hundred boxes at once is a spreadsheet, and
+                                    a worse one than a spreadsheet.
+                                    Drawn from the products collection, so one
+                                    added next month appears here on its own. */}
+                                <div className="oc-scroll-x" style={{ display: 'flex', gap: 6 }}>
+                                  {products.map(prod => {
+                                    const mine = all[prod.id!] ?? {}
+                                    const sum = Object.values(mine)
+                                      .reduce((n, v) => n + (Number((v ?? '').trim()) || 0), 0)
+                                    const on = pid === prod.id
+                                    return (
+                                      <button key={prod.id} className="oc-action"
+                                        onClick={() => setDayProduct(prev => ({ ...prev, [r.uid]: prod.id! }))}
+                                        aria-pressed={on}
+                                        aria-label={`Days for ${prod.name}, ${r.name}`}
+                                        style={{
+                                          background: 'none',
+                                          border: `0.5px solid ${on ? t.text2 : t.border}`,
+                                          borderRadius: 99, padding: '6px 13px', fontSize: 12,
+                                          color: on ? t.text : t.text3, cursor: 'pointer',
+                                          whiteSpace: 'nowrap',
+                                        }}>
+                                        {prod.name}{sum > 0 ? ` · ${sum}` : ''}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+
+                                {/* The month as a calendar, Monday first, so a
+                                    day sits under its weekday and a week reads
+                                    across. Sundays and holidays take their place
+                                    in the week but carry no box — a box on a day
+                                    off reads as one somebody forgot to fill in —
+                                    and are marked in red so the gaps explain
+                                    themselves. */}
+                                <div className="oc-scroll-x">
+                                <div role="grid" aria-label={`Days of ${targetMonth} for ${r.name}`}
+                                  style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+                                    gap: 6, minWidth: 300,
+                                  }}>
+                                  {WEEKDAYS.map((w, i) => (
+                                    <div key={w} role="columnheader" style={{
+                                      fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase',
+                                      color: i === 6 ? t.off : t.text3, padding: '0 2px 2px',
+                                    }}>{w}</div>
+                                  ))}
+                                  {calendarCells.map((date, i) => {
+                                    if (!date) return <div key={`blank_${i}`} aria-hidden />
+                                    const dayNo = Number(date.slice(8))
+                                    const holiday = holidays.find(h => h.date === date)?.name ?? null
+                                    if (isSunday(date) || holiday) {
+                                      const why = holiday ?? 'Sunday'
+                                      return (
+                                        <div key={date} role="gridcell"
+                                          aria-label={`${date}, ${why} — no target`}
+                                          title={why} style={{ minWidth: 0 }}>
+                                          {/* Same shape as a working day — the date
+                                              above, a box below — so the rows line up. */}
+                                          <span style={{ display: 'block', fontSize: 11, color: t.off,
+                                                         fontWeight: 500, marginBottom: 3 }}>
+                                            {dayNo}
+                                          </span>
+                                          <div style={{
+                                            border: `1px solid ${t.off}`, borderRadius: 6,
+                                            // The height of the input beside it, so a week is one even row.
+                                            height: 44, boxSizing: 'border-box', display: 'flex', alignItems: 'center',
+                                            padding: '0 6px', fontSize: 11, color: t.off, lineHeight: 1.3,
+                                            overflow: 'hidden',
+                                          }}>
+                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                                              {holiday ?? 'Holiday'}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      )
+                                    }
+                                    // What was ordered of this product that day,
+                                    // so the comparison on screen is like for like.
+                                    const done = packetsOrderedOn(allocations as any, r.uid, date, pid)
+                                    const dayGoal = Number((boxes[date] ?? '').trim()) || 0
+                                    // A day that has happened cannot be given a
+                                    // target, only read. Shown rather than
+                                    // removed: a month missing its earlier days
+                                    // would stop adding up to itself.
+                                    const gone = date < today
+                                    return (
+                                      <label key={date} role="gridcell" style={{ display: 'block', minWidth: 0 }}>
+                                        <span style={{ display: 'block', fontSize: 11,
+                                                       color: date === today ? t.text : t.text3,
+                                                       fontWeight: date === today ? 500 : 400,
+                                                       marginBottom: 3, whiteSpace: 'nowrap',
+                                                       overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                          {dayNo}
+                                          {done > 0 ? ` · ${done}` : ''}
+                                        </span>
+                                        <input type="number" inputMode="numeric" min={0}
+                                          aria-label={`Packets for ${r.name} on ${date}`}
+                                          value={boxes[date] ?? ''}
+                                          readOnly={gone}
+                                          tabIndex={gone ? -1 : undefined}
+                                          onChange={e => setDayDraft(prev => ({
+                                            ...prev,
+                                            [r.uid]: {
+                                              ...(prev[r.uid] ?? {}),
+                                              [pid]: { ...(prev[r.uid]?.[pid] ?? {}), [date]: e.target.value },
+                                            },
+                                          }))}
+                                          placeholder={gone ? '·' : '—'}
+                                          style={{
+                                            ...inputStyle(t), fontSize: 13, padding: '7px 6px',
+                                            width: '100%', minWidth: 0, boxSizing: 'border-box',
+                                            // Dimmed rather than greyed out: it is
+                                            // still a figure worth reading, just
+                                            // not one anybody can change now.
+                                            opacity: gone ? 0.5 : 1,
+                                            cursor: gone ? 'default' : undefined,
+                                            // Met days are quietly marked, so a manager
+                                            // scanning the month sees where it is going.
+                                            borderColor: dayGoal > 0 && done >= dayGoal ? t.good : undefined,
+                                          }} />
+                                      </label>
+                                    )
+                                  })}
+                                </div>
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        )
+                      })()}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </>
         )}
       </div>

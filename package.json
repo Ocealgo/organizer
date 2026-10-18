@@ -17,7 +17,7 @@
     "cap:sync": "npm run build && npx cap sync",
     "android": "npm run build && npx cap sync android && npx cap open android",
     "e2e:server": "node scripts/e2e-server.mjs",
-    "sandbox": "firebase emulators:exec --only auth,firestore,storage,functions --project demo-ocealgo \"npm run sandbox:reseed && vite --mode test --port 5174 --host 127.0.0.1 --strictPort\"",
+    "sandbox": "firebase emulators:exec --only auth,firestore,storage,functions --project demo-ocealgo \"npm run sandbox:reseed && vite --mode sandbox --port 5174 --host 127.0.0.1 --strictPort\"",
     "sandbox:reseed": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/sandbox.mjs",
     "e2e": "playwright test --project=desktop --project=mobile",
     "e2e:ui": "playwright test --ui",

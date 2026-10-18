@@ -11,6 +11,37 @@ interface Props {
   notice?: string;
 }
 
+/**
+ * Whether this build is talking to the emulators.
+ *
+ * A module-level constant, not a check inside the component, and that is the
+ * whole safety argument. Vite replaces `import.meta.env.VITE_USE_EMULATORS`
+ * with a literal at build time, so in a production build this folds to
+ * `"false" === "true"` — false — and everything guarded by it, the seeded
+ * passwords included, is dead code the bundler drops. The buttons below are
+ * not hidden in production; they are not in the file that ships.
+ *
+ * The flag lives only in `.env.test`, whose project id is `demo-ocealgo`.
+ */
+const SANDBOX = import.meta.env.VITE_USE_EMULATORS === "true";
+
+/**
+ * The two accounts worth one tap in a sandbox.
+ *
+ * Signing in by hand is six screens of typing when the point of the sandbox is
+ * the seventh. Only a manager and an officer, because those are the two sides
+ * of nearly everything — one assigns, approves and dispatches, the other walks
+ * the round — and a row of six buttons is a menu rather than a shortcut.
+ *
+ * These are the addresses `tests/e2e/fixtures/seed.ts` creates. They exist in
+ * no other world.
+ */
+const SANDBOX_LOGINS = [
+  { label: "Manager", email: "manager@ocealgo.test", sub: "Manoj Manager" },
+  { label: "Sales officer", email: "rep@ocealgo.test", sub: "Ravi Rep" },
+] as const;
+const SANDBOX_PASSWORD = "Passw0rd!";
+
 export default function LoginPage({ onSwitch, onForgot, notice }: Props) {
   const { t } = useTheme();
   const [form, setForm] = useState({ identifier: "", password: "" });
@@ -23,14 +54,22 @@ export default function LoginPage({ onSwitch, onForgot, notice }: Props) {
   // which numbers and addresses belong to staff, so they read identically.
   const NO_MATCH = "Those details do not match an account.";
 
-  const handleLogin = async () => {
+  /**
+   * `as` is how the sandbox buttons sign in, and it is deliberately the same
+   * path as the form rather than a shortcut around it. A quick login that
+   * bypassed `emailForLogin` or the error handling would stop exercising the
+   * thing it is there to let you look at.
+   */
+  const handleLogin = async (as?: { identifier: string; password: string }) => {
     setError("");
-    if (!form.identifier.trim() || !form.password)
+    const identifier = as?.identifier ?? form.identifier;
+    const password = as?.password ?? form.password;
+    if (!identifier.trim() || !password)
       return setError("Enter your email or mobile number, and your password.");
 
     setLoading(true);
     try {
-      const id = readIdentifier(form.identifier);
+      const id = readIdentifier(identifier);
       if (id.kind === "unusable") return setError(NO_MATCH);
 
       // A number has to be swapped for the account's email first; an email is
@@ -38,7 +77,7 @@ export default function LoginPage({ onSwitch, onForgot, notice }: Props) {
       const email = await emailForLogin(id);
       if (!email) return setError(NO_MATCH);
 
-      await signInWithEmailAndPassword(auth, email, form.password);
+      await signInWithEmailAndPassword(auth, email, password);
       // Nothing else to do here. A pending, rejected or deactivated account is
       // held by the status screen in App.tsx, which explains the situation and
       // offers a way out.
@@ -135,10 +174,52 @@ export default function LoginPage({ onSwitch, onForgot, notice }: Props) {
           {error && <Note tone="warn">{error}</Note>}
 
           <div>
-            <PrimaryButton onClick={handleLogin} disabled={loading} style={{ width: "100%", padding: "13px 16px" }}>
+            <PrimaryButton onClick={() => handleLogin()} disabled={loading} style={{ width: "100%", padding: "13px 16px" }}>
               {loading ? "Signing in" : "Sign in"}
             </PrimaryButton>
           </div>
+
+          {/* Sandbox only — see SANDBOX above. Says so on itself, because a
+              shortcut that signs you in as somebody else should never be
+              something you wonder about having pressed. */}
+          {SANDBOX && (
+            <div style={{ borderTop: `0.5px solid ${t.border}`, paddingTop: 18 }}>
+              <div style={{ marginBottom: 10 }}>
+                <Eyebrow>Sandbox · emulator only</Eyebrow>
+              </div>
+              <div style={{ display: "flex", gap: 10 }}>
+                {SANDBOX_LOGINS.map((who) => (
+                  <button
+                    key={who.email}
+                    className="oc-action"
+                    disabled={loading}
+                    onClick={() => {
+                      // The fields are filled as well as submitted, so it is
+                      // visible afterwards which account is being used.
+                      setForm({ identifier: who.email, password: SANDBOX_PASSWORD });
+                      void handleLogin({ identifier: who.email, password: SANDBOX_PASSWORD });
+                    }}
+                    style={{
+                      flex: 1, minWidth: 0, textAlign: "left", cursor: "pointer",
+                      background: "none", border: `0.5px solid ${t.border2}`,
+                      borderRadius: 6, padding: "10px 12px", minHeight: 44,
+                      opacity: loading ? 0.5 : 1,
+                    }}
+                  >
+                    <span style={{ display: "block", fontSize: 14, fontWeight: 500, color: t.text }}>
+                      {who.label}
+                    </span>
+                    <span style={{ display: "block", fontSize: 12, fontWeight: 400, color: t.text3, marginTop: 2 }}>
+                      {who.sub}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize: 12, color: t.text3, marginTop: 9, lineHeight: 1.5 }}>
+                Seeded accounts in the demo project. This row is not in a production build.
+              </div>
+            </div>
+          )}
 
           <button
             className="oc-action"

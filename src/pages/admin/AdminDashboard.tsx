@@ -27,6 +27,7 @@ import {
 import { can, isAdminRole, ROLE_LABELS_PLAIN } from "../../auth/permissions";
 import { survey, resetPerson, ResetSurvey, ResetProgress } from "../../data/resetPerson";
 import SalesReport from "../reports/SalesReport";
+import RepMonitor from "../reports/RepMonitor";
 import ReportsHome from "../reports/ReportsHome";
 import OpportunitiesScreen from "../reports/OpportunitiesScreen";
 import FieldReport from "./FieldReport";
@@ -58,6 +59,7 @@ type SalesTab = "offline" | "online";
 type MarketingTab = "offline" | "online";
 type SubScreen =
   | "dashboard"
+  | "monitor"
   | "stock"
   | "parties"
   | "credits"
@@ -235,15 +237,33 @@ export default function AdminDashboard() {
       (snap) => setPlannedThisWeek(snap.docs.length),
       () => setPlannedThisWeek(0),
     );
-    const u12 = onSnapshot(
+    return () => {
+      u0(); u3(); u4(); u4b(); u5(); u5b(); u6(); u7(); u8(); u9(); u10(); u11();
+    };
+  }, []);
+
+  /**
+   * Today's manager logs, for admins only.
+   *
+   * This used to subscribe for everybody who lands on the dashboard, which
+   * includes sales managers — and a manager may only list their own entries,
+   * so a query for everybody's today was refused outright. The handler turned
+   * the refusal into an empty list, so the panel simply looked quiet, while
+   * the listener logged a permission failure every time the screen opened.
+   *
+   * The panel was never shown to a manager anyway (`isAdminRole` gates it
+   * below), so the read was being made for nothing and refused for it. Asked
+   * for only by the people it is drawn for, it is a query the rules can prove.
+   */
+  const seesManagerLogs = isAdminRole(appUser);
+  useEffect(() => {
+    if (!seesManagerLogs) { setManagerLogsToday([]); return; }
+    return onSnapshot(
       query(collection(db, "manager_activities"), where("date", "==", localDateStr())),
       (snap) => setManagerLogsToday(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
       () => setManagerLogsToday([]),
     );
-    return () => {
-      u0(); u3(); u4(); u4b(); u5(); u5b(); u6(); u7(); u8(); u9(); u10(); u11(); u12();
-    };
-  }, []);
+  }, [seesManagerLogs]);
 
   useEffect(() => {
     // Fetch offline sales users
@@ -1149,12 +1169,15 @@ export default function AdminDashboard() {
         onOpenField={() => setSubScreen("field")}
         onOpenSales={() => setSubScreen("reports")}
         onOpenOpportunities={() => setSubScreen("opportunities")}
+        onOpenMonitor={() => setSubScreen("monitor")}
       />
     );
   if (subScreen === "opportunities")
     return <OpportunitiesScreen onBack={() => setSubScreen("reportsHome")} />;
   if (subScreen === "reports")
     return <SalesReport onBack={() => setSubScreen("reportsHome")} />;
+  if (subScreen === "monitor")
+    return <RepMonitor onBack={() => setSubScreen("reportsHome")} />;
   if (subScreen === "field")
     return (
       <FieldReport
@@ -1320,6 +1343,7 @@ export default function AdminDashboard() {
     reports: "view_reports",
     field: "view_reports",
     reportsHome: "view_reports",
+    monitor: "view_reports",
     opportunities: "view_reports",
     beats: "assign_work",
     planner: "assign_work",

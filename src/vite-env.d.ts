@@ -10,6 +10,8 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_APP_ID: string;
   /** 'true' only in .env.test — points the app at the local emulator suite. */
   readonly VITE_USE_EMULATORS?: string;
+  /** Set by .env.sandbox only — turns on the sandbox's own tools. */
+  readonly VITE_SANDBOX?: string;
   readonly VITE_EMULATOR_HOST?: string;
   /** Tiles and geocoding for the map — see components/MapPicker.tsx. */
   /** Web Push certificate from Firebase console → Cloud Messaging. */

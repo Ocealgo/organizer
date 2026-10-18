@@ -6,25 +6,29 @@
  * to depend on seed order, and no spec may reach for the Admin SDK itself — a
  * test that writes past the rules stops testing the thing it is there to test.
  */
+import { testNow, testDate } from './clock.ts'
 import { deleteApp, getApps, initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 import { getFirestore } from 'firebase-admin/firestore'
 import type { PermissionMap } from '../../../src/types'
+// With the extension, because this file is loaded two ways: Playwright bundles
+// it, and `scripts/sandbox.mjs` imports it straight into Node. A bundler
+// resolves an extensionless path and Node does not, so leaving it off broke the
+// sandbox while every test went on passing.
+import { DEFAULT_SALES_MANAGER_PERMISSIONS } from '../../../src/auth/permissions.ts'
 
 export const PROJECT_ID = 'demo-ocealgo'
 export const PASSWORD = 'Passw0rd!'
 
-/** Mirrors DEFAULT_SALES_MANAGER_PERMISSIONS in src/auth/permissions.ts. */
-const MGR_DEFAULT: PermissionMap = {
-  view_parties: true, view_allocations: true, view_stock: true, view_products: true,
-  view_credit: true, view_expenses: true, view_leave: true, view_reports: true,
-  view_users: true, view_workspace: false,
-  edit_parties: true, approve_leave: true, approve_sales_users: true,
-  dispatch_allocations: true,
-  manage_products: false, edit_stock: false,
-  mark_paid: false, approve_payments: false,
-  clear_expenses: false, delete_parties: false,
-}
+/**
+ * The shipped manager defaults, imported rather than copied.
+ *
+ * The copy here had drifted — `assign_work` was added to the real default and
+ * never added here, so the seeded manager could not plan a week and no spec
+ * could have noticed. Importing it means the world the specs run in is the
+ * world the app ships.
+ */
+const MGR_DEFAULT: PermissionMap = DEFAULT_SALES_MANAGER_PERMISSIONS
 
 const MGR_FULL: PermissionMap = Object.fromEntries(
   Object.keys(MGR_DEFAULT).map(k => [k, true]),
@@ -143,13 +147,166 @@ export async function companyStock(productId: string, total: number): Promise<vo
   // and `set()` reads it as a field name with dots in it, so the dotted form
   // here wrote a field nothing looks at and the screen went on seeing zero.
   await getFirestore(admin()).doc('config/stock').set(
-    { productStock: { [productId]: { total, locked: 0 } }, updatedAt: Date.now() },
+    { productStock: { [productId]: { total, locked: 0 } }, updatedAt: testNow() },
     { merge: true },
   )
 }
 
+/**
+ * A day already worked and closed, with a distance on the meter.
+ *
+ * The end-of-day expenses start from exactly this, and producing it by
+ * clicking means an opening reading, a photo, a closing reading and another
+ * photo — four steps of setup for an assertion about a fifth.
+ */
+export async function closedDay(
+  who: UserKey,
+  date: string,
+  opts: { km?: number | null; autoClosed?: boolean } = {},
+): Promise<string> {
+  const u = USERS[who]
+  const km = opts.km === undefined ? 47 : opts.km
+  const id = `eod_${u.uid}_${date}`
+  await getFirestore(admin()).doc(`duty_sessions/${id}`).set({
+    uid: u.uid, name: u.name, date,
+    startAt: testNow() - 8 * 3600_000,
+    endAt: testNow(),
+    status: 'closed',
+    ...(km === null
+      // No reading at all: the meter was broken, so there is no distance and
+      // nothing to work fuel or an allowance band out from.
+      ? { odometerStatus: 'broken', odometerIssueNote: 'Needle stuck at zero' }
+      : {
+          odometerStatus: 'recorded',
+          startOdometerKm: 41000, endOdometerKm: 41000 + km,
+          startOdometerPhoto: 'demo/odometer.jpg', endOdometerPhoto: 'demo/odometer.jpg',
+          claimedDistanceKm: km,
+        }),
+    ...(opts.autoClosed ? { autoClosed: true } : {}),
+  })
+  return id
+}
+
+/**
+ * A claim already on somebody's week, for a spec about what the day shows
+ * rather than about how the claim was made.
+ */
+export async function claimedExpense(
+  who: UserKey,
+  date: string,
+  lines: { allowance?: number; fuel?: number },
+): Promise<void> {
+  const u = USERS[who]
+  const db = getFirestore(admin())
+  const report = db.collection('expense_reports').doc()
+  const total = (lines.allowance ?? 0) + (lines.fuel ?? 0)
+  await report.set({
+    userId: u.uid, userName: u.name, userRole: u.role,
+    weekStart: date, weekEnd: date, status: 'draft', totalAmount: total, createdAt: testNow(),
+  })
+  if (lines.allowance) {
+    await db.collection('expense_entries').add({
+      reportId: report.id, userId: u.uid, date, type: 'allowance',
+      allowanceType: 'EX', amount: lines.allowance, createdAt: testNow(),
+    })
+  }
+  if (lines.fuel) {
+    await db.collection('expense_entries').add({
+      reportId: report.id, userId: u.uid, date, type: 'variable', category: 'fuel',
+      amount: lines.fuel, createdAt: testNow(),
+    })
+  }
+}
+
+/** The ₹ per km rate, which the standard world leaves unset on purpose. */
+export async function fuelRate(rate: number): Promise<void> {
+  await getFirestore(admin()).doc('expense_config/main').set({ ratePerKm: rate }, { merge: true })
+}
+
+/**
+ * A product nobody had when the world was built.
+ *
+ * For the thing that is easy to claim and hard to be sure of: that a product
+ * added later needs no code to follow it. Asserting it requires adding one
+ * after the screens already exist, which is what this is for.
+ */
+export async function addProduct(id: string, name: string): Promise<void> {
+  await getFirestore(admin()).doc(`products/${id}`).set({
+    name, active: true,
+    defaultPricePerUnit: 75, unitsPerCarton: 12,
+    createdAt: testNow(),
+  })
+}
+
+/**
+ * A monthly packet target, with whatever daily breakdown the spec needs.
+ *
+ * Both live in one document: the month figure and its per-day split are one
+ * decision at two grains, and dividing the first is how the second is usually
+ * arrived at.
+ */
+export async function packetTarget(
+  who: UserKey,
+  month: string,
+  units: number,
+  days?: Record<string, number>,
+  /**
+   * The per-product split. Omitted where a spec is not about products, which
+   * is the same shape every target set before products existed has — so these
+   * specs also cover that the old shape still works.
+   */
+  byProduct?: Record<string, number>,
+  /**
+   * Each product's own days. When given, these are what the app reads and
+   * `days` becomes the stored sum — which is why a spec passing both is
+   * passing the same fact twice and only one of them decides.
+   */
+  daysByProduct?: Record<string, Record<string, number>>,
+): Promise<void> {
+  const u = USERS[who]
+  await getFirestore(admin()).doc(`sales_targets/${u.uid}_${month}`).set({
+    uid: u.uid, name: u.name, month, units,
+    ...(days ? { days } : {}),
+    ...(byProduct ? { byProduct } : {}),
+    ...(daysByProduct ? { daysByProduct } : {}),
+    setBy: USERS.manager.uid, setByName: USERS.manager.name, setAt: testNow(),
+  })
+}
+
+/**
+ * A day assigned to somebody, with the beat's own targets on it.
+ *
+ * Visits and order value only — the packet figure is not a beat's to carry,
+ * because a rep sent off their round still owes the day's packets. That one
+ * lives on the rep's month, in `packetTarget` above.
+ */
+export async function assignedDay(
+  who: UserKey,
+  date: string,
+  targets: { visits?: number; orderValue?: number; units?: number },
+): Promise<void> {
+  const u = USERS[who]
+  await getFirestore(admin()).doc(`work_plans/${u.uid}_${date}`).set({
+    uid: u.uid,
+    name: u.name,
+    date,
+    routeId: 'route_test',
+    routeName: 'Beach Road',
+    targets,
+    assignedBy: USERS.manager.uid,
+    assignedByName: USERS.manager.name,
+    createdAt: testNow(),
+  })
+}
+
+/** Local date today, the way the app means it. */
+export const todayLocal = (): string => {
+  const d = testDate()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 const tomorrow = (): string => {
-  const d = new Date()
+  const d = testDate()
   d.setDate(d.getDate() + 1)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
@@ -181,7 +338,7 @@ export async function companyAllocation(
     plannedDate: tomorrow(),
     status: 'pending', notes: '',
     createdBy: USERS.rep.uid, createdByName: USERS.rep.name,
-    createdAt: Date.now(), month: tomorrow().slice(0, 7), lockedAtCreation: false,
+    createdAt: testNow(), month: tomorrow().slice(0, 7), lockedAtCreation: false,
     channel: 'desk',
     ...over,
   })
@@ -216,12 +373,12 @@ export async function autoMarkedLeave(
     date,
     leaveType,
     note: 'No punch-in by 10:00.',
-    markedAt: Date.now(),
+    markedAt: testNow(),
     markedBy: 'system',
     markedByName: 'Automatic',
     status: 'active',
     autoMarked: true,
-    auditLog: [{ action: 'admin_marked', by: 'system', byName: 'Automatic', at: Date.now() }],
+    auditLog: [{ action: 'admin_marked', by: 'system', byName: 'Automatic', at: testNow() }],
   })
   return ref.id
 }
@@ -247,11 +404,11 @@ export async function approvedLeave(
     date,
     leaveType,
     reason: 'Personal',
-    markedAt: Date.now(),
+    markedAt: testNow(),
     markedBy: by.uid,
     markedByName: by.name,
     status: 'active',
-    auditLog: [{ action: 'admin_marked', by: by.uid, byName: by.name, at: Date.now() }],
+    auditLog: [{ action: 'admin_marked', by: by.uid, byName: by.name, at: testNow() }],
   })
   return ref.id
 }
@@ -279,6 +436,29 @@ export async function makeSuperAdmin(who: UserKey): Promise<void> {
  */
 export async function noLeaveRecorded(): Promise<void> {
   await emptyNow('leave_records')
+}
+
+/**
+ * No orders on the books, right now.
+ *
+ * Same reasoning as noOneOnDuty. A spec that seeds one allocation and asserts
+ * on what the row says cannot inherit the previous spec's — two identical rows
+ * make a `getByText` ambiguous, and the failure reads as the screen being
+ * wrong rather than the world being dirty.
+ */
+export async function noAllocations(): Promise<void> {
+  await emptyNow('allocations_v2')
+}
+
+/**
+ * No targets set for anybody, right now.
+ *
+ * The one that bites: a leftover target turns the button from "Set" into
+ * "Update", so a spec looking for Set waits ten seconds for a control that is
+ * on the screen under another name.
+ */
+export async function noTargetsSet(): Promise<void> {
+  await emptyNow('sales_targets')
 }
 
 async function emptyNow(collectionName: string): Promise<void> {
@@ -357,7 +537,7 @@ export async function seedWorld(): Promise<void> {
       phone: `+91${u.phone}`,
       role: u.role,
       status: key === 'pending' ? 'pending' : 'approved',
-      createdAt: Date.now(),
+      createdAt: testNow(),
       ...(permissions ? { permissions } : {}),
     })
   }
@@ -374,16 +554,16 @@ export async function seedWorld(): Promise<void> {
    */
   await db.doc('config/stock').set({
     packetsPerCarton: 24, total: 0, locked: 0,
-    defaultPricePerPacket: 60, updatedAt: Date.now(),
+    defaultPricePerPacket: 60, updatedAt: testNow(),
   })
 
   await db.doc('products/prod_wipes').set({
     name: 'Baby Wet Wipes 72s', active: true,
-    defaultPricePerUnit: 60, unitsPerCarton: 24, createdAt: Date.now(),
+    defaultPricePerUnit: 60, unitsPerCarton: 24, createdAt: testNow(),
   })
   await db.doc('products/prod_mini').set({
     name: 'Baby Wet Wipes 30s', active: true,
-    defaultPricePerUnit: 30, unitsPerCarton: 48, createdAt: Date.now(),
+    defaultPricePerUnit: 30, unitsPerCarton: 48, createdAt: testNow(),
   })
 
   const party = (id: string, over: Record<string, unknown>) =>
@@ -393,7 +573,7 @@ export async function seedWorld(): Promise<void> {
       district: 'Ernakulam', state: 'Kerala', pincode: '682001',
       pricePerPacket: 0, packetsAllocated: 0, cartonsAllocated: 0, lowStockThreshold: 0,
       status: 'active',
-      addedBy: USERS.admin.uid, addedByName: USERS.admin.name, createdAt: Date.now(),
+      addedBy: USERS.admin.uid, addedByName: USERS.admin.name, createdAt: testNow(),
       ...over,
     })
 

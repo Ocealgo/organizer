@@ -13,9 +13,11 @@ import AllocationManager from '../distributors/AllocationManager'
 import VisitLogger from './VisitLogger'
 import ActivityScreen from './ActivityScreen'
 import LeaveHistory from './LeaveHistory'
+import EodExpenses from '../../components/EodExpenses'
 import {
-  Party, DailyVisitLog, LeaveRecord, Holiday,
+  Party, DailyVisitLog, LeaveRecord, Holiday, SalesTarget,
   WorkPlan, SalesRoute, workPlanId, ManagerActivity, MANAGER_ACTIVITY_LABEL,
+  salesTargetId, packetsOrdered, packetsOrderedOn, dailyTargetFor, productDailyTargets,
 } from '../../types'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr, localMonthStr, localTimeStr, isSunday } from '../../utils/date'
@@ -43,7 +45,53 @@ export default function SalesView({ name }: Props) {
   const [visitInitialDate, setVisitInitialDate] = useState<string | undefined>()
   const [parties, setParties] = useState<Party[]>([])
   const [todayVisitLog, setTodayVisitLog] = useState<DailyVisitLog | null>(null)
+  /**
+   * This month's packet target, and what has settled against it.
+   *
+   * On the rep's own screen because a target nobody can see is not a target,
+   * it is a note in somebody else's report. Read-only here — theirs to work
+   * toward, not to set.
+   */
+  const [myTarget, setMyTarget] = useState<SalesTarget | null>(null)
+  const [myOrdered, setMyOrdered] = useState(0)
+  /**
+   * Their own month per product, and what today owes of each.
+   *
+   * A target a rep cannot see is not a target, and that holds for the
+   * breakdown as much as for the total — being told to sell a thousand packets
+   * without being told which ones is being told half of it.
+   */
+  const [myAllocs, setMyAllocs] = useState<any[]>([])
+  const [myProducts, setMyProducts] = useState<{ id: string; name: string }[]>([])
+  /** Today's packets, against whatever the day's beat asks for. */
+  const [myOrderedToday, setMyOrderedToday] = useState(0)
   const [todayLeave, setTodayLeave] = useState<LeaveRecord | null>(null)
+  /**
+   * The month per product, and what today owes of each.
+   *
+   * Derived from the target and the orders rather than stored, the same way
+   * every other figure on this card is — so a cancelled order drops out of the
+   * product line as readily as it drops out of the total.
+   *
+   * Products with no target are left out. A rep asked for six hundred of one
+   * thing does not need the other five listed at zero.
+   */
+  const myProductLines = React.useMemo(() => {
+    const by = myTarget?.byProduct
+    if (!by) return []
+    const today = productDailyTargets(myTarget, todayStr())
+    return myProducts
+      .filter(prod => (by[prod.id] ?? 0) > 0)
+      .map(prod => ({
+        id: prod.id,
+        name: prod.name,
+        target: by[prod.id] ?? 0,
+        done: packetsOrdered(myAllocs, appUser?.uid ?? '', currentMonth(), prod.id),
+        today: today?.[prod.id] ?? null,
+        doneToday: packetsOrderedOn(myAllocs, appUser?.uid ?? '', todayStr(), prod.id),
+      }))
+      .sort((a, b) => b.target - a.target)
+  }, [myTarget, myProducts, myAllocs, appUser])
   const [allLeaveRecords, setAllLeaveRecords] = useState<LeaveRecord[]>([])
   const [visitLogLoaded, setVisitLogLoaded] = useState(false)
   const [monthlyVisitLogCount, setMonthlyVisitLogCount] = useState(0)
@@ -291,6 +339,35 @@ export default function SalesView({ name }: Props) {
 
   useEffect(() => {
     if (!appUser) return
+    const u1 = onSnapshot(
+      doc(db, 'sales_targets', salesTargetId(appUser.uid, currentMonth())),
+      snap => setMyTarget(snap.exists() ? ({ id: snap.id, ...snap.data() } as SalesTarget) : null),
+      // No target for the month is the ordinary case, not a fault.
+      () => setMyTarget(null),
+    )
+    // Their own orders. Scoped by uid so the read is one a rep is allowed to
+    // make; the month and the day are picked out here, from one listener,
+    // because both answers come from the same set of orders.
+    const u2 = onSnapshot(
+      query(collection(db, 'allocations_v2'), where('createdBy', '==', appUser.uid)),
+      snap => {
+        const rows = snap.docs.map(d => d.data() as any)
+        setMyAllocs(rows)
+        setMyOrdered(packetsOrdered(rows, appUser.uid, currentMonth()))
+        setMyOrderedToday(packetsOrderedOn(rows, appUser.uid, todayStr()))
+      },
+      () => { setMyAllocs([]); setMyOrdered(0); setMyOrderedToday(0) },
+    )
+    // Only for the names. A breakdown keyed by document id would be a target
+    // in a language the rep does not speak.
+    const u3 = onSnapshot(collection(db, 'products'), snap =>
+      setMyProducts(snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }))
+        .filter(x => x.active)))
+    return () => { u1(); u2(); u3() }
+  }, [appUser])
+
+  useEffect(() => {
+    if (!appUser) return
     const q = query(collection(db, 'leave_records'), where('uid', '==', appUser.uid))
     return onSnapshot(q, snap => {
       const records = snap.docs.map(d => ({ id: d.id, ...d.data() } as LeaveRecord))
@@ -529,6 +606,110 @@ export default function SalesView({ name }: Props) {
               </GhostButton>
             </div>
           </div>
+        )}
+
+        {/* Packets — today first, the month underneath it.
+            Today leads because today is the only part of a target a rep can
+            still do anything about at nine in the morning; the month is
+            context for it, not the other way round. One card, not two,
+            because two cards about packets is how somebody reads the wrong
+            one. Only when somebody set a figure — a card reading "0 of 0" is
+            a feature announcing itself rather than information. */}
+        {((myTarget && myTarget.units > 0) || dailyTargetFor(myTarget, todayStr()) !== null) && (() => {
+          const monthGoal = myTarget?.units ?? 0
+          // Off the rep's own month, not off the beat. A day spent away from
+          // the round still owes its packets.
+          const dayGoal = dailyTargetFor(myTarget, todayStr())
+          const hasDay = dayGoal !== null && dayGoal > 0
+          const pct = hasDay ? Math.min(100, Math.round((myOrderedToday / dayGoal!) * 100)) : null
+          const leftToday = hasDay ? Math.max(0, dayGoal! - myOrderedToday) : 0
+          // The products with something asked of them today. A product with a
+          // month but nothing on today is not today's business.
+          const todaysLines = myProductLines.filter(l => (l.today ?? 0) > 0)
+          return (
+            <div style={{ background: t.tint, borderRadius: 6, padding: '14px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+                <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: t.text }}>
+                  {hasDay
+                    ? `Today · ${myOrderedToday} of ${dayGoal} packets`
+                    // Said plainly rather than shown as a zero: a Sunday, or a
+                    // day nobody put a figure on, owes nothing — and "0 of 0"
+                    // would read as a target already failed.
+                    : 'No target for today'}
+                </span>
+                {pct !== null && (
+                  <span style={{ fontSize: 14, color: pct >= 100 ? t.good : t.text3 }}>
+                    {pct}%
+                  </span>
+                )}
+              </div>
+
+              {/* A bar, because a percentage is read and a bar is seen. */}
+              {pct !== null && (
+                <div style={{ marginTop: 10, height: 4, borderRadius: 2, background: t.border, overflow: 'hidden' }}>
+                  <div style={{ width: `${pct}%`, height: '100%',
+                                background: pct >= 100 ? t.good : t.text2 }} />
+                </div>
+              )}
+
+              {/* Which products, and what each owes today. Compact on purpose:
+                  this is a phone, and four lines of product names is the card
+                  no longer being glanceable. */}
+              {todaysLines.length > 0 && (
+                <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {todaysLines.map(line => (
+                    <div key={line.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: t.text2,
+                                     overflow: 'hidden', textOverflow: 'ellipsis',
+                                     whiteSpace: 'nowrap' }}>
+                        {line.name}
+                      </span>
+                      <span style={{ fontSize: 13, whiteSpace: 'nowrap',
+                                     color: line.doneToday >= (line.today ?? 0) ? t.good : t.text3 }}>
+                        {line.doneToday} / {line.today} today
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {hasDay && (
+                <div style={{ fontSize: 13, color: t.text3, marginTop: 9, lineHeight: 1.5 }}>
+                  {leftToday === 0
+                    ? 'Today’s target met.'
+                    : `${leftToday} to go today. Counted when you place the order — a `
+                      + 'cancelled one comes back off.'}
+                </div>
+              )}
+
+              {/* The month, as one quiet line of context underneath. */}
+              {monthGoal > 0 && (
+                <div style={{ fontSize: 12, color: t.text3, marginTop: 8,
+                              borderTop: `0.5px solid ${t.border}`, paddingTop: 8 }}>
+                  This month · {myOrdered} of {monthGoal} packets
+                </div>
+              )}
+
+              {myTarget?.note && (
+                <div style={{ fontSize: 13, color: t.text2, marginTop: 6, lineHeight: 1.5 }}>
+                  {myTarget.note}
+                </div>
+              )}
+            </div>
+          )
+        })()}
+
+        {/* The day's expenses, the moment the day is over.
+            Not on an auto-closed day: there was no closing reading, so no
+            distance to work anything out from, and the rep never saw the
+            end of that day in the app at all. */}
+        {isDayClosed && dutySession && !dutySession.autoClosed && appUser && (
+          <EodExpenses
+            appUser={appUser}
+            session={dutySession}
+            date={todayStr()}
+            onOpenExpenses={() => { setExpenseDefaultToDay(true); setScreen('expenses') }}
+          />
         )}
 
         {/* Leave status */}

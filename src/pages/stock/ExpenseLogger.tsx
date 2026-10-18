@@ -23,6 +23,7 @@ import { useAuth } from '../../context/AuthContext'
 import { can, maySignOffFor } from '../../auth/permissions'
 import { useTheme } from '../../context/ThemeContext'
 import { useConfirm } from '../../hooks/useConfirm'
+import { needsMeterReason, ABOVE_METER_MIN_REASON } from '../../data/expenses'
 import { localDateStr, isSunday } from '../../utils/date'
 import DateInput from '../../components/DateInput'
 import {
@@ -190,7 +191,7 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
   const [weekStart, setWeekStart] = useState(getWeekStart())
   const [selectedDay, setSelectedDay] = useState(localDateStr())
   const [addVarDay, setAddVarDay] = useState<string | null>(null)
-  const [varForm, setVarForm] = useState({ category: 'bus_fare' as ExpenseCategory, amount: '', km: '', customLabel: '', notes: '', noDutyReason: '' })
+  const [varForm, setVarForm] = useState({ category: 'bus_fare' as ExpenseCategory, amount: '', km: '', customLabel: '', notes: '', noDutyReason: '', meterReason: '' })
   const [addDaDay, setAddDaDay] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [csvMode, setCsvMode] = useState(false)
@@ -392,6 +393,22 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
     if (fuelByDistance) {
       if (isNaN(km) || km <= 0) { await showAlert('Distance needed', 'Enter how many kilometres you travelled.'); return }
     }
+
+    /**
+     * Above the meter needs a reason — here as well as at the end of the day.
+     *
+     * The same rule on both paths, or it is not a rule: a claim refused a
+     * reason on the end-of-day card would simply be made here instead. Below
+     * the meter never needs one; above it is the one case the odometer cannot
+     * vouch for, so it is the case a reviewer most needs a sentence about.
+     */
+    const meterKm = sessionFor(addVarDay)?.claimedDistanceKm
+    const overMeter = fuelByDistance && needsMeterReason(km, meterKm)
+    if (overMeter && varForm.meterReason.trim().length < ABOVE_METER_MIN_REASON) {
+      await showAlert('Say why',
+        `That is more than the ${meterKm} km on the meter for ${fmtDate(addVarDay)}. Write a line saying why — it goes with the claim to whoever clears the week.`)
+      return
+    }
     const amount = fuelByDistance ? round2(km * fuelRate!) : parseFloat(varForm.amount)
     if (isNaN(amount) || amount <= 0) { await showAlert('Amount needed', 'Enter an amount above zero.'); return }
 
@@ -414,12 +431,16 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
       // The rate is recorded on the entry, not just applied to it. A rate
       // change later must not silently restate what was already claimed.
       ...(fuelByDistance ? { autoCalculated: true, distanceKm: km, ratePerKm: fuelRate } : {}),
+      // What the meter said, kept beside the claim so a departure from it is
+      // something a reviewer sees rather than something they have to infer.
+      ...(fuelByDistance && typeof meterKm === 'number' ? { meterKm } : {}),
+      ...(overMeter ? { aboveMeterReason: varForm.meterReason.trim() } : {}),
       ...(away ? { noDutyReason: varForm.noDutyReason.trim() } : {}),
       ...(varForm.notes ? { notes: varForm.notes } : {}),
       createdAt: Date.now(),
     })
     await syncReportTotal(rpt.id!, amount)
-    setVarForm({ category: 'bus_fare', amount: '', km: '', customLabel: '', notes: '', noDutyReason: '' })
+    setVarForm({ category: 'bus_fare', amount: '', km: '', customLabel: '', notes: '', noDutyReason: '', meterReason: '' })
     setAddVarDay(null)
   }
 
@@ -858,6 +879,13 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
                               {e.distanceKm !== undefined && (
                                 <span style={{ display: 'block', fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 3 }}>
                                   {e.distanceKm} km{e.ratePerKm ? ` at ${money(e.ratePerKm)} per km` : ''}
+                                  {typeof e.meterKm === 'number' && e.distanceKm > e.meterKm
+                                    ? ` · meter said ${e.meterKm} km` : ''}
+                                </span>
+                              )}
+                              {e.aboveMeterReason && (
+                                <span style={{ display: 'block', fontSize: 13, color: t.text2, marginTop: 3 }}>
+                                  You said: {e.aboveMeterReason}
                                 </span>
                               )}
                               {e.notes && (
@@ -920,12 +948,26 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
                                 hint={`Paid at ${money(fuelRate!)} per km. You do not enter the amount — it is worked out from this.`}>
                                 <input type="number" inputMode="decimal" value={varForm.km}
                                   onChange={e => setVarForm(f => ({ ...f, km: e.target.value }))}
-                                  placeholder="Kilometres" style={inputStyle(t)} />
+                                  placeholder={typeof sessionFor(addVarDay ?? '')?.claimedDistanceKm === 'number'
+                                    ? String(sessionFor(addVarDay ?? '')!.claimedDistanceKm)
+                                    : 'Kilometres'}
+                                  style={inputStyle(t)} />
                                 <div style={{ fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 7 }}>
                                   {parseFloat(varForm.km) > 0
                                     ? `That is ${money(round2(parseFloat(varForm.km) * fuelRate!))}.`
                                     : 'Enter the distance to see what it comes to.'}
+                                  {typeof sessionFor(addVarDay ?? '')?.claimedDistanceKm === 'number'
+                                    && ` The meter says ${sessionFor(addVarDay ?? '')!.claimedDistanceKm} km.`}
                                 </div>
+                                {fuelByDistance && needsMeterReason(
+                                  parseFloat(varForm.km), sessionFor(addVarDay ?? '')?.claimedDistanceKm) && (
+                                  <input
+                                    aria-label="Reason for claiming above the meter"
+                                    value={varForm.meterReason}
+                                    onChange={e => setVarForm(f => ({ ...f, meterReason: e.target.value }))}
+                                    placeholder="Why more than the meter? Goes with the claim."
+                                    style={{ ...inputStyle(t), marginTop: 8 }} />
+                                )}
                               </Field>
                             ) : (
                               <Field label="Amount"
@@ -958,7 +1000,7 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
                               <PrimaryButton onClick={handleAddVariable}>Add</PrimaryButton>
                               <GhostButton onClick={() => {
                                 setAddVarDay(null)
-                                setVarForm({ category: 'bus_fare', amount: '', km: '', customLabel: '', notes: '', noDutyReason: '' })
+                                setVarForm({ category: 'bus_fare', amount: '', km: '', customLabel: '', notes: '', noDutyReason: '', meterReason: '' })
                               }}>
                                 Cancel
                               </GhostButton>
@@ -1471,6 +1513,20 @@ This cannot be undone.`,
                                                 <span style={{ color: t.text3 }}>
                                                   {' · '}{e.distanceKm} km
                                                   {e.ratePerKm ? ` at ${money(e.ratePerKm)}/km` : ''}
+                                                </span>
+                                              )}
+                                              {/* A fuel claim above the meter, said
+                                                  where the person clearing it will
+                                                  read it. The reason the rep gave is
+                                                  worthless if the reviewer never sees
+                                                  it, and a departure they have to
+                                                  work out from two numbers is one
+                                                  they will miss. */}
+                                              {typeof e.meterKm === 'number' && e.distanceKm !== undefined
+                                                && e.distanceKm > e.meterKm && (
+                                                <span style={{ display: 'block', color: t.warn, marginTop: 3 }}>
+                                                  {e.distanceKm - e.meterKm} km above the meter's {e.meterKm} km
+                                                  {e.aboveMeterReason ? ` — "${e.aboveMeterReason}"` : ''}
                                                 </span>
                                               )}
                                               {/* An allowance that departs from what the

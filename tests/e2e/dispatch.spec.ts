@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures/app'
-import { companyAllocation, companyStock } from './fixtures/seed'
+import { testNow } from './fixtures/clock'
+import { companyAllocation, companyStock, noAllocations } from './fixtures/seed'
 
 /**
  * Who may send the stock, and who may say the money came.
@@ -14,6 +15,13 @@ import { companyAllocation, companyStock } from './fixtures/seed'
  * app rather than as a rule being enforced, which is why this is worth a test
  * rather than a careful reading.
  */
+
+// Every spec here seeds its own orders and asserts on what the rows say, so
+// inheriting the previous one's makes a getByText ambiguous — and the failure
+// reads as the screen being wrong rather than the world being dirty.
+test.beforeEach(async () => {
+  await noAllocations()
+})
 
 async function openAllocations(page: any) {
   await page.getByRole('button', { name: /^Allocations/ }).first().click()
@@ -49,7 +57,7 @@ test.describe('settling a bill is a separate authority', () => {
    * Mark paid must not be drawn — the rules would refuse the write.
    */
   test('dispatch does not bring Mark paid with it', async ({ page, loginAs }) => {
-    await companyAllocation({ status: 'sent', sentAt: Date.now(), sentDate: '2099-01-01' })
+    await companyAllocation({ status: 'sent', sentAt: testNow(), sentDate: '2099-01-01' })
 
     await loginAs('manager')
     await openAllocations(page)
@@ -58,7 +66,7 @@ test.describe('settling a bill is a separate authority', () => {
   })
 
   test('a manager who holds mark_paid does get it', async ({ page, loginAs }) => {
-    await companyAllocation({ status: 'sent', sentAt: Date.now(), sentDate: '2099-01-01' })
+    await companyAllocation({ status: 'sent', sentAt: testNow(), sentDate: '2099-01-01' })
 
     await loginAs('managerPlus')
     await openAllocations(page)

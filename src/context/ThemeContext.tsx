@@ -7,7 +7,7 @@ interface ThemeTokens {
   border: string; border2: string
   card: string; cardHover: string
   primary: string; primaryText: string
-  accent: string; warn: string; tint: string; hover: string
+  accent: string; warn: string; good: string; mark: string; off: string; tint: string; hover: string
 }
 
 /**
@@ -65,9 +65,24 @@ const dark: ThemeTokens = {
   border: 'rgba(255,255,255,0.08)', border2: 'rgba(255,255,255,0.14)',
   card: '#161b22', cardHover: '#1e2530',
   primary: '#1a5c42', primaryText: '#6ee7b7',
-  // Colour is reserved for meaning: accent = links, warn = needs action.
+  // Colour is reserved for meaning: accent = links, warn = needs action,
+  // good = a thing that was achieved. Three is the ceiling — a fourth and
+  // none of them mean anything on their own any more.
   accent: '#6ee7b7',
   warn: '#e0a458',
+  // Greener than accent on purpose, so "met" is not mistaken for a link.
+  // 10.9 on bg, 9.9 on card.
+  good: '#4ade80',
+  // Data marks — a bar's length, not a verdict. Kept off accent, which means
+  // "link", for the same reason good is: a bar in the link colour is a bar
+  // people try to press. Run through the palette validator against both dark
+  // surfaces: inside the lightness band, above the chroma floor, over 3:1.
+  // The mint accent that bars used before failed the band and read as glare.
+  mark: '#3987e5',
+  // A day nobody works — Sundays and holidays on the planner's calendar. The
+  // red the app already uses for errors in dark; read as text at 11px, so held
+  // above 4.5:1 on both dark surfaces.
+  off: '#f87171',
   tint: 'rgba(255,255,255,0.045)',
   hover: 'rgba(255,255,255,0.035)',
 }
@@ -82,6 +97,14 @@ const light: ThemeTokens = {
   // #b45309 came to 4.44 on tint — a hair under, and warn is the one colour
   // that carries meaning on its own.
   warn: '#a1490a',
+  // 6.8 on bg, 7.1 on card. #16a34a is the obvious green and comes to 3.15,
+  // which fails at the 12px this is read at.
+  good: '#166534',
+  // Validated against both light surfaces. The teal accent bars used before
+  // fell under the chroma floor and read as grey.
+  mark: '#2a78d6',
+  // The light red, darkened until it holds 4.5:1 as small text on white.
+  off: '#b91c1c',
   tint: 'rgba(15,23,42,0.04)',
   hover: 'rgba(15,23,42,0.03)',
 }

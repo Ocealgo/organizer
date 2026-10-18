@@ -316,13 +316,15 @@ export default function BeatManager({ onBack }: Props) {
               </Note>
               <Field label="Shops visited"
                 hint="Optional. All visits that day, not only the ones on this beat.">
-                <input type="number" inputMode="numeric" value={targetVisits}
+                <input type="number" inputMode="numeric" aria-label="Shops visited target"
+                  value={targetVisits}
                   onChange={e => setTargetVisits(e.target.value)}
                   placeholder={String(picked.size || 12)} style={inputStyle(t)} />
               </Field>
               <Field label="Order value"
                 hint="Optional. Rupees of orders raised — raised, not dispatched or paid.">
-                <input type="number" inputMode="numeric" value={targetOrderValue}
+                <input type="number" inputMode="numeric" aria-label="Order value target"
+                  value={targetOrderValue}
                   onChange={e => setTargetOrderValue(e.target.value)}
                   placeholder="50000" style={inputStyle(t)} />
               </Field>

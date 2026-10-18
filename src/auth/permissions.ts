@@ -1,4 +1,10 @@
-import { AppUser, Permission, PermissionMap } from '../types'
+// `import type`, not a plain import: all three are only ever used in type
+// positions, and saying so means the statement is erased rather than resolved.
+// That is what lets the rules suite import the shipped defaults from here
+// instead of keeping a copy — Node strips the types and has nothing left to
+// look for, where an extensionless runtime import of '../types' would have
+// been a module it could not find.
+import type { AppUser, Permission, PermissionMap } from '../types'
 
 /**
  * Single source of truth for "is this user allowed to do X".
