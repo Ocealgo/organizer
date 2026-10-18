@@ -27,6 +27,7 @@ import {
 import { can, isAdminRole, ROLE_LABELS_PLAIN } from "../../auth/permissions";
 import { survey, resetPerson, ResetSurvey, ResetProgress } from "../../data/resetPerson";
 import SalesReport from "../reports/SalesReport";
+import RepMonitor from "../reports/RepMonitor";
 import ReportsHome from "../reports/ReportsHome";
 import OpportunitiesScreen from "../reports/OpportunitiesScreen";
 import FieldReport from "./FieldReport";
@@ -58,6 +59,7 @@ type SalesTab = "offline" | "online";
 type MarketingTab = "offline" | "online";
 type SubScreen =
   | "dashboard"
+  | "monitor"
   | "stock"
   | "parties"
   | "credits"
@@ -1149,12 +1151,15 @@ export default function AdminDashboard() {
         onOpenField={() => setSubScreen("field")}
         onOpenSales={() => setSubScreen("reports")}
         onOpenOpportunities={() => setSubScreen("opportunities")}
+        onOpenMonitor={() => setSubScreen("monitor")}
       />
     );
   if (subScreen === "opportunities")
     return <OpportunitiesScreen onBack={() => setSubScreen("reportsHome")} />;
   if (subScreen === "reports")
     return <SalesReport onBack={() => setSubScreen("reportsHome")} />;
+  if (subScreen === "monitor")
+    return <RepMonitor onBack={() => setSubScreen("reportsHome")} />;
   if (subScreen === "field")
     return (
       <FieldReport
@@ -1320,6 +1325,7 @@ export default function AdminDashboard() {
     reports: "view_reports",
     field: "view_reports",
     reportsHome: "view_reports",
+    monitor: "view_reports",
     opportunities: "view_reports",
     beats: "assign_work",
     planner: "assign_work",

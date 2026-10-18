@@ -16,6 +16,7 @@ interface Props {
   onOpenField: () => void
   onOpenSales: () => void
   onOpenOpportunities: () => void
+  onOpenMonitor: () => void
 }
 
 /** Month arithmetic that does not care what today is. */
@@ -51,7 +52,9 @@ const EMPTY: Totals = { visits: 0, outlets: 0, orderValue: 0, collected: 0 }
  * measured on them, and time-per-shop measures how long the form was open
  * rather than how long anybody stood in a doorway.
  */
-export default function ReportsHome({ onBack, onOpenField, onOpenSales, onOpenOpportunities }: Props) {
+export default function ReportsHome({
+  onBack, onOpenField, onOpenSales, onOpenOpportunities, onOpenMonitor,
+}: Props) {
   const { t } = useTheme()
 
   const [preset, setPreset] = useState<Preset>('this_month')
@@ -306,6 +309,9 @@ export default function ReportsHome({ onBack, onOpenField, onOpenSales, onOpenOp
             <ListRow title="Worth going back to"
               desc="Shops that stopped ordering, ran empty, or nobody has visited"
               onClick={onOpenOpportunities} />
+            <ListRow title="Monitor reps"
+              desc="The end of each day, one card per person — shops covered, orders placed, and whether the target was met"
+              onClick={onOpenMonitor} />
             <ListRow title="Field activity"
               desc="Day by day, per rep — punch in and out, time in each shop, meter readings, every remark"
               onClick={onOpenField} />
