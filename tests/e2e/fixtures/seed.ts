@@ -152,6 +152,21 @@ export async function companyStock(productId: string, total: number): Promise<vo
 }
 
 /**
+ * A product nobody had when the world was built.
+ *
+ * For the thing that is easy to claim and hard to be sure of: that a product
+ * added later needs no code to follow it. Asserting it requires adding one
+ * after the screens already exist, which is what this is for.
+ */
+export async function addProduct(id: string, name: string): Promise<void> {
+  await getFirestore(admin()).doc(`products/${id}`).set({
+    name, active: true,
+    defaultPricePerUnit: 75, unitsPerCarton: 12,
+    createdAt: Date.now(),
+  })
+}
+
+/**
  * A monthly packet target, with whatever daily breakdown the spec needs.
  *
  * Both live in one document: the month figure and its per-day split are one
@@ -169,12 +184,19 @@ export async function packetTarget(
    * specs also cover that the old shape still works.
    */
   byProduct?: Record<string, number>,
+  /**
+   * Each product's own days. When given, these are what the app reads and
+   * `days` becomes the stored sum — which is why a spec passing both is
+   * passing the same fact twice and only one of them decides.
+   */
+  daysByProduct?: Record<string, Record<string, number>>,
 ): Promise<void> {
   const u = USERS[who]
   await getFirestore(admin()).doc(`sales_targets/${u.uid}_${month}`).set({
     uid: u.uid, name: u.name, month, units,
     ...(days ? { days } : {}),
     ...(byProduct ? { byProduct } : {}),
+    ...(daysByProduct ? { daysByProduct } : {}),
     setBy: USERS.manager.uid, setByName: USERS.manager.name, setAt: Date.now(),
   })
 }

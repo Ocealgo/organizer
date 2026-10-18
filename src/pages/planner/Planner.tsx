@@ -9,6 +9,7 @@ import {
   Product,
   workPlanId, routePlaces, salesTargetId, packetsOrdered, packetsOrderedOn,
   dailyTargetFor, divideAcrossDays, sumByProduct,
+  divideByProductAcrossDays, dayTotalsFromProducts,
 } from '../../types'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
@@ -92,8 +93,17 @@ export default function Planner({ onBack }: Props) {
   /** Whose day-by-day breakdown is open. One at a time — a month of boxes for
    *  five reps at once is a spreadsheet, and a worse one than a spreadsheet. */
   const [daysOpenFor, setDaysOpenFor] = useState<string | null>(null)
-  /** uid → date → what is being typed, so a half-typed number is never saved. */
-  const [dayDraft, setDayDraft] = useState<Record<string, Record<string, string>>>({})
+  /**
+   * uid → product → date → what is being typed.
+   *
+   * A product dimension deeper than it was, because each product carries its
+   * own days now. Keyed by product id throughout, so a product added next
+   * month simply appears as another key.
+   */
+  const [dayDraft, setDayDraft] =
+    useState<Record<string, Record<string, Record<string, string>>>>({})
+  /** Which product's grid is on screen inside an open breakdown. */
+  const [dayProduct, setDayProduct] = useState<Record<string, string>>({})
 
   /** '' means everybody. Shared by both tabs — a filter you set once holds. */
   const [whoFilter, setWhoFilter] = useState('')
@@ -166,10 +176,16 @@ export default function Planner({ onBack }: Props) {
           const next = { ...prev }
           s.docs.forEach(d => {
             const v = d.data() as SalesTarget
-            if (next[v.uid] === undefined && v.days) {
+            if (next[v.uid] !== undefined) return
+            if (v.daysByProduct) {
               next[v.uid] = Object.fromEntries(
-                Object.entries(v.days).map(([k, n]) => [k, String(n)]))
+                Object.entries(v.daysByProduct).map(([pid, perDay]) =>
+                  [pid, Object.fromEntries(
+                    Object.entries(perDay).map(([k, n]) => [k, String(n)]))]))
             }
+            // A document from before products had their own splits keeps its
+            // `days`, and the boxes open empty rather than guessing which
+            // product those packets were for. Dividing fills them.
           })
           return next
         })
@@ -467,29 +483,47 @@ export default function Planner({ onBack }: Props) {
     return out
   }, [targetMonth, holidays])
 
-  const dayBoxes = (uid: string) => dayDraft[uid] ?? {}
+  /** One product's day boxes for one rep. */
+  const dayBoxes = (uid: string, productId: string) => dayDraft[uid]?.[productId] ?? {}
+  /** Every product's day boxes for one rep. */
+  const allDayBoxes = (uid: string) => dayDraft[uid] ?? {}
+  /** Which product's grid is showing — the first product until one is picked. */
+  const shownProduct = (uid: string) => dayProduct[uid] ?? products[0]?.id ?? ''
   const productBoxes = (uid: string) => targetDraft[uid] ?? {}
   /** What the product boxes currently add up to — the month's figure. */
   const draftTotal = (uid: string) =>
     Object.values(productBoxes(uid)).reduce((n, v) => n + (Number((v ?? '').trim()) || 0), 0)
 
-  /** Fill the boxes from the month's figure. Not saved until Save is pressed. */
+  /**
+   * Fill every product's days from its own month. Not saved until Save is.
+   *
+   * Every product in one press, each divided by its own figure, because the
+   * alternative is a manager dividing four products one at a time and
+   * discovering on the fifth that the button only did one of them.
+   *
+   * Each product is divided independently so its remainder lands inside its
+   * own days — dividing the total once and sharing it out afterwards would put
+   * the rounding error across products, where it belongs to nobody.
+   */
   const divideEqually = (rep: AppUser) => {
-    // The month's figure is the sum of the product boxes, falling back to what
-    // is stored when nothing has been typed yet. The day split is one set of
-    // weights for the whole month, not one per product — each product's daily
-    // figure is worked out from its share of the total.
-    const typed = draftTotal(rep.uid)
-    const units = typed > 0 ? typed : (targets.find(x => x.uid === rep.uid)?.units ?? 0)
-    if (!Number.isFinite(units) || units <= 0) {
-      setTargetError(`${rep.name}: set the month's packets first — there is nothing to divide.`)
+    const typedBoxes = productBoxes(rep.uid)
+    const stored = targets.find(x => x.uid === rep.uid)?.byProduct ?? {}
+    const byProduct: Record<string, number> = {}
+    for (const prod of products) {
+      const raw = (typedBoxes[prod.id!] ?? '').trim()
+      const n = raw === '' ? (stored[prod.id!] ?? 0) : Number(raw)
+      if (Number.isFinite(n) && n > 0) byProduct[prod.id!] = n
+    }
+    if (Object.keys(byProduct).length === 0) {
+      setTargetError(`${rep.name}: set a product's packets first — there is nothing to divide.`)
       return
     }
     setTargetError(null)
-    const split = divideAcrossDays(units, workableDays)
+    const split = divideByProductAcrossDays(byProduct, workableDays)
     setDayDraft(prev => ({
       ...prev,
-      [rep.uid]: Object.fromEntries(Object.entries(split).map(([d, n]) => [d, String(n)])),
+      [rep.uid]: Object.fromEntries(Object.entries(split).map(([pid, perDay]) =>
+        [pid, Object.fromEntries(Object.entries(perDay).map(([d, n]) => [d, String(n)]))])),
     }))
   }
 
@@ -503,18 +537,28 @@ export default function Planner({ onBack }: Props) {
    * count, and those read differently on the rep's screen.
    */
   const saveDays = async (rep: AppUser) => {
-    const boxes = dayBoxes(rep.uid)
-    const days: Record<string, number> = {}
-    for (const [date, raw] of Object.entries(boxes)) {
-      const v = raw.trim()
-      if (v === '') continue
-      const n = Number(v)
-      if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
-        setTargetError(`${rep.name}, ${date}: packets has to be a whole number, zero or more.`)
-        return
+    const all = allDayBoxes(rep.uid)
+    const daysByProduct: Record<string, Record<string, number>> = {}
+    for (const prod of products) {
+      const boxes = all[prod.id!] ?? {}
+      const perDay: Record<string, number> = {}
+      for (const [date, raw] of Object.entries(boxes)) {
+        const v = (raw ?? '').trim()
+        if (v === '') continue
+        const n = Number(v)
+        if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
+          setTargetError(
+            `${rep.name}, ${prod.name}, ${date}: packets has to be a whole number, zero or more.`)
+          return
+        }
+        perDay[date] = n
       }
-      days[date] = n
+      if (Object.keys(perDay).length) daysByProduct[prod.id!] = perDay
     }
+    // `days` is the sum, written beside the breakdown so the screens that do
+    // not care which product still read one field.
+    const days = dayTotalsFromProducts(daysByProduct)
+
     setTargetError(null)
     setTargetSaving(rep.uid)
     try {
@@ -524,6 +568,7 @@ export default function Planner({ onBack }: Props) {
         name: rep.name,
         month: targetMonth,
         units: existing?.units ?? 0,
+        daysByProduct,
         days,
         setBy: appUser!.uid,
         setByName: appUser!.name,
@@ -545,6 +590,7 @@ export default function Planner({ onBack }: Props) {
     setTargetDraft({})
     setTargetNote({})
     setDayDraft({})
+    setDayProduct({})
     setDaysOpenFor(null)
   }
 
@@ -921,11 +967,19 @@ export default function Planner({ onBack }: Props) {
 
                       {/* ── The day-by-day breakdown ── */}
                       {(() => {
-                        const boxes = dayBoxes(r.uid)
-                        const setSum = Object.values(boxes)
-                          .reduce((n, v) => n + (Number(v.trim()) || 0), 0)
-                        const filled = Object.values(boxes).filter(v => v.trim() !== '').length
                         const open = daysOpenFor === r.uid
+                        const all = allDayBoxes(r.uid)
+                        const pid = shownProduct(r.uid)
+                        const boxes = dayBoxes(r.uid, pid)
+                        // Across every product, because the line beside the
+                        // toggle is about the month and the month is every
+                        // product. The grid below is one product at a time.
+                        const setSum = Object.values(all).reduce((n, perDay) =>
+                          n + Object.values(perDay).reduce((m, v) => m + (Number((v ?? '').trim()) || 0), 0), 0)
+                        const filled = new Set(
+                          Object.values(all).flatMap(perDay =>
+                            Object.entries(perDay).filter(([, v]) => (v ?? '').trim() !== '')
+                              .map(([d]) => d))).size
                         return (
                           <>
                             <div className="oc-wrap" style={{ alignItems: 'center', gap: 12 }}>
@@ -953,7 +1007,7 @@ export default function Planner({ onBack }: Props) {
                                 <div className="oc-wrap" style={{ gap: 10 }}>
                                   <GhostButton onClick={() => divideEqually(r)}
                                     ariaLabel={`Divide equally for ${r.name}`}>
-                                    Divide equally across {workableDays.length} days
+                                    Divide every product across {workableDays.length} days
                                   </GhostButton>
                                   <GhostButton
                                     onClick={() => setDayDraft(prev => ({ ...prev, [r.uid]: {} }))}
@@ -967,16 +1021,50 @@ export default function Planner({ onBack }: Props) {
                                   </GhostButton>
                                 </div>
 
-                                {/* A box per workable day. Sundays and holidays are
-                                    absent rather than disabled — a greyed box still
-                                    reads as something somebody forgot to fill in. */}
+                                {/* Which product's month is on screen.
+                                    One grid at a time: four products over
+                                    twenty-seven days is a hundred boxes, and a
+                                    hundred boxes at once is a spreadsheet, and
+                                    a worse one than a spreadsheet.
+                                    Drawn from the products collection, so one
+                                    added next month appears here on its own. */}
+                                <div className="oc-scroll-x" style={{ display: 'flex', gap: 6 }}>
+                                  {products.map(prod => {
+                                    const mine = all[prod.id!] ?? {}
+                                    const sum = Object.values(mine)
+                                      .reduce((n, v) => n + (Number((v ?? '').trim()) || 0), 0)
+                                    const on = pid === prod.id
+                                    return (
+                                      <button key={prod.id} className="oc-action"
+                                        onClick={() => setDayProduct(prev => ({ ...prev, [r.uid]: prod.id! }))}
+                                        aria-pressed={on}
+                                        aria-label={`Days for ${prod.name}, ${r.name}`}
+                                        style={{
+                                          background: 'none',
+                                          border: `0.5px solid ${on ? t.text2 : t.border}`,
+                                          borderRadius: 99, padding: '6px 13px', fontSize: 12,
+                                          color: on ? t.text : t.text3, cursor: 'pointer',
+                                          whiteSpace: 'nowrap',
+                                        }}>
+                                        {prod.name}{sum > 0 ? ` · ${sum}` : ''}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+
+                                {/* A box per workable day, for the product above.
+                                    Sundays and holidays are absent rather than
+                                    disabled — a greyed box still reads as something
+                                    somebody forgot to fill in. */}
                                 <div style={{
                                   display: 'grid',
                                   gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))',
                                   gap: 8,
                                 }}>
                                   {workableDays.map(date => {
-                                    const done = packetsOrderedOn(allocations as any, r.uid, date)
+                                    // What was ordered of this product that day,
+                                    // so the comparison on screen is like for like.
+                                    const done = packetsOrderedOn(allocations as any, r.uid, date, pid)
                                     const dayGoal = Number((boxes[date] ?? '').trim()) || 0
                                     return (
                                       <label key={date} style={{ display: 'block' }}>
@@ -989,14 +1077,17 @@ export default function Planner({ onBack }: Props) {
                                           value={boxes[date] ?? ''}
                                           onChange={e => setDayDraft(prev => ({
                                             ...prev,
-                                            [r.uid]: { ...(prev[r.uid] ?? {}), [date]: e.target.value },
+                                            [r.uid]: {
+                                              ...(prev[r.uid] ?? {}),
+                                              [pid]: { ...(prev[r.uid]?.[pid] ?? {}), [date]: e.target.value },
+                                            },
                                           }))}
                                           placeholder="—"
                                           style={{
                                             ...inputStyle(t), fontSize: 13, padding: '7px 9px',
                                             // Met days are quietly marked, so a manager
                                             // scanning the month sees where it is going.
-                                            borderColor: dayGoal > 0 && done >= dayGoal ? t.text2 : undefined,
+                                            borderColor: dayGoal > 0 && done >= dayGoal ? t.good : undefined,
                                           }} />
                                       </label>
                                     )

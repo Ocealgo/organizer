@@ -1,6 +1,7 @@
 import { test, expect } from './fixtures/app'
 import {
   companyAllocation, companyStock, noAllocations, noTargetsSet, packetTarget, todayLocal,
+  addProduct,
 } from './fixtures/seed'
 
 /**
@@ -224,6 +225,88 @@ test.describe('a target per product', () => {
     await expect(page.getByText('This month · 24 of 1000 packets')).toBeVisible()
     // No breakdown stored, so none is invented.
     await expect(page.getByText(/ \/ 600/)).toHaveCount(0)
+  })
+})
+
+test.describe('each product has its own days', () => {
+  /**
+   * The point of the change: two products do not move together, so each one
+   * carries its own figures and a day is their sum rather than a number split
+   * after the fact.
+   */
+  test('a day reads each product separately, and the total is their sum', async ({
+    page, loginAs,
+  }) => {
+    // Today, not the last workable day: the rep's card shows today and
+    // nothing else. A day set by hand carries its target whatever weekday it
+    // is — only dividing skips Sundays, because only dividing has to choose.
+    const day = todayLocal()
+    await packetTarget('rep', day.slice(0, 7), 1000, undefined,
+      { prod_wipes: 600, prod_mini: 400 },
+      { prod_wipes: { [day]: 30 }, prod_mini: { [day]: 8 } })
+
+    await loginAs('rep')
+    // 30 and 8, not a 38 shared out by month share — which would have been
+    // 23 and 15.
+    await expect(page.getByText(/30 today/)).toBeVisible()
+    await expect(page.getByText(/8 today/)).toBeVisible()
+    await expect(page.getByText('Today · 0 of 38 packets')).toBeVisible()
+  })
+
+  /** One press divides every product by its own month, not the total once. */
+  test('dividing fills every product, each by its own figure', async ({ page, loginAs }) => {
+    await loginAs('manager')
+    await openPlannerTargets(page)
+
+    await page.getByLabel('Baby Wet Wipes 72s packets for Ravi Rep').fill('600')
+    await page.getByLabel('Baby Wet Wipes 30s packets for Ravi Rep').fill('400')
+    await page.getByRole('button', { name: 'Set target for Ravi Rep' }).click()
+
+    await page.getByRole('button', { name: 'Day by day for Ravi Rep' }).click()
+    await page.getByRole('button', { name: 'Divide equally for Ravi Rep' }).click()
+
+    // Both products carry their own month, and the line above the grid counts
+    // every product rather than the one on screen.
+    await expect(page.getByText('1000 across the days')).toBeVisible()
+    await expect(page.getByRole('button', { name: /Days for Baby Wet Wipes 72s, Ravi Rep/ }))
+      .toBeVisible()
+
+    await page.getByRole('button', { name: 'Save days for Ravi Rep' }).click()
+    await expect(page.getByText('1000 across the days')).toBeVisible()
+  })
+
+  /**
+   * A product added later needs no code to follow it. Nothing names a product
+   * anywhere — the chips, the boxes and the division all come off the products
+   * collection.
+   */
+  test('a product added later gets its own column', async ({ page, loginAs }) => {
+    await addProduct('prod_jumbo', 'Baby Wet Wipes 120s')
+
+    await loginAs('manager')
+    await openPlannerTargets(page)
+
+    // A monthly box of its own, straight away.
+    await expect(page.getByLabel('Baby Wet Wipes 120s packets for Ravi Rep')).toBeVisible()
+
+    // And a day grid of its own, without anybody adding one.
+    await page.getByRole('button', { name: 'Day by day for Ravi Rep' }).click()
+    await expect(page.getByRole('button', { name: /Days for Baby Wet Wipes 120s, Ravi Rep/ }))
+      .toBeVisible()
+  })
+
+  /** A target from before per-product days keeps working, unchanged. */
+  test('a day figure with no product breakdown still reads', async ({ page, loginAs }) => {
+    const day = todayLocal()
+    await packetTarget('rep', day.slice(0, 7), 1000, { [day]: 38 },
+      { prod_wipes: 600, prod_mini: 400 })
+
+    await loginAs('rep')
+    // No per-product days stored, so the old proportional split answers: 23
+    // and 15 of the 38.
+    await expect(page.getByText('Today · 0 of 38 packets')).toBeVisible()
+    await expect(page.getByText(/23 today/)).toBeVisible()
+    await expect(page.getByText(/15 today/)).toBeVisible()
   })
 })
 

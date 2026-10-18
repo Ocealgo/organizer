@@ -1530,20 +1530,31 @@ export interface SalesTarget {
    */
   units: number
   /**
-   * What each day of the month is expected to contribute, keyed YYYY-MM-DD.
+   * Each product's own day-by-day figures: product → date → packets.
    *
-   * In the month's own document rather than a collection of its own, because
-   * the month figure and its daily breakdown are one decision at two grains —
-   * dividing the first gives the second — and keeping them together means one
-   * read to show both and one write to set them.
+   * Per product rather than one split shared between them, because the two
+   * products do not move together — a festival week is a wipes week, and
+   * telling somebody their Tuesday is thirty-eight packets of something
+   * unspecified is not a target they can act on.
    *
-   * Per rep-day, and needing no beat. A day the rep spends off their round
-   * still owes its packets, so a figure attached to the beat would stop
-   * applying exactly when the day stopped going to plan.
+   * Driven entirely by the products collection, which is what makes a product
+   * added next month work without anybody touching this: a new product has no
+   * entry here, the planner draws it an empty column, and dividing fills it.
+   * Nothing anywhere names a product.
    *
-   * Sparse on purpose. A date that is absent has no target rather than a
-   * target of zero, so a manager who fills in three days has set three days
-   * and not silently excused the rest.
+   * Sparse on purpose at both levels. A date absent for a product has no
+   * target for that product rather than a target of zero, so a manager who
+   * filled in three days has set three days and not silently excused the rest.
+   */
+  daysByProduct?: Record<string, Record<string, number>>
+  /**
+   * What the whole day is expected to contribute, keyed YYYY-MM-DD.
+   *
+   * Derived — the sum across products — and written beside them so every
+   * screen that does not care which product reads one field. It was once the
+   * figure a manager typed, which is why a document that predates
+   * `daysByProduct` still has it and still works: this is the fallback when
+   * there is no per-product breakdown to add up.
    */
   days?: Record<string, number>
   /** Anything the number cannot say — "Onam push", "covering Priya's beat". */
@@ -1597,9 +1608,25 @@ export function packetsOrdered(
  * count.
  */
 export function dailyTargetFor(
-  target: { days?: Record<string, number> } | null | undefined,
+  target: {
+    days?: Record<string, number>
+    daysByProduct?: Record<string, Record<string, number>>
+  } | null | undefined,
   date: string,
 ): number | null {
+  // The per-product figures are what a manager sets, so they decide. `days` is
+  // the stored sum and the answer for anything written before products had
+  // their own splits.
+  const byProd = target?.daysByProduct
+  if (byProd) {
+    let total = 0
+    let found = false
+    for (const perDay of Object.values(byProd)) {
+      const v = perDay?.[date]
+      if (typeof v === 'number') { total += v; found = true }
+    }
+    if (found) return total
+  }
   const v = target?.days?.[date]
   return typeof v === 'number' ? v : null
 }
@@ -1646,10 +1673,28 @@ export function divideAcrossDays(units: number, dates: string[]): Record<string,
  * Null when the day has no target or the month has no product breakdown.
  */
 export function productDailyTargets(
-  target: { units?: number; byProduct?: Record<string, number>; days?: Record<string, number> }
-    | null | undefined,
+  target: {
+    units?: number
+    byProduct?: Record<string, number>
+    days?: Record<string, number>
+    daysByProduct?: Record<string, Record<string, number>>
+  } | null | undefined,
   date: string,
 ): Record<string, number> | null {
+  // Set per product: that is the answer, and no arithmetic is needed.
+  const byProd = target?.daysByProduct
+  if (byProd) {
+    const out: Record<string, number> = {}
+    let found = false
+    for (const [id, perDay] of Object.entries(byProd)) {
+      const v = perDay?.[date]
+      if (typeof v === 'number') { out[id] = v; found = true }
+    }
+    if (found) return out
+  }
+
+  // Otherwise a document from before products had their own splits: one day
+  // figure, shared out by each product's share of the month.
   const dayTotal = dailyTargetFor(target, date)
   const by = target?.byProduct
   if (dayTotal === null || !by) return null
@@ -1679,6 +1724,42 @@ export function productMonthTarget(
 ): number | null {
   const v = target?.byProduct?.[productId]
   return typeof v === 'number' ? v : null
+}
+
+/**
+ * Every product's month, divided across the days that can be worked.
+ *
+ * Each product independently, so each one's remainder lands inside its own
+ * figures and every product still adds up to the month it came from. Dividing
+ * the total once and sharing it out afterwards would push the rounding error
+ * across products, where it is nobody's.
+ *
+ * Takes whatever products it is given, which is the whole point: a product
+ * added next month arrives here as another key and needs no code to follow it.
+ */
+export function divideByProductAcrossDays(
+  byProduct: Record<string, number>,
+  dates: string[],
+): Record<string, Record<string, number>> {
+  const out: Record<string, Record<string, number>> = {}
+  for (const [id, units] of Object.entries(byProduct)) {
+    const split = divideAcrossDays(Number(units) || 0, dates)
+    if (Object.keys(split).length) out[id] = split
+  }
+  return out
+}
+
+/** The day totals a per-product set of splits comes to, date by date. */
+export function dayTotalsFromProducts(
+  daysByProduct: Record<string, Record<string, number>>,
+): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const perDay of Object.values(daysByProduct)) {
+    for (const [date, n] of Object.entries(perDay)) {
+      out[date] = (out[date] ?? 0) + (Number(n) || 0)
+    }
+  }
+  return out
 }
 
 /** The total a per-product breakdown comes to. The stored `units` mirrors this. */

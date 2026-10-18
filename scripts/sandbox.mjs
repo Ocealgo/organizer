@@ -31,7 +31,7 @@ import {
   resetWorld, seedWorld, closeAdmin, USERS, PASSWORD, PROJECT_ID,
   companyStock, companyAllocation, assignedDay, todayLocal,
 } from '../tests/e2e/fixtures/seed.ts'
-import { divideAcrossDays } from '../src/types.ts'
+import { divideByProductAcrossDays, dayTotalsFromProducts } from '../src/types.ts'
 
 /**
  * Things the specs deliberately leave unset, and a person poking at the app
@@ -110,6 +110,9 @@ async function sandboxExtras() {
     workable.push(date)
   }
 
+  const ravi = divideByProductAcrossDays({ prod_wipes: 600, prod_mini: 400 }, workable)
+  const priya = divideByProductAcrossDays({ prod_wipes: 250, prod_mini: 350 }, workable)
+
   await db.doc(`sales_targets/${USERS.rep.uid}_${month}`).set({
     uid: USERS.rep.uid,
     name: USERS.rep.name,
@@ -119,7 +122,11 @@ async function sandboxExtras() {
     // answer anything. 600 and 400 rather than 500 each, so a reader can tell
     // which column is which.
     byProduct: { prod_wipes: 600, prod_mini: 400 },
-    days: divideAcrossDays(1000, workable),
+    // Each product divided over the month with the same function the planner's
+    // button uses, so the sandbox opens on exactly what a manager would get by
+    // pressing it. `days` is the sum, as the app writes it.
+    daysByProduct: ravi,
+    days: dayTotalsFromProducts(ravi),
     note: 'Onam push — the month to make it up in.',
     setBy: USERS.manager.uid,
     setByName: USERS.manager.name,
@@ -140,7 +147,8 @@ async function sandboxExtras() {
     month,
     units: 600,
     byProduct: { prod_wipes: 250, prod_mini: 350 },
-    days: divideAcrossDays(600, workable),
+    daysByProduct: priya,
+    days: dayTotalsFromProducts(priya),
     setBy: USERS.manager.uid,
     setByName: USERS.manager.name,
     setAt: Date.now(),
