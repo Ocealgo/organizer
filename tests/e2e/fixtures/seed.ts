@@ -6,6 +6,7 @@
  * to depend on seed order, and no spec may reach for the Admin SDK itself — a
  * test that writes past the rules stops testing the thing it is there to test.
  */
+import { testNow, testDate } from './clock.ts'
 import { deleteApp, getApps, initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 import { getFirestore } from 'firebase-admin/firestore'
@@ -146,7 +147,7 @@ export async function companyStock(productId: string, total: number): Promise<vo
   // and `set()` reads it as a field name with dots in it, so the dotted form
   // here wrote a field nothing looks at and the screen went on seeing zero.
   await getFirestore(admin()).doc('config/stock').set(
-    { productStock: { [productId]: { total, locked: 0 } }, updatedAt: Date.now() },
+    { productStock: { [productId]: { total, locked: 0 } }, updatedAt: testNow() },
     { merge: true },
   )
 }
@@ -168,8 +169,8 @@ export async function closedDay(
   const id = `eod_${u.uid}_${date}`
   await getFirestore(admin()).doc(`duty_sessions/${id}`).set({
     uid: u.uid, name: u.name, date,
-    startAt: Date.now() - 8 * 3600_000,
-    endAt: Date.now(),
+    startAt: testNow() - 8 * 3600_000,
+    endAt: testNow(),
     status: 'closed',
     ...(km === null
       // No reading at all: the meter was broken, so there is no distance and
@@ -201,18 +202,18 @@ export async function claimedExpense(
   const total = (lines.allowance ?? 0) + (lines.fuel ?? 0)
   await report.set({
     userId: u.uid, userName: u.name, userRole: u.role,
-    weekStart: date, weekEnd: date, status: 'draft', totalAmount: total, createdAt: Date.now(),
+    weekStart: date, weekEnd: date, status: 'draft', totalAmount: total, createdAt: testNow(),
   })
   if (lines.allowance) {
     await db.collection('expense_entries').add({
       reportId: report.id, userId: u.uid, date, type: 'allowance',
-      allowanceType: 'EX', amount: lines.allowance, createdAt: Date.now(),
+      allowanceType: 'EX', amount: lines.allowance, createdAt: testNow(),
     })
   }
   if (lines.fuel) {
     await db.collection('expense_entries').add({
       reportId: report.id, userId: u.uid, date, type: 'variable', category: 'fuel',
-      amount: lines.fuel, createdAt: Date.now(),
+      amount: lines.fuel, createdAt: testNow(),
     })
   }
 }
@@ -233,7 +234,7 @@ export async function addProduct(id: string, name: string): Promise<void> {
   await getFirestore(admin()).doc(`products/${id}`).set({
     name, active: true,
     defaultPricePerUnit: 75, unitsPerCarton: 12,
-    createdAt: Date.now(),
+    createdAt: testNow(),
   })
 }
 
@@ -268,7 +269,7 @@ export async function packetTarget(
     ...(days ? { days } : {}),
     ...(byProduct ? { byProduct } : {}),
     ...(daysByProduct ? { daysByProduct } : {}),
-    setBy: USERS.manager.uid, setByName: USERS.manager.name, setAt: Date.now(),
+    setBy: USERS.manager.uid, setByName: USERS.manager.name, setAt: testNow(),
   })
 }
 
@@ -294,18 +295,18 @@ export async function assignedDay(
     targets,
     assignedBy: USERS.manager.uid,
     assignedByName: USERS.manager.name,
-    createdAt: Date.now(),
+    createdAt: testNow(),
   })
 }
 
 /** Local date today, the way the app means it. */
 export const todayLocal = (): string => {
-  const d = new Date()
+  const d = testDate()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 const tomorrow = (): string => {
-  const d = new Date()
+  const d = testDate()
   d.setDate(d.getDate() + 1)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
@@ -337,7 +338,7 @@ export async function companyAllocation(
     plannedDate: tomorrow(),
     status: 'pending', notes: '',
     createdBy: USERS.rep.uid, createdByName: USERS.rep.name,
-    createdAt: Date.now(), month: tomorrow().slice(0, 7), lockedAtCreation: false,
+    createdAt: testNow(), month: tomorrow().slice(0, 7), lockedAtCreation: false,
     channel: 'desk',
     ...over,
   })
@@ -372,12 +373,12 @@ export async function autoMarkedLeave(
     date,
     leaveType,
     note: 'No punch-in by 10:00.',
-    markedAt: Date.now(),
+    markedAt: testNow(),
     markedBy: 'system',
     markedByName: 'Automatic',
     status: 'active',
     autoMarked: true,
-    auditLog: [{ action: 'admin_marked', by: 'system', byName: 'Automatic', at: Date.now() }],
+    auditLog: [{ action: 'admin_marked', by: 'system', byName: 'Automatic', at: testNow() }],
   })
   return ref.id
 }
@@ -403,11 +404,11 @@ export async function approvedLeave(
     date,
     leaveType,
     reason: 'Personal',
-    markedAt: Date.now(),
+    markedAt: testNow(),
     markedBy: by.uid,
     markedByName: by.name,
     status: 'active',
-    auditLog: [{ action: 'admin_marked', by: by.uid, byName: by.name, at: Date.now() }],
+    auditLog: [{ action: 'admin_marked', by: by.uid, byName: by.name, at: testNow() }],
   })
   return ref.id
 }
@@ -536,7 +537,7 @@ export async function seedWorld(): Promise<void> {
       phone: `+91${u.phone}`,
       role: u.role,
       status: key === 'pending' ? 'pending' : 'approved',
-      createdAt: Date.now(),
+      createdAt: testNow(),
       ...(permissions ? { permissions } : {}),
     })
   }
@@ -553,16 +554,16 @@ export async function seedWorld(): Promise<void> {
    */
   await db.doc('config/stock').set({
     packetsPerCarton: 24, total: 0, locked: 0,
-    defaultPricePerPacket: 60, updatedAt: Date.now(),
+    defaultPricePerPacket: 60, updatedAt: testNow(),
   })
 
   await db.doc('products/prod_wipes').set({
     name: 'Baby Wet Wipes 72s', active: true,
-    defaultPricePerUnit: 60, unitsPerCarton: 24, createdAt: Date.now(),
+    defaultPricePerUnit: 60, unitsPerCarton: 24, createdAt: testNow(),
   })
   await db.doc('products/prod_mini').set({
     name: 'Baby Wet Wipes 30s', active: true,
-    defaultPricePerUnit: 30, unitsPerCarton: 48, createdAt: Date.now(),
+    defaultPricePerUnit: 30, unitsPerCarton: 48, createdAt: testNow(),
   })
 
   const party = (id: string, over: Record<string, unknown>) =>
@@ -572,7 +573,7 @@ export async function seedWorld(): Promise<void> {
       district: 'Ernakulam', state: 'Kerala', pincode: '682001',
       pricePerPacket: 0, packetsAllocated: 0, cartonsAllocated: 0, lowStockThreshold: 0,
       status: 'active',
-      addedBy: USERS.admin.uid, addedByName: USERS.admin.name, createdAt: Date.now(),
+      addedBy: USERS.admin.uid, addedByName: USERS.admin.name, createdAt: testNow(),
       ...over,
     })
 

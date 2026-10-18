@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures/app'
+import { testNow } from './fixtures/clock'
 import { companyAllocation, companyStock, noAllocations } from './fixtures/seed'
 
 /**
@@ -56,7 +57,7 @@ test.describe('settling a bill is a separate authority', () => {
    * Mark paid must not be drawn — the rules would refuse the write.
    */
   test('dispatch does not bring Mark paid with it', async ({ page, loginAs }) => {
-    await companyAllocation({ status: 'sent', sentAt: Date.now(), sentDate: '2099-01-01' })
+    await companyAllocation({ status: 'sent', sentAt: testNow(), sentDate: '2099-01-01' })
 
     await loginAs('manager')
     await openAllocations(page)
@@ -65,7 +66,7 @@ test.describe('settling a bill is a separate authority', () => {
   })
 
   test('a manager who holds mark_paid does get it', async ({ page, loginAs }) => {
-    await companyAllocation({ status: 'sent', sentAt: Date.now(), sentDate: '2099-01-01' })
+    await companyAllocation({ status: 'sent', sentAt: testNow(), sentDate: '2099-01-01' })
 
     await loginAs('managerPlus')
     await openAllocations(page)

@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures/app'
+import { testDate } from './fixtures/clock'
 import {
   companyAllocation, companyStock, noAllocations, noTargetsSet, packetTarget, todayLocal,
   addProduct,
@@ -48,13 +49,13 @@ test.beforeEach(async () => {
  */
 /** A date this many days back, for asserting on days that have gone. */
 function dayBefore(n: number): string {
-  const d = new Date()
+  const d = testDate()
   d.setDate(d.getDate() - n)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 function aSettableDay(): string {
-  const d = new Date()
+  const d = testDate()
   while (d.getDay() === 0) d.setDate(d.getDate() + 1)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }

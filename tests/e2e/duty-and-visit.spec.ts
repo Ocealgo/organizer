@@ -38,7 +38,9 @@ test.describe('the duty gate', () => {
     await expect(page.getByText('You have not started your day yet. Punch in to unlock your outlet list.')).toBeVisible()
     const logVisit = page.getByRole('button', { name: /Log a visit/ })
     await expect(logVisit).toBeDisabled()
-    await expect(page.getByText('Locked until you start the day')).toBeVisible()
+    // Logging a call is locked the same way, so the text is read off the visit tile.
+    await expect(logVisit.getByText('Locked until you start the day')).toBeVisible()
+    await expect(page.getByRole('button', { name: /Log a call or message/ })).toBeDisabled()
   })
 
   test('punching in unlocks the outlet list', async ({ page, loginAs, stubCamera }) => {
@@ -96,8 +98,10 @@ test.describe('the duty gate', () => {
     await page.getByRole('button', { name: 'End the day' }).last().click()
 
     await expect(page.getByText(/Your day is finished — 0 visits logged and 63 km travelled/)).toBeVisible()
-    await expect(page.getByRole('button', { name: /Log a visit/ })).toBeDisabled()
-    await expect(page.getByText('Locked — you have punched out for the day')).toBeVisible()
+    const logVisit = page.getByRole('button', { name: /Log a visit/ })
+    await expect(logVisit).toBeDisabled()
+    // Calls lock the same way, so the text is read off the visit tile.
+    await expect(logVisit.getByText('Locked — you have punched out for the day')).toBeVisible()
   })
 
   /**
@@ -189,7 +193,7 @@ test.describe('an outlet visit', () => {
     await loginAs('manager')
 
     // Both halves of the job, and the team half is what they land on.
-    await expect(page.getByRole('button', { name: 'Your team' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Your team', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Your day' }).click()
 
     // No vehicle, no meter, no explanation demanded. An officer is held to the
@@ -203,7 +207,7 @@ test.describe('an outlet visit', () => {
     await expect(page.getByRole('button', { name: /Log a visit/ })).toBeEnabled()
 
     // And the supervisor half is still one tap away.
-    await page.getByRole('button', { name: 'Your team' }).click()
+    await page.getByRole('button', { name: 'Your team', exact: true }).click()
     if (isMobile) await page.getByRole('button', { name: 'Menu' }).click()
     await expect(page.locator('header').getByRole('button', { name: 'Team' })).toBeVisible()
   })
@@ -220,6 +224,7 @@ test.describe('an outlet visit', () => {
     await page.getByPlaceholder('Koramangala').fill('Kaloor')
     await page.getByRole('button', { name: /Save retailer/ }).click()
 
-    await expect(page.getByText(/already registered to Anand Stores/)).toBeVisible()
+    // Said under the field and again by the save button; the field's is the one that matters.
+    await expect(page.getByText(/already registered to Anand Stores/).first()).toBeVisible()
   })
 })

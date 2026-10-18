@@ -1,5 +1,6 @@
 import { test as base, expect, Page } from '@playwright/test'
 import { resetWorld, seedWorld, USERS, PASSWORD, UserKey } from './seed'
+import { shiftClock } from './clock'
 
 /**
  * The shared harness.
@@ -10,6 +11,8 @@ import { resetWorld, seedWorld, USERS, PASSWORD, UserKey } from './seed'
  */
 
 export interface AppFixtures {
+  /** Reset and reseed before each test; see the fixture. */
+  world: void
   /** Sign in as one of the seeded accounts and wait for the app to settle. */
   loginAs: (who: UserKey) => Promise<void>
   /**
@@ -34,6 +37,22 @@ const TINY_JPEG = Buffer.from(
 )
 
 export const test = base.extend<AppFixtures>({
+  /**
+   * A freshly wiped and reseeded world, before every test in every file.
+   *
+   * A fixture, not a `test.beforeEach` in this module. A hook declared in a
+   * shared module is registered once, with the first spec file that imports it
+   * in a worker — every later file then ran on whatever the one before left
+   * behind. That was the isolation flake: a ₹/km rate set by one file was
+   * still there when the next asserted there was none. Being automatic and
+   * test-scoped, this runs before each test and before each file's own hooks.
+   */
+  world: [async ({}, use) => {
+    await resetWorld()
+    await seedWorld()
+    await use()
+  }, { auto: true }],
+
   // Geolocation is recorded on punch-in and punch-out. A fixed fix keeps the
   // distances in assertions stable.
   contextOptions: async ({ contextOptions }, use) => {
@@ -44,6 +63,12 @@ export const test = base.extend<AppFixtures>({
       locale: 'en-IN',
       timezoneId: 'Asia/Kolkata',
     })
+  },
+
+  // The browser runs on the suite's clock, the same day the seeds write.
+  context: async ({ context }, use) => {
+    await shiftClock(context)
+    await use(context)
   },
 
   page: async ({ page }, use) => {
@@ -64,6 +89,11 @@ export const test = base.extend<AppFixtures>({
     await use(async (who: UserKey) => {
       const u = USERS[who]
       await page.goto('/')
+      // A fresh browser against the emulators can sit on "Loading Ocealgo" a
+      // little past the default 10s while auth reports in — about once a run.
+      // Waited for here, generously, rather than failing the spec that
+      // happened to draw it; a real hang still fails, at 30s.
+      await page.getByPlaceholder('you@example.com').waitFor({ timeout: 30_000 })
       await page.getByPlaceholder('you@example.com').fill(u.email)
       await page.getByPlaceholder(/password/i).first().fill(PASSWORD)
       await page.getByRole('button', { name: /sign in/i }).click()
@@ -84,9 +114,15 @@ export const test = base.extend<AppFixtures>({
         timezoneId: 'Asia/Kolkata',
       })
       opened.push(ctx)
+      await shiftClock(ctx)
       const p = await ctx.newPage()
       const u = USERS[who]
       await p.goto('/')
+      // A fresh browser against the emulators can sit on "Loading Ocealgo" a
+      // little past the default 10s while auth reports in — about once a run.
+      // Waited for here, generously, rather than failing the spec that
+      // happened to draw it; a real hang still fails, at 30s.
+      await p.getByPlaceholder('you@example.com').waitFor({ timeout: 30_000 })
       await p.getByPlaceholder('you@example.com').fill(u.email)
       await p.getByPlaceholder(/password/i).first().fill(PASSWORD)
       await p.getByRole('button', { name: /sign in/i }).click()
@@ -105,11 +141,6 @@ export const test = base.extend<AppFixtures>({
       })
     })
   },
-})
-
-test.beforeEach(async () => {
-  await resetWorld()
-  await seedWorld()
 })
 
 /**

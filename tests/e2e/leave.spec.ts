@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures/app'
+import { testDate } from './fixtures/clock'
 import {
   approvedLeave, autoMarkedLeave, makeSuperAdmin, noLeaveRecorded, noOneOnDuty,
 } from './fixtures/seed'
@@ -13,7 +14,7 @@ import { localDateStr } from '../../src/utils/date'
  */
 
 const dayBefore = (days: number) => {
-  const d = new Date()
+  const d = testDate()
   d.setDate(d.getDate() - days)
   return localDateStr(d)
 }

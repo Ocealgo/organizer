@@ -1,4 +1,5 @@
 import { test } from './fixtures/demo'
+import { closedDay, todayLocal } from '../e2e/fixtures/seed'
 
 /**
  * A rep's day, in the order they live it. One clip per journey, so a trainer
@@ -144,13 +145,17 @@ test('04 adding a shop', async ({ page, signIn, say, beat, stubCamera }) => {
 })
 
 test('05 logging expenses', async ({ page, signIn, say, beat }) => {
+  // The allowance is paid for a day worked, so the scene opens on one: started,
+  // finished, with a distance on the meter.
+  await closedDay('rep', todayLocal(), { km: 18 })
   await signIn('rep')
   await say('Expenses live under Yours, in Expense reports.', 2600)
   await page.getByRole('button', { name: /Expense reports/ }).click()
   await beat(1200)
 
   await say('One week at a time. Each working day gets a daily allowance and anything you spent.', 3600)
-  await page.getByRole('button', { name: 'Add the daily allowance' }).first().click()
+  // Named for the band the meter suggests — "Add the HQ allowance" on an 18 km day.
+  await page.getByRole('button', { name: /^Add the .*allowance/ }).first().click()
   await beat(800)
   await say('HQ, EX or OS — pick the one that matches how far you travelled.', 3000)
   await page.getByRole('button', { name: /^HQ/ }).first().click()
