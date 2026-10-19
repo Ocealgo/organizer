@@ -1165,7 +1165,6 @@ export default function AdminDashboard() {
     return (
       <ReportsHome
         onBack={() => setSubScreen("dashboard")}
-        onOpenField={() => setSubScreen("field")}
         onOpenSales={() => setSubScreen("reports")}
         onOpenOpportunities={() => setSubScreen("opportunities")}
         onOpenMonitor={() => setSubScreen("monitor")}

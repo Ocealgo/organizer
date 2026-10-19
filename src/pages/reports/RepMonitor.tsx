@@ -180,7 +180,8 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
    */
   const [pending, setPending] = useState(0)
 
-  const [tab, setTab] = useState<Tab>(initialTab ?? 'eod')
+  // Opens on the first tab, Field activity, unless asked for another.
+  const [tab, setTab] = useState<Tab>(initialTab ?? 'field')
 
   // ── the report's own filters ───────────────────────────────────────────────
   // Separate from the end-of-day ones above, so moving between the tabs does not
@@ -636,8 +637,8 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
       />
       <TabBar<Tab>
         tabs={[
-          { id: 'eod', label: 'End of day' },
           { id: 'field', label: 'Field activity' },
+          { id: 'eod', label: 'End of day' },
           { id: 'report', label: 'Report' },
         ]}
         value={tab} onChange={setTab}

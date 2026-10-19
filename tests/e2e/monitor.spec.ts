@@ -31,6 +31,8 @@ async function openMonitor(page: any) {
   await page.getByRole('button', { name: /^Reports/ }).first().click()
   await page.getByRole('button', { name: /^Monitor reps/ }).click()
   await expect(page.getByRole('heading', { name: 'Monitor reps' })).toBeVisible()
+  // Field activity is the first tab; these specs are about the end of the day.
+  await page.getByRole('button', { name: 'End of day', exact: true }).click()
   await page.getByLabel('Day').fill(todayLocal())
 }
 
@@ -295,14 +297,19 @@ test.describe('the report', () => {
 })
 
 /**
- * Field activity is a tab of Monitor reps now, and the old way in still works:
- * the Reports menu's row lands on that tab rather than on a screen of its own.
+ * Field activity lives only in Monitor reps, as its first tab — the Reports
+ * menu no longer has a row of its own for it.
  */
 test.describe('field activity', () => {
-  test('the reports menu opens it as a tab of Monitor reps', async ({ page, loginAs }) => {
+  test('is the first tab of Monitor reps, and not a row of its own', async ({ page, loginAs }) => {
     await loginAs('manager')
     await page.getByRole('button', { name: /^Reports/ }).first().click()
-    await page.getByRole('button', { name: /^Field activity/ }).click()
+    await expect(page.getByRole('button', { name: /^Field activity/ })).toHaveCount(0)
+    await page.getByRole('button', { name: /^Monitor reps/ }).click()
+
+    // The tabs, in order, and the first one open.
+    const tabs = page.getByRole('button', { name: /^(Field activity|End of day|Report)$/ })
+    await expect(tabs).toHaveText(['Field activity', 'End of day', 'Report'])
 
     await expect(page.getByRole('heading', { name: 'Monitor reps' })).toBeVisible()
     await expect(page.getByText('Attendance, meter readings and every outlet visit with its remarks.')).toBeVisible()
