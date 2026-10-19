@@ -322,50 +322,110 @@ export default function ReportsHome({
 
         {/* ── THIS MONTH: is it going to be made, and are the beats being worked ─ */}
         {tab === 'month' && (<>
-        {/* ── 1. THE MONTH AGAINST ITS TARGET ─────────────────────────────── */}
-        <div>
-          <div style={{ marginBottom: 4 }}><Eyebrow>This month against the target</Eyebrow></div>
-          <div style={{ fontSize: 12, color: t.text3, marginBottom: 14, lineHeight: 1.6 }}>
-            {new Date(thisMonth + '-01T00:00:00').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
-            {' '}· always the current month, because targets are set by the month · packets
-          </div>
-          {pace.reps.length === 0 ? (
-            <div style={{ fontSize: 13, color: t.text3, lineHeight: 1.6 }}>
-              No targets set for this month yet. Set them in The week → Targets, and this
-              shows whether the team is on track.
+        <Panel>
+          {/* ── 1. THE MONTH AGAINST ITS TARGET ─────────────────────────────── */}
+          <div>
+            <div style={{ marginBottom: 4 }}><Eyebrow>This month against the target</Eyebrow></div>
+            <div style={{ fontSize: 12, color: t.text3, marginBottom: 14, lineHeight: 1.6 }}>
+              {new Date(thisMonth + '-01T00:00:00').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
+              {' '}· always the current month, because targets are set by the month · packets
             </div>
-          ) : (
-            <>
-              <div className="oc-stats">
-                <PaceTile value={pace.team.done.toLocaleString('en-IN')} label="Ordered so far"
-                  sub={`of ${pace.team.target.toLocaleString('en-IN')} for the month`} />
-                <PaceTile value={pace.team.dueByToday.toLocaleString('en-IN')} label="Due by today"
-                  sub={pct(pace.team.done, pace.team.dueByToday) === null ? '—'
-                    : `${pct(pace.team.done, pace.team.dueByToday)}% of it done`}
-                  tone={pace.team.done >= pace.team.dueByToday ? 'good' : 'warn'} />
-                <PaceTile value={pace.team.projected.toLocaleString('en-IN')} label="At this pace"
-                  sub={`${pct(pace.team.projected, pace.team.target) ?? 0}% of the target by month end`}
-                  tone={pace.team.projected >= pace.team.target ? 'good' : 'warn'} />
-                <PaceTile
-                  value={pace.team.neededPerDay === null ? '—' : pace.team.neededPerDay.toLocaleString('en-IN')}
-                  label="Needed a day"
-                  sub={pace.team.daysLeft === 0 ? 'last working day'
-                    : `for the ${pace.team.daysLeft} working ${pace.team.daysLeft === 1 ? 'day' : 'days'} left`} />
+            {pace.reps.length === 0 ? (
+              <div style={{ fontSize: 13, color: t.text3, lineHeight: 1.6 }}>
+                No targets set for this month yet. Set them in The week → Targets, and this
+                shows whether the team is on track.
               </div>
+            ) : (
+              <>
+                <div className="oc-stats">
+                  <PaceTile value={pace.team.done.toLocaleString('en-IN')} label="Ordered so far"
+                    sub={`of ${pace.team.target.toLocaleString('en-IN')} for the month`} />
+                  <PaceTile value={pace.team.dueByToday.toLocaleString('en-IN')} label="Due by today"
+                    sub={pct(pace.team.done, pace.team.dueByToday) === null ? '—'
+                      : `${pct(pace.team.done, pace.team.dueByToday)}% of it done`}
+                    tone={pace.team.done >= pace.team.dueByToday ? 'good' : 'warn'} />
+                  <PaceTile value={pace.team.projected.toLocaleString('en-IN')} label="At this pace"
+                    sub={`${pct(pace.team.projected, pace.team.target) ?? 0}% of the target by month end`}
+                    tone={pace.team.projected >= pace.team.target ? 'good' : 'warn'} />
+                  <PaceTile
+                    value={pace.team.neededPerDay === null ? '—' : pace.team.neededPerDay.toLocaleString('en-IN')}
+                    label="Needed a day"
+                    sub={pace.team.daysLeft === 0 ? 'last working day'
+                      : `for the ${pace.team.daysLeft} working ${pace.team.daysLeft === 1 ? 'day' : 'days'} left`} />
+                </div>
 
-              <div style={{ marginTop: 18 }}>
-                <LazyChart data={paceSeries} unit="packets"
-                  currentLabel="Ordered" previousLabel="Target" previousDashed
-                  projectedLabel="At this pace" />
-              </div>
+                <div style={{ marginTop: 18 }}>
+                  <LazyChart data={paceSeries} unit="packets"
+                    currentLabel="Ordered" previousLabel="Target" previousDashed
+                    projectedLabel="At this pace" />
+                </div>
 
-              {/* Each rep, the same five figures — the chart says how the team
-                  is doing, this says who is carrying it. */}
-              <div className="oc-scroll-x" style={{ marginTop: 18, border: `0.5px solid ${t.border}`, borderRadius: 6 }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 560 }}>
+                {/* Each rep, the same five figures — the chart says how the team
+                    is doing, this says who is carrying it. */}
+                <div className="oc-scroll-x" style={{ marginTop: 18, border: `0.5px solid ${t.border}`, borderRadius: 6 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 560 }}>
+                    <thead>
+                      <tr>
+                        {['Rep', 'Target', 'Ordered', 'Due by today', 'Pace', 'At this pace', 'Needed a day'].map((h, i) => (
+                          <th key={h} style={{
+                            textAlign: i === 0 ? 'left' : 'right', padding: '9px 10px', fontSize: 11,
+                            fontWeight: 400, letterSpacing: '0.06em', textTransform: 'uppercase',
+                            color: t.text3, borderBottom: `0.5px solid ${t.border}`, whiteSpace: 'nowrap',
+                          }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pace.reps.map(r => {
+                        const on = pct(r.done, r.dueByToday)
+                        const cell = { textAlign: 'right' as const, padding: '9px 10px', color: t.text,
+                                       fontVariantNumeric: 'tabular-nums' as const, whiteSpace: 'nowrap' as const,
+                                       borderBottom: `0.5px solid ${t.border}` }
+                        const ahead = r.done >= r.dueByToday
+                        return (
+                          <tr key={r.uid} data-testid={`pace-row-${r.uid}`}>
+                            <td style={{ ...cell, textAlign: 'left', fontWeight: 500 }}>{r.name}</td>
+                            <td style={cell}>{r.target.toLocaleString('en-IN')}</td>
+                            <td style={cell}>{r.done.toLocaleString('en-IN')}</td>
+                            <td style={cell}>{r.dueByToday.toLocaleString('en-IN')}</td>
+                            {/* Ahead or behind in words as well as colour. */}
+                            <td style={{ ...cell, color: ahead ? t.good : t.warn, fontWeight: 500 }}>
+                              {on === null ? '—' : `${on}% · ${ahead ? 'ahead' : 'behind'}`}
+                            </td>
+                            <td style={cell}>{r.projected.toLocaleString('en-IN')}</td>
+                            <td style={cell}>{r.neededPerDay === null ? '—' : r.neededPerDay.toLocaleString('en-IN')}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ fontSize: 12, color: t.text3, marginTop: 8, lineHeight: 1.6 }}>
+                  At this pace carries the month so far on at the same rate per working day.
+                  Needed a day is what clears the target from tomorrow. A target set for the
+                  month but not divided into days is spread evenly over its working days.
+                </div>
+              </>
+            )}
+          </div>
+        </Panel>
+
+        <Panel>
+          {/* ── 3. ARE THE BEATS BEING WORKED ───────────────────────────────── */}
+          <div>
+            <div style={{ marginBottom: 4 }}><Eyebrow>Beat coverage</Eyebrow></div>
+            <div style={{ fontSize: 12, color: t.text3, marginBottom: 12, lineHeight: 1.6 }}>
+              This month so far. Visited: shops on the beat seen at least once. Ordered: of
+              those, how many bought — what the visits turned into.
+            </div>
+            {coverage.beats.length === 0 ? (
+              <div style={{ fontSize: 13, color: t.text3 }}>No beats yet. Set them up in Beats.</div>
+            ) : (
+              <div className="oc-scroll-x" style={{ border: `0.5px solid ${t.border}`, borderRadius: 6 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 520 }}>
                   <thead>
                     <tr>
-                      {['Rep', 'Target', 'Ordered', 'Due by today', 'Pace', 'At this pace', 'Needed a day'].map((h, i) => (
+                      {['Beat', 'Shops', 'Visited', 'Coverage', 'Ordered', 'Effective'].map((h, i) => (
                         <th key={h} style={{
                           textAlign: i === 0 ? 'left' : 'right', padding: '9px 10px', fontSize: 11,
                           fontWeight: 400, letterSpacing: '0.06em', textTransform: 'uppercase',
@@ -375,54 +435,162 @@ export default function ReportsHome({
                     </tr>
                   </thead>
                   <tbody>
-                    {pace.reps.map(r => {
-                      const on = pct(r.done, r.dueByToday)
+                    {[...coverage.beats, coverage.all].map(c => {
+                      const cov = pct(c.visited, c.shops)
+                      const eff = pct(c.ordered, c.shops)
+                      const total = c.id === 'all'
                       const cell = { textAlign: 'right' as const, padding: '9px 10px', color: t.text,
                                      fontVariantNumeric: 'tabular-nums' as const, whiteSpace: 'nowrap' as const,
-                                     borderBottom: `0.5px solid ${t.border}` }
-                      const ahead = r.done >= r.dueByToday
+                                     borderBottom: `0.5px solid ${t.border}`, fontWeight: total ? 500 : 400 }
                       return (
-                        <tr key={r.uid} data-testid={`pace-row-${r.uid}`}>
-                          <td style={{ ...cell, textAlign: 'left', fontWeight: 500 }}>{r.name}</td>
-                          <td style={cell}>{r.target.toLocaleString('en-IN')}</td>
-                          <td style={cell}>{r.done.toLocaleString('en-IN')}</td>
-                          <td style={cell}>{r.dueByToday.toLocaleString('en-IN')}</td>
-                          {/* Ahead or behind in words as well as colour. */}
-                          <td style={{ ...cell, color: ahead ? t.good : t.warn, fontWeight: 500 }}>
-                            {on === null ? '—' : `${on}% · ${ahead ? 'ahead' : 'behind'}`}
+                        <tr key={c.id} data-testid={`coverage-row-${c.id}`}>
+                          <td style={{ ...cell, textAlign: 'left', whiteSpace: 'normal' }}>
+                            {c.name}
+                            {c.places && <div style={{ fontSize: 12, color: t.text3, fontWeight: 400 }}>{c.places}</div>}
                           </td>
-                          <td style={cell}>{r.projected.toLocaleString('en-IN')}</td>
-                          <td style={cell}>{r.neededPerDay === null ? '—' : r.neededPerDay.toLocaleString('en-IN')}</td>
+                          <td style={cell}>{c.shops}</td>
+                          <td style={cell}>{c.visited}</td>
+                          <td style={{ ...cell, color: cov !== null && cov < 85 ? t.warn : t.text }}>
+                            {cov === null ? '—' : `${cov}%`}
+                          </td>
+                          <td style={cell}>{c.ordered}</td>
+                          <td style={cell}>{eff === null ? '—' : `${eff}%`}</td>
                         </tr>
                       )
                     })}
                   </tbody>
                 </table>
               </div>
-              <div style={{ fontSize: 12, color: t.text3, marginTop: 8, lineHeight: 1.6 }}>
-                At this pace carries the month so far on at the same rate per working day.
-                Needed a day is what clears the target from tomorrow. A target set for the
-                month but not divided into days is spread evenly over its working days.
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* ── 3. ARE THE BEATS BEING WORKED ───────────────────────────────── */}
-        <div>
-          <div style={{ marginBottom: 4 }}><Eyebrow>Beat coverage</Eyebrow></div>
-          <div style={{ fontSize: 12, color: t.text3, marginBottom: 12, lineHeight: 1.6 }}>
-            This month so far. Visited: shops on the beat seen at least once. Ordered: of
-            those, how many bought — what the visits turned into.
+            )}
+            <div style={{ fontSize: 12, color: t.text3, marginTop: 8, lineHeight: 1.6 }}>
+              Coverage under 85% is marked — the usual rule of thumb for a beat that is being
+              worked.{coverage.offBeat > 0 && ` ${coverage.offBeat} ${coverage.offBeat === 1 ? 'shop is' : 'shops are'} on no beat at all, so nobody is routed to ${coverage.offBeat === 1 ? 'it' : 'them'}.`}
+            </div>
           </div>
-          {coverage.beats.length === 0 ? (
-            <div style={{ fontSize: 13, color: t.text3 }}>No beats yet. Set them up in Beats.</div>
-          ) : (
+        </Panel>
+        </>)}
+
+        {/* ── COMPARE: against the period before, and the growth over months ── */}
+        {tab === 'compare' && (<>
+        {readError && <Note tone="warn">{readError}</Note>}
+
+        <Panel title="Period against period"
+          note="The dates you pick here change everything in this box.">
+          {/* Filters, in one row above the figures */}
+          <div>
+            <div style={{ marginBottom: 8 }}><Eyebrow>When</Eyebrow></div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {([['this_month', 'This month'], ['last_30', 'Last 30 days'], ['custom', 'Custom']] as const)
+                .map(([id, label]) => (
+                  <button key={id} className="oc-action" onClick={() => setPreset(id)}
+                    style={{
+                      background: 'none',
+                      border: `0.5px solid ${preset === id ? t.text2 : t.border}`,
+                      borderRadius: 99, padding: '6px 13px', fontSize: 12,
+                      color: preset === id ? t.text : t.text3, cursor: 'pointer',
+                    }}>
+                    {label}
+                  </button>
+                ))}
+            </div>
+            {preset === 'custom' && (
+              <div className="oc-wrap" style={{ gap: 10, marginTop: 12 }}>
+                <div style={{ flex: '1 1 150px' }}>
+                  <DateInput type="date" value={from} onChange={setFrom} max={to} />
+                </div>
+                <div style={{ flex: '1 1 150px' }}>
+                  <DateInput type="date" value={to} onChange={setTo} min={from} />
+                </div>
+              </div>
+            )}
+            <div style={{ fontSize: 12, color: t.text3, marginTop: 10, lineHeight: 1.6 }}>
+              {current.from} to {current.to}, against {previous.from} to {previous.to} —
+              the same {spanDays} {spanDays === 1 ? 'day' : 'days'} immediately before, so a
+              month still being lived is not compared against a whole one.
+            </div>
+          </div>
+
+          {/* The headline numbers. Stat tiles with a delta, not a chart — four
+              figures do not need four charts. */}
+          <div>
+            <div style={{ marginBottom: 12 }}><Eyebrow>Against last period</Eyebrow></div>
+            <div className="oc-stats">
+              <Delta label="Visits" now={cur.visits} before={prev.visits} loading={loading} thin={!comparable} />
+              <Delta label="Strike rate" now={strikeNow.rate ?? 0} before={strikeBefore.rate ?? 0}
+                fmt={n => `${n}%`} points loading={loading} thin={!comparable}
+                note={`${strikeNow.productive} of ${strikeNow.visits} visits ended in an order`} />
+              <Delta label="Ordered" now={cur.orderValue} before={prev.orderValue}
+                fmt={inr} loading={loading} thin={!comparable} />
+              <Delta label="Collected" now={cur.collected} before={prev.collected}
+                fmt={inr} loading={loading} thin={!comparable} />
+            </div>
+          </div>
+
+          {/* Who did what */}
+          <div>
+            <div style={{ marginBottom: 10 }}><Eyebrow>By person</Eyebrow></div>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+              {([['visits', 'Shops visited'], ['strike', 'Strike rate'], ['orders', 'Ordered'], ['collected', 'Collected']] as const)
+                .map(([id, label]) => (
+                  <button key={id} className="oc-action" onClick={() => setRankBy(id)}
+                    style={{
+                      background: 'none',
+                      border: `0.5px solid ${rankBy === id ? t.text2 : t.border}`,
+                      borderRadius: 99, padding: '6px 13px', fontSize: 12,
+                      color: rankBy === id ? t.text : t.text3, cursor: 'pointer',
+                    }}>
+                    {label}
+                  </button>
+                ))}
+            </div>
+            {loading
+              ? <div style={{ fontSize: 13, color: t.text3 }}>Loading…</div>
+              : <RankedBars rows={ranked} showRank={rankBy === 'strike'}
+                  format={rankBy === 'visits' ? undefined : rankBy === 'strike' ? (n => `${n}%`) : inr}
+                  emptyText={rankBy === 'strike'
+                    ? `Nobody has ${MIN_VISITS_FOR_RATE} or more visits in this window yet.` : undefined} />}
+            {rankBy === 'strike' && (
+              <div style={{ fontSize: 12, color: t.text3, marginTop: 10, lineHeight: 1.6 }}>
+                Visits that ended in an order. In general trade 60–75% is a good rep. Anyone with
+                fewer than {MIN_VISITS_FOR_RATE} visits is left out — 1 of 1 is not a rate.
+              </div>
+            )}
+          </div>
+        </Panel>
+
+        <Panel title="Growth, month by month"
+          note="Always the last six months, whatever dates are picked above.">
+          {/* ── GROWTH, MONTH BY MONTH ──────────────────────────────────────── */}
+          <div>
+            <div style={{ fontSize: 12, color: t.text3, marginBottom: 12, lineHeight: 1.6 }}>
+              Order value per calendar month, cancellations excluded. The month under way is shown
+              but not counted in the growth — it is always behind a whole month until its last day —
+              and neither is a first month that only began partway through.
+            </div>
+            <div className="oc-stats" style={{ marginBottom: 14 }}>
+              <PaceTile
+                value={growth.average === null ? '—' : `${growth.average > 0 ? '+' : ''}${growth.average}%`}
+                label="Average monthly growth"
+                sub={growth.average === null
+                  ? `needs 3 complete months of orders — ${growth.span} so far`
+                  : `compound, over the last ${growth.span} complete months`}
+                tone={growth.average === null ? undefined : growth.average >= 0 ? 'good' : 'warn'} />
+              {(() => {
+                const i = monthTotals.length - 2       // the last complete month
+                const c = i >= 0 ? growth.change[i] : null
+                return (
+                  <PaceTile value={c === null ? '—' : `${c > 0 ? '+' : ''}${c}%`}
+                    label={i >= 0 ? `${monthTotals[i].label} against the month before` : 'Last month'}
+                    sub={i >= 0 ? inr(monthTotals[i].value) : '—'}
+                    tone={c === null ? undefined : c >= 0 ? 'good' : 'warn'} />
+                )
+              })()}
+            </div>
             <div className="oc-scroll-x" style={{ border: `0.5px solid ${t.border}`, borderRadius: 6 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 520 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 440 }}>
                 <thead>
                   <tr>
-                    {['Beat', 'Shops', 'Visited', 'Coverage', 'Ordered', 'Effective'].map((h, i) => (
+                    {['Month', 'Order value', 'Packets', 'Orders', 'Change'].map((h, i) => (
                       <th key={h} style={{
                         textAlign: i === 0 ? 'left' : 'right', padding: '9px 10px', fontSize: 11,
                         fontWeight: 400, letterSpacing: '0.06em', textTransform: 'uppercase',
@@ -432,194 +600,33 @@ export default function ReportsHome({
                   </tr>
                 </thead>
                 <tbody>
-                  {[...coverage.beats, coverage.all].map(c => {
-                    const cov = pct(c.visited, c.shops)
-                    const eff = pct(c.ordered, c.shops)
-                    const total = c.id === 'all'
+                  {monthTotals.map((m, i) => {
+                    const c = growth.change[i]
                     const cell = { textAlign: 'right' as const, padding: '9px 10px', color: t.text,
                                    fontVariantNumeric: 'tabular-nums' as const, whiteSpace: 'nowrap' as const,
-                                   borderBottom: `0.5px solid ${t.border}`, fontWeight: total ? 500 : 400 }
+                                   borderBottom: `0.5px solid ${t.border}` }
                     return (
-                      <tr key={c.id} data-testid={`coverage-row-${c.id}`}>
-                        <td style={{ ...cell, textAlign: 'left', whiteSpace: 'normal' }}>
-                          {c.name}
-                          {c.places && <div style={{ fontSize: 12, color: t.text3, fontWeight: 400 }}>{c.places}</div>}
+                      <tr key={m.month} data-testid={`growth-row-${m.month}`}>
+                        <td style={{ ...cell, textAlign: 'left', fontWeight: 500 }}>
+                          {m.label}
+                          {!m.complete && <span style={{ fontWeight: 400, color: t.text3 }}> · so far</span>}
+                          {m.partial && <span style={{ fontWeight: 400, color: t.text3 }}> · partial</span>}
                         </td>
-                        <td style={cell}>{c.shops}</td>
-                        <td style={cell}>{c.visited}</td>
-                        <td style={{ ...cell, color: cov !== null && cov < 85 ? t.warn : t.text }}>
-                          {cov === null ? '—' : `${cov}%`}
+                        <td style={cell}>{inr(m.value)}</td>
+                        <td style={cell}>{m.packets.toLocaleString('en-IN')}</td>
+                        <td style={cell}>{m.orders}</td>
+                        {/* Up or down in words as well as colour. */}
+                        <td style={{ ...cell, color: c === null ? t.text3 : c >= 0 ? t.good : t.warn }}>
+                          {!m.complete ? 'under way' : m.partial ? 'not counted' : c === null ? '—' : `${c >= 0 ? 'up' : 'down'} ${Math.abs(c)}%`}
                         </td>
-                        <td style={cell}>{c.ordered}</td>
-                        <td style={cell}>{eff === null ? '—' : `${eff}%`}</td>
                       </tr>
                     )
                   })}
                 </tbody>
               </table>
             </div>
-          )}
-          <div style={{ fontSize: 12, color: t.text3, marginTop: 8, lineHeight: 1.6 }}>
-            Coverage under 85% is marked — the usual rule of thumb for a beat that is being
-            worked.{coverage.offBeat > 0 && ` ${coverage.offBeat} ${coverage.offBeat === 1 ? 'shop is' : 'shops are'} on no beat at all, so nobody is routed to ${coverage.offBeat === 1 ? 'it' : 'them'}.`}
           </div>
-        </div>
-
-        </>)}
-
-        {/* ── COMPARE: against the period before, and the growth over months ── */}
-        {tab === 'compare' && (<>
-        {/* Filters, in one row above the figures */}
-        <div>
-          <div style={{ marginBottom: 8 }}><Eyebrow>When</Eyebrow></div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {([['this_month', 'This month'], ['last_30', 'Last 30 days'], ['custom', 'Custom']] as const)
-              .map(([id, label]) => (
-                <button key={id} className="oc-action" onClick={() => setPreset(id)}
-                  style={{
-                    background: 'none',
-                    border: `0.5px solid ${preset === id ? t.text2 : t.border}`,
-                    borderRadius: 99, padding: '6px 13px', fontSize: 12,
-                    color: preset === id ? t.text : t.text3, cursor: 'pointer',
-                  }}>
-                  {label}
-                </button>
-              ))}
-          </div>
-          {preset === 'custom' && (
-            <div className="oc-wrap" style={{ gap: 10, marginTop: 12 }}>
-              <div style={{ flex: '1 1 150px' }}>
-                <DateInput type="date" value={from} onChange={setFrom} max={to} />
-              </div>
-              <div style={{ flex: '1 1 150px' }}>
-                <DateInput type="date" value={to} onChange={setTo} min={from} />
-              </div>
-            </div>
-          )}
-          <div style={{ fontSize: 12, color: t.text3, marginTop: 10, lineHeight: 1.6 }}>
-            {current.from} to {current.to}, against {previous.from} to {previous.to} —
-            the same {spanDays} {spanDays === 1 ? 'day' : 'days'} immediately before, so a
-            month still being lived is not compared against a whole one.
-          </div>
-        </div>
-
-        {readError && <Note tone="warn">{readError}</Note>}
-
-        {/* The headline numbers. Stat tiles with a delta, not a chart — four
-            figures do not need four charts. */}
-        <div>
-          <div style={{ marginBottom: 12 }}><Eyebrow>Against last period</Eyebrow></div>
-          <div className="oc-stats">
-            <Delta label="Visits" now={cur.visits} before={prev.visits} loading={loading} thin={!comparable} />
-            <Delta label="Strike rate" now={strikeNow.rate ?? 0} before={strikeBefore.rate ?? 0}
-              fmt={n => `${n}%`} points loading={loading} thin={!comparable}
-              note={`${strikeNow.productive} of ${strikeNow.visits} visits ended in an order`} />
-            <Delta label="Ordered" now={cur.orderValue} before={prev.orderValue}
-              fmt={inr} loading={loading} thin={!comparable} />
-            <Delta label="Collected" now={cur.collected} before={prev.collected}
-              fmt={inr} loading={loading} thin={!comparable} />
-          </div>
-        </div>
-
-        {/* ── GROWTH, MONTH BY MONTH ──────────────────────────────────────── */}
-        <div>
-          <div style={{ marginBottom: 4 }}><Eyebrow>Growth, month by month</Eyebrow></div>
-          <div style={{ fontSize: 12, color: t.text3, marginBottom: 12, lineHeight: 1.6 }}>
-            Order value per calendar month, cancellations excluded. The month under way is shown
-            but not counted in the growth — it is always behind a whole month until its last day —
-            and neither is a first month that only began partway through.
-          </div>
-          <div className="oc-stats" style={{ marginBottom: 14 }}>
-            <PaceTile
-              value={growth.average === null ? '—' : `${growth.average > 0 ? '+' : ''}${growth.average}%`}
-              label="Average monthly growth"
-              sub={growth.average === null
-                ? `needs 3 complete months of orders — ${growth.span} so far`
-                : `compound, over the last ${growth.span} complete months`}
-              tone={growth.average === null ? undefined : growth.average >= 0 ? 'good' : 'warn'} />
-            {(() => {
-              const i = monthTotals.length - 2       // the last complete month
-              const c = i >= 0 ? growth.change[i] : null
-              return (
-                <PaceTile value={c === null ? '—' : `${c > 0 ? '+' : ''}${c}%`}
-                  label={i >= 0 ? `${monthTotals[i].label} against the month before` : 'Last month'}
-                  sub={i >= 0 ? inr(monthTotals[i].value) : '—'}
-                  tone={c === null ? undefined : c >= 0 ? 'good' : 'warn'} />
-              )
-            })()}
-          </div>
-          <div className="oc-scroll-x" style={{ border: `0.5px solid ${t.border}`, borderRadius: 6 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 440 }}>
-              <thead>
-                <tr>
-                  {['Month', 'Order value', 'Packets', 'Orders', 'Change'].map((h, i) => (
-                    <th key={h} style={{
-                      textAlign: i === 0 ? 'left' : 'right', padding: '9px 10px', fontSize: 11,
-                      fontWeight: 400, letterSpacing: '0.06em', textTransform: 'uppercase',
-                      color: t.text3, borderBottom: `0.5px solid ${t.border}`, whiteSpace: 'nowrap',
-                    }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {monthTotals.map((m, i) => {
-                  const c = growth.change[i]
-                  const cell = { textAlign: 'right' as const, padding: '9px 10px', color: t.text,
-                                 fontVariantNumeric: 'tabular-nums' as const, whiteSpace: 'nowrap' as const,
-                                 borderBottom: `0.5px solid ${t.border}` }
-                  return (
-                    <tr key={m.month} data-testid={`growth-row-${m.month}`}>
-                      <td style={{ ...cell, textAlign: 'left', fontWeight: 500 }}>
-                        {m.label}
-                        {!m.complete && <span style={{ fontWeight: 400, color: t.text3 }}> · so far</span>}
-                        {m.partial && <span style={{ fontWeight: 400, color: t.text3 }}> · partial</span>}
-                      </td>
-                      <td style={cell}>{inr(m.value)}</td>
-                      <td style={cell}>{m.packets.toLocaleString('en-IN')}</td>
-                      <td style={cell}>{m.orders}</td>
-                      {/* Up or down in words as well as colour. */}
-                      <td style={{ ...cell, color: c === null ? t.text3 : c >= 0 ? t.good : t.warn }}>
-                        {!m.complete ? 'under way' : m.partial ? 'not counted' : c === null ? '—' : `${c >= 0 ? 'up' : 'down'} ${Math.abs(c)}%`}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Who did what */}
-        <div>
-          <div style={{ marginBottom: 10 }}><Eyebrow>By person</Eyebrow></div>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-            {([['visits', 'Shops visited'], ['strike', 'Strike rate'], ['orders', 'Ordered'], ['collected', 'Collected']] as const)
-              .map(([id, label]) => (
-                <button key={id} className="oc-action" onClick={() => setRankBy(id)}
-                  style={{
-                    background: 'none',
-                    border: `0.5px solid ${rankBy === id ? t.text2 : t.border}`,
-                    borderRadius: 99, padding: '6px 13px', fontSize: 12,
-                    color: rankBy === id ? t.text : t.text3, cursor: 'pointer',
-                  }}>
-                  {label}
-                </button>
-              ))}
-          </div>
-          {loading
-            ? <div style={{ fontSize: 13, color: t.text3 }}>Loading…</div>
-            : <RankedBars rows={ranked} showRank={rankBy === 'strike'}
-                format={rankBy === 'visits' ? undefined : rankBy === 'strike' ? (n => `${n}%`) : inr}
-                emptyText={rankBy === 'strike'
-                  ? `Nobody has ${MIN_VISITS_FOR_RATE} or more visits in this window yet.` : undefined} />}
-          {rankBy === 'strike' && (
-            <div style={{ fontSize: 12, color: t.text3, marginTop: 10, lineHeight: 1.6 }}>
-              Visits that ended in an order. In general trade 60–75% is a good rep. Anyone with
-              fewer than {MIN_VISITS_FOR_RATE} visits is left out — 1 of 1 is not a rate.
-            </div>
-          )}
-        </div>
-
+        </Panel>
         </>)}
 
         {/* The two screens that already answer everything else */}
@@ -665,6 +672,38 @@ export default function ReportsHome({
  * alone means nothing to a reader who cannot see it as green — and because
  * "up" and "down" survive a printout.
  */
+/**
+ * One bordered box per question on the page.
+ *
+ * Where a filter sits inside a box it is that box's alone, and the note says
+ * so; a box with no filter in it says what it follows instead. Without the
+ * borders the Compare tab read as one list, and nobody could tell which of it
+ * the dates had just changed.
+ */
+function Panel({ title, note, children }: {
+  title?: string; note?: string; children: React.ReactNode
+}) {
+  const { t } = useTheme()
+  return (
+    <section style={{
+      border: `0.5px solid ${t.border2}`, borderRadius: 8, padding: '18px 18px 20px',
+      display: 'flex', flexDirection: 'column', gap: 22,
+    }}>
+      {(title || note) && (
+        <div style={{ marginBottom: -8 }}>
+          {title && <div style={{ fontSize: 15, fontWeight: 500, color: t.text }}>{title}</div>}
+          {note && (
+            <div style={{ fontSize: 12, color: t.text2, marginTop: title ? 3 : 0, lineHeight: 1.5 }}>
+              {note}
+            </div>
+          )}
+        </div>
+      )}
+      {children}
+    </section>
+  )
+}
+
 /** A figure for the month's pace — no comparison, so no Delta, but the same tile. */
 function PaceTile({ value, label, sub, tone }: {
   value: string; label: string; sub: string; tone?: 'good' | 'warn'

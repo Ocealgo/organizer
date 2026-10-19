@@ -89,6 +89,13 @@ test('opens on This month, and Compare holds the period-against-period figures',
   await page.getByRole('button', { name: 'Compare', exact: true }).click()
   await expect(page.getByText('Against last period')).toBeVisible()
   await expect(page.getByText('Growth, month by month')).toBeVisible()
+
+  // The dates live in the box they change, and the growth box says it ignores them.
+  const period = page.locator('section', { hasText: 'Period against period' })
+  const growth = page.locator('section', { hasText: 'Growth, month by month' })
+  await expect(period.getByRole('button', { name: 'Last 30 days' })).toBeVisible()
+  await expect(growth.getByRole('button', { name: 'Last 30 days' })).toHaveCount(0)
+  await expect(growth.getByText('Always the last six months, whatever dates are picked above.')).toBeVisible()
 })
 
 /** Nothing in the period before: say so, rather than "up 100%". */
