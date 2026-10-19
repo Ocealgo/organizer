@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { testDate } from './fixtures/clock'
 import {
   companyAllocation, companyStock, noAllocations, noTargetsSet,
-  packetTarget, todayLocal, closedDay, claimedExpense, noOneOnDuty, noWeeksFiled,
+  packetTarget, todayLocal, closedDay, openDay, claimedExpense, noOneOnDuty, noWeeksFiled,
 } from './fixtures/seed'
 
 /**
@@ -180,6 +180,39 @@ test.describe('travel and spend on the card', () => {
  * rather than inheriting whatever week the suite happens to run in — on a
  * Sunday the default Monday-to-Saturday week would not contain today at all.
  */
+/**
+ * The card says where the day stands, in the words Field activity uses, so the
+ * two screens never disagree about whether somebody is still out.
+ */
+test.describe('where the day stands', () => {
+  test('a day still open says so, and is not short yet', async ({ page, loginAs }) => {
+    await openDay('rep', todayLocal())
+    await packetTarget('rep', todayLocal().slice(0, 7), 1000, { [todayLocal()]: 30 })
+    await loginAs('manager')
+    await openMonitor(page)
+
+    await expect(page.getByTestId(`eod-day-e2e_rep-${todayLocal()}`)).toContainText('Still out · since')
+    await expect(page.getByText('So far · 0 of 30')).toBeVisible()
+    await expect(page.getByText('✗ Short')).toHaveCount(0)
+    await expect(page.getByText('pending — day still open')).toBeVisible()
+  })
+
+  test('a finished day says when it ran', async ({ page, loginAs }) => {
+    await closedDay('rep', todayLocal(), { km: 47 })
+    await loginAs('manager')
+    await openMonitor(page)
+    await expect(page.getByTestId(`eod-day-e2e_rep-${todayLocal()}`)).toContainText('Finished ·')
+  })
+
+  test('a day the system closed says it never ended', async ({ page, loginAs }) => {
+    await closedDay('rep', todayLocal(), { km: null, autoClosed: true })
+    await loginAs('manager')
+    await openMonitor(page)
+    await expect(page.getByTestId(`eod-day-e2e_rep-${todayLocal()}`)).toContainText('Never ended')
+    await expect(page.getByText('never ended — no closing reading')).toBeVisible()
+  })
+})
+
 test.describe('the report', () => {
   async function openReport(page: any) {
     await page.getByRole('button', { name: /^Reports/ }).first().click()

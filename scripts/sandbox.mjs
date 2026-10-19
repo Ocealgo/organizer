@@ -209,6 +209,39 @@ async function sandboxExtras() {
     claimedDistanceKm: 47,
     status: 'closed',
   })
+
+  /**
+   * And Priya, still out today: started, three shops in, not ended. The day
+   * Field activity calls "still out" and the end-of-day card has to call the
+   * same thing — a running total, not an end of day.
+   */
+  const priyaStart = new Date(`${today}T09:20:00`).getTime()
+  await db.doc(`duty_sessions/sandbox_today_${USERS.rep2.uid}`).set({
+    uid: USERS.rep2.uid, name: USERS.rep2.name, date: today,
+    routeId: 'route_market', routeName: 'Market Road',
+    startAt: priyaStart, startOdometerKm: 23400, startOdometerPhoto: 'demo/odometer.jpg',
+    startLocation: { lat: 9.9312, lng: 76.2673, accuracy: 18, capturedAt: priyaStart },
+    odometerStatus: 'recorded', status: 'active',
+  })
+  await db.doc(`work_plans/${USERS.rep2.uid}_${today}`).set({
+    uid: USERS.rep2.uid, name: USERS.rep2.name, date: today,
+    routeId: 'route_market', routeName: 'Market Road',
+    targets: { visits: 10, orderValue: 40000 },
+    assignedBy: USERS.manager.uid, assignedByName: USERS.manager.name, createdAt: priyaStart,
+  })
+  const priyaShops = [['party_dist', 'Rajan Distributors', 'distributor'],
+    ['sb_kaloor_1', 'Kaloor Baby Store', 'general'], ['sb_vytt_1', 'Vyttila Fresh', 'grocery']]
+  for (const [i, [id, name, type]] of priyaShops.entries()) {
+    const at = new Date(`${today}T${10 + i}:15:00`).getTime()
+    await db.doc(`outlet_visits/sandbox_today_${USERS.rep2.uid}_${i}`).set({
+      sessionId: `sandbox_today_${USERS.rep2.uid}`, uid: USERS.rep2.uid, name: USERS.rep2.name,
+      role: USERS.rep2.role, date: today, partyId: id, partyName: name, outletType: type,
+      punchInAt: at, punchInLocation: { lat: 9.96 + i * 0.01, lng: 76.29, accuracy: 18, capturedAt: at },
+      punchOutAt: at + 20 * 60_000, durationMinutes: 20,
+      stock: [], competitors: [], photos: [], orderPlaced: false,
+      remarksCategory: 'no_order_stock_available', remarksText: '', status: 'closed',
+    })
+  }
 }
 
 /**
@@ -284,12 +317,12 @@ const SUPER = {
 
 /** Shops on each beat, in their own areas, so the Area column has places to name. */
 const SHOPS = [
-  { id: 'sb_fort_1', name: 'Fort Supermart', place: 'Fort Kochi', type: 'supermarket', category: 'Supermarket' },
+  { id: 'sb_fort_1', name: 'Fort Supermart', place: 'Fort Kochi', type: 'grocery', category: 'Supermarket' },
   { id: 'sb_matt_1', name: 'Mattancherry Medicals', place: 'Mattancherry', type: 'pharmacy', category: 'Pharma' },
   { id: 'sb_kaloor_1', name: 'Kaloor Baby Store', place: 'Kaloor', type: 'general', category: 'General Store' },
-  { id: 'sb_vytt_1', name: 'Vyttila Fresh', place: 'Vyttila', type: 'supermarket', category: 'Supermarket' },
+  { id: 'sb_vytt_1', name: 'Vyttila Fresh', place: 'Vyttila', type: 'grocery', category: 'Supermarket' },
   { id: 'sb_vytt_2', name: 'Hub Pharmacy', place: 'Vyttila', type: 'pharmacy', category: 'Pharma' },
-  { id: 'sb_kakk_1', name: 'Infopark Mart', place: 'Kakkanad', type: 'supermarket', category: 'Supermarket' },
+  { id: 'sb_kakk_1', name: 'Infopark Mart', place: 'Kakkanad', type: 'grocery', category: 'Supermarket' },
   { id: 'sb_edap_1', name: 'Lulu Kids Corner', place: 'Edappally', type: 'general', category: 'General Store' },
   { id: 'sb_edap_2', name: 'Edappally Care Pharmacy', place: 'Edappally', type: 'pharmacy', category: 'Pharma' },
   // On a beat, and never visited — so Beat coverage has gaps to show, the way a
@@ -327,7 +360,7 @@ const EXTRA_BEATS = {
 }
 const KINDS = [
   ['general', 'General Store', 'Stores'], ['pharmacy', 'Pharma', 'Medicals'],
-  ['supermarket', 'Supermarket', 'Mart'], ['general', 'General Store', 'Baby Shop'],
+  ['grocery', 'Supermarket', 'Mart'], ['general', 'General Store', 'Baby Shop'],
 ]
 for (const beats of Object.values(EXTRA_BEATS)) {
   for (const b of beats) {

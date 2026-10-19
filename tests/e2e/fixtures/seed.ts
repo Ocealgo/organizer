@@ -187,6 +187,19 @@ export async function closedDay(
   return id
 }
 
+/** A day started and not yet ended — "still out". */
+export async function openDay(who: UserKey, date: string): Promise<string> {
+  const u = USERS[who]
+  const id = `open_${u.uid}_${date}`
+  await getFirestore(admin()).doc(`duty_sessions/${id}`).set({
+    uid: u.uid, name: u.name, date,
+    startAt: testNow() - 2 * 3600_000,
+    status: 'active', odometerStatus: 'recorded',
+    startOdometerKm: 41000, startOdometerPhoto: 'demo/odometer.jpg',
+  })
+  return id
+}
+
 /**
  * A claim already on somebody's week, for a spec about what the day shows
  * rather than about how the claim was made.
