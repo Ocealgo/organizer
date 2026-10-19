@@ -776,6 +776,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
                   ? new Date(ms).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ''
                 return (
                   <div key={`${c.uid}_${c.date}`} style={{
+                    background: t.card,
                     border: `0.5px solid ${missed ? t.border2 : t.border}`,
                     borderLeft: `2px solid ${met ? t.good : missed ? t.warn : t.border}`,
                     borderRadius: 6, padding: '14px 16px',
@@ -798,9 +799,19 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
                       }}>
                         {c.day === 'out' ? `Still out · since ${hhmm(c.startAt)}`
                           : c.day === 'finished' ? `Finished · ${hhmm(c.startAt)}–${hhmm(c.endAt)}`
-                          : c.day === 'auto_closed' ? 'Never ended · closed at 11 pm'
+                          : c.day === 'auto_closed' ? `${hhmm(c.startAt)}–${hhmm(c.endAt)}`
                           : 'Not started'}
                       </span>
+                      {/* Said by the system, not the rep — the end time is when
+                          the nightly job closed it, and no distance was claimed. */}
+                      {c.day === 'auto_closed' && (
+                        <span style={{
+                          fontSize: 11, fontWeight: 500, color: t.warn, whiteSpace: 'nowrap',
+                          border: `0.5px solid ${t.warn}`, borderRadius: 99, padding: '1px 8px',
+                        }}>
+                          Auto-closed
+                        </span>
+                      )}
                       <span style={{ flex: 1 }} />
                       {/* The verdict, in words as well as colour. Colour alone
                           is not an answer for everybody reading it. */}
@@ -853,7 +864,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
                         label="Meter"
                         value={c.day === 'out' ? '—' : c.meterKm === null ? 'Nil' : `${c.meterKm} km`}
                         sub={c.day === 'out' ? 'pending — day still open'
-                          : c.day === 'auto_closed' ? 'never ended — no closing reading'
+                          : c.day === 'auto_closed' ? 'closed automatically — no closing reading'
                           : c.meterKm === null
                             ? (c.present ? 'no reading' : 'day not started')
                             : 'on the odometer'}

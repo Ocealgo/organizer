@@ -790,12 +790,34 @@ async function managerWeek() {
   }
 }
 
+/**
+ * Arjun's latest working day, left open and closed by the nightly job — the
+ * day a rep forgets to end. Started with a reading, never given a closing one,
+ * ended at 11:59 pm by the system, no distance claimed.
+ */
+async function autoClosedDay() {
+  const db = getFirestore()
+  let back = 1
+  while (isDayOff(dayBack(back))) back++
+  const date = dayBack(back)
+  await db.doc(`duty_sessions/demo_${ARJUN.uid}_${date}`).set({
+    uid: ARJUN.uid, name: ARJUN.name, date,
+    routeId: 'route_hill', routeName: 'Hill Road',
+    startAt: at(date, 9, 40), startLocation: fix(DEPOT, at(date, 9, 40)),
+    startOdometerKm: 9900, odometerStatus: 'recorded',
+    startOdometerPhoto: 'demo/odometer.jpg', startOdometerPhotoVerified: false,
+    endAt: at(date, 23, 59), autoClosed: true, autoClosedAt: at(date, 23, 59),
+    status: 'closed',
+  })
+}
+
 async function main() {
   console.log(`\n  Rebuilding the ${PROJECT_ID} world…`)
   await resetWorld()
   await seedWorld()
   await sandboxExtras()
   await recentMonth()
+  await autoClosedDay()
   await managerWeek()
   await closeAdmin()
 

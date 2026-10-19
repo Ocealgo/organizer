@@ -204,12 +204,14 @@ test.describe('where the day stands', () => {
     await expect(page.getByTestId(`eod-day-e2e_rep-${todayLocal()}`)).toContainText('Finished ·')
   })
 
-  test('a day the system closed says it never ended', async ({ page, loginAs }) => {
+  test('a day the system closed shows when, and says it was automatic', async ({ page, loginAs }) => {
     await closedDay('rep', todayLocal(), { km: null, autoClosed: true })
     await loginAs('manager')
     await openMonitor(page)
-    await expect(page.getByTestId(`eod-day-e2e_rep-${todayLocal()}`)).toContainText('Never ended')
-    await expect(page.getByText('never ended — no closing reading')).toBeVisible()
+    // The time it ran, start to the moment the job closed it.
+    await expect(page.getByTestId(`eod-day-e2e_rep-${todayLocal()}`)).toContainText('–')
+    await expect(page.getByText('Auto-closed', { exact: true })).toBeVisible()
+    await expect(page.getByText('closed automatically — no closing reading')).toBeVisible()
   })
 })
 
