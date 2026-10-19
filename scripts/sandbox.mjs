@@ -625,6 +625,9 @@ async function recentMonth() {
             status: 'sent', sentAt: at(date, 15, 0), sentDate: date,
             month: date.slice(0, 7),
           })
+          // The visit names the order it produced, as the outlet screen does —
+          // what "visits where this product was ordered" is read from.
+          await db.doc(`outlet_visits/${sessionId}_${i}`).update({ allocationIds: [allocId] })
 
           // Most bills are collected a week or so later, by the rep, the way
           // the outlet screen records it: the payment applied to the bill, the

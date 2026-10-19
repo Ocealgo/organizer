@@ -4,7 +4,7 @@ import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
   AppUser, OutletVisit, UnifiedAllocation, PaymentTransaction,
-  SalesTarget, SalesRoute, Party, Holiday, WorkPlan,
+  SalesTarget, SalesRoute, Party, Holiday, WorkPlan, Product,
 } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
 import DateInput from '../../components/DateInput'
@@ -16,7 +16,7 @@ import { PageHeader, Eyebrow, RowGroup, ListRow, Note, TabBar } from '../../comp
 import { localDateStr } from '../../utils/date'
 import {
   paceOf, strikeOf, coverageOf, pct, MIN_VISITS_FOR_RATE,
-  lastMonths, monthlyTotals, growthOf, enoughHistory,
+  lastMonths, monthlyTotals, growthOf, enoughHistory, orderedProductAt,
 } from './salesInsights'
 
 interface Props {
@@ -134,6 +134,15 @@ export default function ReportsHome({
   const [routes, setRoutes] = useState<SalesRoute[]>([])
   const [parties, setParties] = useState<Party[]>([])
   const [holidays, setHolidays] = useState<Holiday[]>([])
+  const [products, setProducts] = useState<Product[]>([])
+  /**
+   * '' is every product. One product narrows what a product owns — orders,
+   * targets, growth, strike rate, coverage's "ordered" — and nothing else: a
+   * visit or a payment is not "of" a product, and splitting them would be
+   * inventing a figure the data does not have.
+   */
+  const [prod, setProd] = useState('')
+  const prodName = prod ? products.find(x => x.id === prod)?.name ?? 'One product' : ''
 
   useEffect(() => {
     const start = new Date(lastMonths(thisMonth + '-01', GROWTH_MONTHS)[0] + '-01T00:00:00').getTime()
@@ -156,6 +165,9 @@ export default function ReportsHome({
         s => setRoutes(s.docs.map(d => ({ id: d.id, ...d.data() } as SalesRoute)))),
       onSnapshot(collection(db, 'parties'),
         s => setParties(s.docs.map(d => ({ id: d.id, ...d.data() } as Party)))),
+      onSnapshot(collection(db, 'products'),
+        s => setProducts(s.docs.map(d => ({ id: d.id, ...d.data() } as Product))
+          .filter(x => x.active).sort((a, b) => a.name.localeCompare(b.name)))),
       onSnapshot(collection(db, 'holidays'),
         s => setHolidays(s.docs.map(d => ({ id: d.id, ...d.data() } as Holiday)))),
     ]
@@ -203,7 +215,8 @@ export default function ReportsHome({
     // An abandoned visit never collected an outcome and was never a visit in
     // any sense a report should count — same exclusion Sales report makes.
     const vs = visits.filter(v => inRange(v.date, r) && v.status !== 'abandoned')
-    const al = allocations.filter(a => inRange(allocDate(a), r) && a.status !== 'cancelled')
+    const al = allocations.filter(a => inRange(allocDate(a), r) && a.status !== 'cancelled'
+      && (!prod || a.productId === prod))
     const pm = payments.filter(p => inRange(p.date, r) && p.status !== 'rejected')
     return {
       visits: vs.length,
@@ -219,15 +232,22 @@ export default function ReportsHome({
   // ── 1. pace ───────────────────────────────────────────────────────────────
   const today = localDateStr()
   const pace = useMemo(
-    () => paceOf(targets, monthAllocs, thisMonth, today, new Set(holidays.map(h => h.date))),
-    [targets, monthAllocs, thisMonth, today, holidays])
+    () => paceOf(targets, monthAllocs, thisMonth, today, new Set(holidays.map(h => h.date)), prod || undefined),
+    [targets, monthAllocs, thisMonth, today, holidays, prod])
+  /** Reps with a target this month but no split for the product picked. */
+  const unsplit = prod
+    ? targets.filter(t => t.month === thisMonth && (t.units || 0) > 0 && !((t.byProduct?.[prod] ?? 0) > 0)).length
+    : 0
   const paceSeries = useMemo<TrendPoint[]>(() => pace.series.map(p => ({
     label: p.label, current: p.actual, previous: p.target, projected: p.projected,
   })), [pace])
 
   // ── 2. strike rate, this window and the one before ────────────────────────
-  const strikeNow = strikeOf(visits.filter(v => inRange(v.date, current)))
-  const strikeBefore = strikeOf(visits.filter(v => inRange(v.date, previous)))
+  /** With a product picked, a visit counts only if it ordered that product. */
+  const productive = useMemo(
+    () => prod ? orderedProductAt(allocations, prod) : undefined, [allocations, prod])
+  const strikeNow = strikeOf(visits.filter(v => inRange(v.date, current)), productive)
+  const strikeBefore = strikeOf(visits.filter(v => inRange(v.date, previous)), productive)
 
   // ── 3. coverage, over this window ─────────────────────────────────────────
   // Coverage's own filters — inside its box, so they change only the table.
@@ -257,8 +277,8 @@ export default function ReportsHome({
       : undefined
     return coverageOf(routes, parties, monthVisits, monthAllocs,
       { from: thisMonth + '-01', to: today },
-      { uid: covWho || undefined, beatIds, area: covArea || undefined })
-  }, [routes, parties, monthVisits, monthAllocs, monthPlans, thisMonth, today, covWho, covArea])
+      { uid: covWho || undefined, beatIds, area: covArea || undefined, productId: prod || undefined })
+  }, [routes, parties, monthVisits, monthAllocs, monthPlans, thisMonth, today, covWho, covArea, prod])
 
   /** The rows on show: below 85% only if asked, worst first unless asked by name. */
   const covRows = useMemo(() => {
@@ -271,8 +291,8 @@ export default function ReportsHome({
 
   // ── growth, over the last six months ──────────────────────────────────────
   const monthTotals = useMemo(
-    () => monthlyTotals(monthAllocs, lastMonths(today, GROWTH_MONTHS), today),
-    [monthAllocs, today])
+    () => monthlyTotals(monthAllocs, lastMonths(today, GROWTH_MONTHS), today, prod || undefined),
+    [monthAllocs, today, prod])
   const growth = useMemo(() => growthOf(monthTotals), [monthTotals])
 
   // Too little in the earlier period for a comparison to mean anything.
@@ -335,14 +355,14 @@ export default function ReportsHome({
       const before = byRep(previous)
       return [...byRep(current).entries()]
         .filter(([uid]) => name.has(uid))
-        .map(([uid, vs]) => ({ uid, s: strikeOf(vs), was: strikeOf(before.get(uid) ?? []) }))
+        .map(([uid, vs]) => ({ uid, s: strikeOf(vs, productive), was: strikeOf(before.get(uid) ?? [], productive) }))
         .filter(({ s }) => s.visits >= MIN_VISITS_FOR_RATE)
         .map(({ uid, s, was }) => {
           const moved = comparable && was.visits >= MIN_VISITS_FOR_RATE && was.rate !== null && s.rate !== null
             ? s.rate - was.rate : null
           return {
             id: uid, label: name.get(uid) ?? 'Someone', value: s.rate ?? 0,
-            detail: `${s.productive} of ${s.visits} visits ended in an order`
+            detail: `${s.productive} of ${s.visits} visits ended in an order${prod ? ` of ${prodName}` : ''}`
               + (moved === null ? '' : ` · ${moved === 0 ? 'level with' : `${moved > 0 ? 'up' : 'down'} ${Math.abs(moved)} pts on`} last period`),
           }
         })
@@ -358,7 +378,8 @@ export default function ReportsHome({
       if (rankBy === 'visits') {
         visits.filter(v => inRange(v.date, r) && v.status !== 'abandoned').forEach(v => add(v.uid, 1))
       } else if (rankBy === 'orders') {
-        allocations.filter(a => inRange(allocDate(a), r) && a.status !== 'cancelled')
+        allocations.filter(a => inRange(allocDate(a), r) && a.status !== 'cancelled'
+          && (!prod || a.productId === prod))
           .forEach(a => add(a.createdBy, a.totalAmount || 0))
       } else {
         payments.filter(p => inRange(p.date, r) && p.status !== 'rejected')
@@ -379,7 +400,7 @@ export default function ReportsHome({
           : `${show(was)} last period · ${change === 0 ? 'level' : `${change! > 0 ? 'up' : 'down'} ${Math.abs(change!)}%`}`,
       }
     })
-  }, [rankBy, users, visits, allocations, payments, current, previous, comparable])
+  }, [rankBy, users, visits, allocations, payments, current, previous, comparable, prod, prodName, productive])
 
 
   return (
@@ -395,6 +416,22 @@ export default function ReportsHome({
 
       <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 30 }}>
 
+        {/* ── PRODUCT, for both tabs ─────────────────────────────────────── */}
+        <div className="oc-wrap" style={{ gap: 14, alignItems: 'flex-end' }}>
+          <div style={{ flex: '0 1 280px', minWidth: 200 }}>
+            <div style={{ marginBottom: 6 }}><Eyebrow>Product</Eyebrow></div>
+            <CustomSelect value={prod} onChange={setProd}
+              options={[{ value: '', label: 'All products' },
+                ...products.map(x => ({ value: x.id!, label: x.name }))]}
+              placeholder="All products" />
+          </div>
+          <div style={{ flex: '1 1 260px', fontSize: 12, color: t.text3, lineHeight: 1.5, paddingBottom: 4 }}>
+            {prod
+              ? `Showing ${prodName}: its orders, targets, growth and strike rate. Visits and money collected are not split by product, so they stay all products and say so.`
+              : 'Pick a product to see its own pace, growth and strike rate — and which product is behind.'}
+          </div>
+        </div>
+
         {/* ── THIS MONTH: is it going to be made, and are the beats being worked ─ */}
         {tab === 'month' && (<>
         <Panel>
@@ -407,8 +444,9 @@ export default function ReportsHome({
             </div>
             {pace.reps.length === 0 ? (
               <div style={{ fontSize: 13, color: t.text3, lineHeight: 1.6 }}>
-                No targets set for this month yet. Set them in The week → Targets, and this
-                shows whether the team is on track.
+                {prod
+                  ? `No rep has a target for ${prodName} this month. Targets split by product are set in The week → Targets.`
+                  : 'No targets set for this month yet. Set them in The week → Targets, and this shows whether the team is on track.'}
               </div>
             ) : (
               <>
@@ -479,6 +517,7 @@ export default function ReportsHome({
                   At this pace carries the month so far on at the same rate per working day.
                   Needed a day is what clears the target from tomorrow. A target set for the
                   month but not divided into days is spread evenly over its working days.
+                {unsplit > 0 && ` ${unsplit} ${unsplit === 1 ? 'rep has' : 'reps have'} a target this month with no split for ${prodName}, so ${unsplit === 1 ? 'is' : 'are'} left out here.`}
                 </div>
               </>
             )}
@@ -610,13 +649,15 @@ export default function ReportsHome({
           <div>
             <div style={{ marginBottom: 12 }}><Eyebrow>Against last period</Eyebrow></div>
             <div className="oc-stats">
-              <Delta label="Visits" now={cur.visits} before={prev.visits} loading={loading} thin={!comparable} />
+              <Delta label="Visits" now={cur.visits} before={prev.visits} loading={loading} thin={!comparable}
+                note={prod ? 'all products — a visit is not for one' : undefined} />
               <Delta label="Strike rate" now={strikeNow.rate ?? 0} before={strikeBefore.rate ?? 0}
                 fmt={n => `${n}%`} points loading={loading} thin={!comparable}
-                note={`${strikeNow.productive} of ${strikeNow.visits} visits ended in an order`} />
+                note={`${strikeNow.productive} of ${strikeNow.visits} visits ended in an order${prod ? ` of ${prodName}` : ''}`} />
               <Delta label="Ordered" now={cur.orderValue} before={prev.orderValue}
                 fmt={inr} loading={loading} thin={!comparable} />
               <Delta label="Collected" now={cur.collected} before={prev.collected}
+                note={prod ? 'all products — a payment settles a bill, not a product' : undefined}
                 fmt={inr} loading={loading} thin={!comparable} />
             </div>
           </div>

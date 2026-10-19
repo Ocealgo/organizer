@@ -189,3 +189,45 @@ test('coverage below 85% only, worst first', async ({ page, loginAs }) => {
   await expect(page.getByTestId('coverage-row-route_full')).toHaveCount(0)
   await expect(page.getByTestId('coverage-row-route_gap')).toBeVisible()
 })
+
+/** Product: pick one and the pace, strike rate and labels follow it. */
+async function pickProduct(page: any, name: string) {
+  await page.getByText('All products', { exact: true }).first().click()
+  await page.getByText(name, { exact: true }).last().click()
+}
+
+test('pace follows the product picked', async ({ page, loginAs }) => {
+  await companyStock('prod_wipes', 500)
+  await companyAllocation()                                          // Ravi: 24 of the 72s today
+  await packetTarget('rep', todayLocal().slice(0, 7), 1000, undefined, { prod_wipes: 600, prod_mini: 400 })
+
+  await loginAs('manager')
+  await openReports(page)
+  await pickProduct(page, 'Baby Wet Wipes 72s')
+  // Columns: rep, target, ordered, due by today, pace, at this pace, needed a day.
+  const cell = (n: number) => page.getByTestId('pace-row-e2e_rep').locator('td').nth(n)
+  await expect(cell(1)).toHaveText('600')
+  await expect(cell(2)).toHaveText('24')
+
+  await page.getByText('Baby Wet Wipes 72s', { exact: true }).first().click()
+  await page.getByText('Baby Wet Wipes 30s', { exact: true }).last().click()
+  await expect(cell(1)).toHaveText('400')
+  await expect(cell(2)).toHaveText('0')
+})
+
+test('strike rate follows the product picked, and visits say they are all products', async ({ page, loginAs }) => {
+  // Six visits at one shop, three with an order — and the order was the 72s.
+  for (let i = 0; i < 6; i++) await outletVisit('rep', todayLocal(), 'party_shop', i < 3)
+  await companyStock('prod_wipes', 500)
+  await companyAllocation({ partyId: 'party_shop', partyName: 'Anand Stores', partyType: 'retailer' })
+
+  await loginAs('manager')
+  await openReports(page, 'Compare')
+  await pickProduct(page, 'Baby Wet Wipes 72s')
+  await expect(page.getByText('3 of 6 visits ended in an order of Baby Wet Wipes 72s')).toBeVisible()
+  await expect(page.getByText('all products — a visit is not for one')).toBeVisible()
+
+  await page.getByText('Baby Wet Wipes 72s', { exact: true }).first().click()
+  await page.getByText('Baby Wet Wipes 30s', { exact: true }).last().click()
+  await expect(page.getByText('0 of 6 visits ended in an order of Baby Wet Wipes 30s')).toBeVisible()
+})
