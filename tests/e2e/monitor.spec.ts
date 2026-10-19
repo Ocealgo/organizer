@@ -228,6 +228,28 @@ test.describe('the report', () => {
     await expect(page.getByRole('group', { name: /^2nd, Priya Rep: 12 pkts/ })).toBeVisible()
   })
 
+  /** The week is shown as a week: tapping any day picks its Monday to Saturday, and says so. */
+  test('a week is picked on a calendar that shows the whole week', async ({ page, loginAs }) => {
+    await loginAs('manager')
+    await page.getByRole('button', { name: /^Reports/ }).first().click()
+    await page.getByRole('button', { name: /^Monitor reps/ }).click()
+    await page.getByRole('button', { name: 'Report', exact: true }).click()
+
+    await page.getByRole('button', { name: /^Week: / }).click()
+    const picker = page.getByRole('dialog', { name: 'Choose a week' })
+    await expect(picker).toBeVisible()
+
+    // The calendar's first full row, whatever month it is: its Wednesday picks its week.
+    const wednesday = picker.getByRole('gridcell').nth(9)
+    await wednesday.click()
+    await expect(picker).toHaveCount(0)
+
+    // Reopened, the six days of that week are marked chosen, and the Sunday is not.
+    await page.getByRole('button', { name: /^Week: / }).click()
+    await expect(picker.getByRole('gridcell', { selected: true })).toHaveCount(6)
+    await expect(picker.getByRole('gridcell').nth(13)).toHaveAttribute('aria-selected', 'false')
+  })
+
   /**
    * The PDF carries what the screen shows — the leaderboard and the table —
    * under a header naming the window, so it still makes sense once sent on.

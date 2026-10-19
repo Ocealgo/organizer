@@ -10,6 +10,7 @@ import {
 import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
+import WeekPicker from '../../components/WeekPicker'
 import { PageHeader, Eyebrow, EmptyState, Note, TabBar, GhostButton } from '../../components/ui'
 import RankedBars from '../../components/RankedBars'
 import { localDateStr, localMonthStr, isSunday } from '../../utils/date'
@@ -869,8 +870,7 @@ export default function RepMonitor({ onBack }: Props) {
               <div style={{ flex: '1 1 300px', display: 'flex', gap: 10, minWidth: 0 }}>
                 {rMode === 'week' && (
                   <div style={{ flex: 1, minWidth: 140 }}>
-                    <DateInput type="date" value={rWeekStart} ariaLabel="Week of"
-                      onChange={d => setRWeekStart(mondayOf(d))} />
+                    <WeekPicker value={rWeekStart} onChange={setRWeekStart} days={6} ariaLabel="Week" />
                   </div>
                 )}
                 {rMode === 'month' && (
