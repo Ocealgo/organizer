@@ -26,20 +26,29 @@ interface Props {
 const SANDBOX = import.meta.env.VITE_USE_EMULATORS === "true";
 
 /**
- * The two accounts worth one tap in a sandbox.
+ * The accounts worth one tap in a sandbox.
  *
  * Signing in by hand is six screens of typing when the point of the sandbox is
- * the seventh. Only a manager and an officer, because those are the two sides
- * of nearly everything — one assigns, approves and dispatches, the other walks
- * the round — and a row of six buttons is a menu rather than a shortcut.
+ * the seventh. A manager and an officer are the two sides of nearly everything
+ * — one assigns, approves and dispatches, the other walks the round. The admins
+ * are here because what each role may see now differs enough to check as each;
+ * the other seeded accounts are still a typed sign-in, so this stays a shortcut
+ * rather than a menu.
  *
  * These are the addresses `tests/e2e/fixtures/seed.ts` creates. They exist in
  * no other world.
  */
-const SANDBOX_LOGINS = [
+const SANDBOX_LOGINS: { label: string; email: string; sub: string }[] = [
   { label: "Manager", email: "manager@ocealgo.test", sub: "Manoj Manager" },
   { label: "Sales officer", email: "rep@ocealgo.test", sub: "Ravi Rep" },
-] as const;
+  // Admins too, now the reports and permissions differ by role enough to need
+  // checking as each. The super admin exists only in the `npm run sandbox`
+  // world (scripts/sandbox.mjs), not in the e2e seed, so it is offered only there.
+  { label: "Admin", email: "admin@ocealgo.test", sub: "Asha Admin" },
+  ...(import.meta.env.VITE_SANDBOX === "true"
+    ? [{ label: "Super admin", email: "super@ocealgo.test", sub: "Sara Superadmin" }]
+    : []),
+];
 const SANDBOX_PASSWORD = "Passw0rd!";
 
 export default function LoginPage({ onSwitch, onForgot, notice }: Props) {
@@ -187,7 +196,8 @@ export default function LoginPage({ onSwitch, onForgot, notice }: Props) {
               <div style={{ marginBottom: 10 }}>
                 <Eyebrow>Sandbox · emulator only</Eyebrow>
               </div>
-              <div style={{ display: "flex", gap: 10 }}>
+              {/* Two to a row, so four still fit a phone without shrinking the text. */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
                 {SANDBOX_LOGINS.map((who) => (
                   <button
                     key={who.email}
@@ -216,7 +226,7 @@ export default function LoginPage({ onSwitch, onForgot, notice }: Props) {
                 ))}
               </div>
               <div style={{ fontSize: 12, color: t.text3, marginTop: 9, lineHeight: 1.5 }}>
-                Seeded accounts in the demo project. This row is not in a production build.
+                Seeded accounts in the demo project. These buttons are not in a production build.
               </div>
             </div>
           )}
