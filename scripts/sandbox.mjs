@@ -329,7 +329,7 @@ const PRODUCTS = {
  */
 const PEOPLE = [
   {
-    user: USERS.rep, seed: 11, pace: 44, wipesShare: 0.65, odoFrom: 40500,
+    user: USERS.rep, seed: 11, pace: 44, wipesShare: 0.65, odoFrom: 36500,
     route: { id: 'route_demo', name: 'Beach Road', places: ['Kochi', 'Fort Kochi', 'Mattancherry'] },
     outlets: ['party_shop', 'party_pharmacy', 'sb_fort_1', 'sb_matt_1'],
     quiet: ['sb_quiet_1'],
@@ -351,7 +351,12 @@ const PEOPLE = [
     force: { 3: 'absent', 6: 'nothing' },
   },
 ]
-const DAYS_BACK = 30
+/**
+ * Four months of history. A month against the one before needs both to be
+ * whole, and a growth rate needs several months of them — thirty days made
+ * every comparison read "up 1300%" because the earlier period was nearly empty.
+ */
+const DAYS_BACK = 120
 
 /** A small deterministic generator: the same seed, the same month. */
 function rng(seed) {
@@ -460,7 +465,9 @@ async function recentMonth() {
   const cfg = { hq: 200, ex: 300, os: 450, ratePerKm: 4.5 }
   const thisWeek = weekStartOf(todayLocal())
 
-  for (const p of PEOPLE) {
+  // The three people at once: each has its own generator and its own records,
+  // so nothing one writes depends on another, and four months take a third the time.
+  await Promise.all(PEOPLE.map(async p => {
     const u = p.user
     const r = rng(p.seed)
     let odo = p.odoFrom
@@ -537,18 +544,50 @@ async function recentMonth() {
           orders++
           if (pid === 'prod_wipes') wipesOrders++
           const pr = PRODUCTS[pid]
-          const want = (p.pace / sellingTo) * (0.5 + r())
+          // Selling builds over the four months — from about 70% of the
+          // person's pace to about 130% — so month on month there is growth
+          // to measure, as there would be in a business that is going well.
+          const ramp = 0.7 + 0.6 * (1 - back / DAYS_BACK)
+          const want = (p.pace * ramp / sellingTo) * (0.5 + r())
           const packets = Math.max(pr.step, Math.round(want / pr.step) * pr.step)
-          await companyAllocation({
+          const total = packets * pr.price
+          const partyType = o.type === 'distributor' ? 'distributor' : 'retailer'
+          const allocId = await companyAllocation({
             createdBy: u.uid, createdByName: u.name,
             createdAt: at(date, hour, 30),
-            partyId: o.id, partyName: o.name, partyType: o.type === 'distributor' ? 'distributor' : 'retailer',
+            partyId: o.id, partyName: o.name, partyType,
             productId: pid, productName: pr.name,
             packets, cartons: Math.max(1, Math.round(packets / pr.perCarton)),
-            pricePerPacket: pr.price, totalAmount: packets * pr.price,
+            pricePerPacket: pr.price, totalAmount: total,
             status: 'sent', sentAt: at(date, 15, 0), sentDate: date,
             month: date.slice(0, 7),
           })
+
+          // Most bills are collected a week or so later, by the rep, the way
+          // the outlet screen records it: the payment applied to the bill, the
+          // bill marked paid. Older ones are approved; the last fortnight's are
+          // still waiting on an admin. Some stay unpaid, so the credit book has
+          // money outstanding.
+          const payBack = back - (5 + Math.floor(r() * 6))
+          if (payBack >= 1 && r() < 0.75) {
+            const payDate = dayBack(payBack)
+            const approved = payBack > 14
+            await db.collection('payment_transactions').add({
+              partyId: o.id, partyName: o.name, partyType,
+              amount: total, paymentMethod: r() < 0.6 ? 'cash' : 'upi',
+              collectionType: 'collected_by_salesperson',
+              collectedBy: u.uid, collectedByName: u.name,
+              notes: '', date: payDate, createdAt: at(payDate, 13, 0),
+              appliedTo: [{ allocId, amount: total }],
+              ...(approved
+                ? { status: 'approved', approvedBy: USERS.admin.uid, approvedByName: USERS.admin.name,
+                    approvedAt: at(payDate, 18, 0) }
+                : { status: 'pending_approval' }),
+            })
+            await db.doc(`allocations_v2/${allocId}`).update({
+              paidAmount: total, status: 'paid', paidAt: at(payDate, 13, 0),
+            })
+          }
         }
       }
 
@@ -602,7 +641,7 @@ async function recentMonth() {
     for (const rep of reports.values()) {
       await db.doc(`expense_reports/${rep.id}`).update({ totalAmount: Math.round(rep.total * 100) / 100 })
     }
-  }
+  }))
 
   // One cancelled order, so the line that says cancellations are not counted
   // has something to not count.

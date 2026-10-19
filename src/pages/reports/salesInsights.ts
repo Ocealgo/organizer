@@ -235,3 +235,120 @@ export function coverageOf(
 
 export const pct = (part: number, whole: number) =>
   whole > 0 ? Math.round((part / whole) * 100) : null
+
+// ── growth ───────────────────────────────────────────────────────────────────
+
+export interface MonthTotal {
+  month: string
+  /** "Jun 2026" */
+  label: string
+  value: number
+  packets: number
+  orders: number
+  /** False for the month still under way. */
+  complete: boolean
+  /**
+   * The first month with any orders, when they only start after the first
+   * week — the month somebody began using the app, not a month of selling.
+   * Shown, but kept out of the growth: against it, the next month always
+   * looks like a leap.
+   */
+  partial: boolean
+}
+
+/** The last `count` months ending with the current one, oldest first. */
+export function lastMonths(today: string, count: number): string[] {
+  const [y, m] = today.split('-').map(Number)
+  return Array.from({ length: count }, (_, i) => {
+    const d = new Date(y, m - 1 - (count - 1 - i), 1)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  })
+}
+
+/** Orders by calendar month, cancellations excluded. */
+export function monthlyTotals(
+  allocations: UnifiedAllocation[], months: string[], today: string,
+): MonthTotal[] {
+  const current = today.slice(0, 7)
+  return months.map(month => {
+    const mine = allocations.filter(a => a.status !== 'cancelled' && a.createdAt
+      && localDateStr(new Date(a.createdAt)).slice(0, 7) === month)
+    const firstDay = mine.length
+      ? Math.min(...mine.map(a => new Date(a.createdAt).getDate())) : null
+    return {
+      month,
+      label: new Date(month + '-01T00:00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }),
+      value: Math.round(mine.reduce((n, a) => n + (a.totalAmount || 0), 0)),
+      packets: mine.reduce((n, a) => n + (a.packets || 0), 0),
+      orders: mine.length,
+      complete: month < current,
+      partial: false,
+      firstDay,
+    }
+  }).map((t, i, all) => {
+    // Only the first month that has anything can be the one somebody started in.
+    const isFirst = t.orders > 0 && all.slice(0, i).every(x => x.orders === 0)
+    const { firstDay, ...rest } = t
+    return { ...rest, partial: isFirst && firstDay !== null && firstDay > 7 }
+  })
+}
+
+/**
+ * Month on month, and the average monthly rate across them.
+ *
+ * Only complete months count. The month under way is always "down" against a
+ * whole one until its last day, which is not growth, only the calendar.
+ *
+ * The average is the compound monthly rate — the one steady rate that would
+ * take the first complete month to the last. A plain average of the monthly
+ * changes overstates it: +50% then −50% averages to zero but leaves you at
+ * three quarters of where you started.
+ */
+export function growthOf(totals: MonthTotal[]): {
+  /** Change against the month before, in whole percent; null where there is nothing to compare. */
+  change: (number | null)[]
+  /** Compound monthly growth over the complete months with orders, or null with fewer than three. */
+  average: number | null
+  /** How many complete months the average is over. */
+  span: number
+} {
+  const change = totals.map((t, i) => {
+    if (i === 0 || !t.complete || t.partial || totals[i - 1].partial) return null
+    const before = totals[i - 1].value
+    return before > 0 ? Math.round(((t.value - before) / before) * 100) : null
+  })
+  const done = totals.filter(t => t.complete && !t.partial && t.value > 0)
+  if (done.length < 3) return { change, average: null, span: done.length }
+  const first = done[0].value, last = done[done.length - 1].value
+  const average = Math.round((Math.pow(last / first, 1 / (done.length - 1)) - 1) * 1000) / 10
+  return { change, average, span: done.length }
+}
+
+// ── is there enough history to compare? ──────────────────────────────────────
+
+/**
+ * Whether the earlier period has enough in it for a comparison to mean
+ * anything.
+ *
+ * Days with any visit or order, in each period. When the earlier one has
+ * fewer than half as many working days of activity — a new rep, a new
+ * install, a month before anybody used the app — every figure reads as a
+ * leap of a thousand percent, which is true and useless. Better to say so.
+ */
+export function enoughHistory(
+  visits: OutletVisit[], allocations: UnifiedAllocation[],
+  current: { from: string; to: string }, previous: { from: string; to: string },
+): boolean {
+  const days = (r: { from: string; to: string }) => {
+    const set = new Set<string>()
+    visits.forEach(v => { if (v.date >= r.from && v.date <= r.to) set.add(v.date) })
+    allocations.forEach(a => {
+      if (!a.createdAt) return
+      const d = localDateStr(new Date(a.createdAt))
+      if (d >= r.from && d <= r.to) set.add(d)
+    })
+    return set.size
+  }
+  const now = days(current)
+  return now === 0 || days(previous) >= now / 2
+}
