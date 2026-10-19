@@ -292,6 +292,13 @@ const SHOPS = [
   { id: 'sb_kakk_1', name: 'Infopark Mart', place: 'Kakkanad', type: 'supermarket', category: 'Supermarket' },
   { id: 'sb_edap_1', name: 'Lulu Kids Corner', place: 'Edappally', type: 'general', category: 'General Store' },
   { id: 'sb_edap_2', name: 'Edappally Care Pharmacy', place: 'Edappally', type: 'pharmacy', category: 'Pharma' },
+  // On a beat, and never visited — so Beat coverage has gaps to show, the way a
+  // real beat does. Nobody's outlet list below includes these.
+  { id: 'sb_quiet_1', name: 'Seaside Provisions', place: 'Fort Kochi', type: 'general', category: 'General Store' },
+  { id: 'sb_quiet_2', name: 'Kaloor Corner Mart', place: 'Kaloor', type: 'general', category: 'General Store' },
+  { id: 'sb_quiet_3', name: 'Vyttila Junction Medicals', place: 'Vyttila', type: 'pharmacy', category: 'Pharma' },
+  { id: 'sb_quiet_4', name: 'Kakkanad Daily Needs', place: 'Kakkanad', type: 'general', category: 'General Store' },
+  { id: 'sb_quiet_5', name: 'Thrikkakara Stores', place: 'Kakkanad', type: 'general', category: 'General Store' },
 ]
 const SEEDED = {
   party_shop: { name: 'Anand Stores', type: 'general' },
@@ -325,6 +332,7 @@ const PEOPLE = [
     user: USERS.rep, seed: 11, pace: 44, wipesShare: 0.65, odoFrom: 40500,
     route: { id: 'route_demo', name: 'Beach Road', places: ['Kochi', 'Fort Kochi', 'Mattancherry'] },
     outlets: ['party_shop', 'party_pharmacy', 'sb_fort_1', 'sb_matt_1'],
+    quiet: ['sb_quiet_1'],
     // Kept from the hand-made week this replaced, so those states stay findable.
     force: { 2: 'absent', 4: 'nothing' },
   },
@@ -332,12 +340,14 @@ const PEOPLE = [
     user: USERS.rep2, seed: 23, pace: 26, wipesShare: 0.4, odoFrom: 18000,
     route: { id: 'route_market', name: 'Market Road', places: ['Ernakulam', 'Kaloor', 'Vyttila'] },
     outlets: ['party_dist', 'sb_kaloor_1', 'sb_vytt_1', 'sb_vytt_2'],
+    quiet: ['sb_quiet_2', 'sb_quiet_3'],
     force: { 1: 'absent' },
   },
   {
     user: ARJUN, seed: 37, pace: 32, wipesShare: 0.55, odoFrom: 7200,
     route: { id: 'route_hill', name: 'Hill Road', places: ['Kakkanad', 'Edappally'] },
     outlets: ['sb_kakk_1', 'sb_edap_1', 'sb_edap_2'],
+    quiet: ['sb_quiet_4', 'sb_quiet_5'],
     force: { 3: 'absent', 6: 'nothing' },
   },
 ]
@@ -422,7 +432,7 @@ async function recentMonth() {
       name: p.route.name,
       description: `${p.user.name.split(' ')[0]}'s round.`,
       places: p.route.places,
-      outletIds: p.outlets,
+      outletIds: [...p.outlets, ...p.quiet],
       defaultTargets: { visits: 10, orderValue: 40000 },
       active: true,
       createdBy: USERS.manager.uid, createdByName: USERS.manager.name, createdAt: Date.now(),

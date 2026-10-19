@@ -300,6 +300,36 @@ export async function assignedDay(
 }
 
 /**
+ * A shop visit, closed, with or without an order — the one fact a strike rate
+ * is made of. Seeded rather than clicked: the visit form is covered by its own
+ * spec, and what is under test here is the counting.
+ */
+export async function outletVisit(
+  who: UserKey, date: string, partyId: string, orderPlaced: boolean,
+): Promise<void> {
+  const u = USERS[who]
+  const at = new Date(`${date}T11:00:00`).getTime()
+  await getFirestore(admin()).collection('outlet_visits').add({
+    sessionId: `seed_${u.uid}_${date}`, uid: u.uid, name: u.name, role: u.role, date,
+    partyId, partyName: partyId, outletType: 'general',
+    punchInAt: at, punchOutAt: at + 20 * 60_000, durationMinutes: 20,
+    stock: [], competitors: [], photos: [],
+    orderPlaced,
+    remarksCategory: orderPlaced ? 'order_booked' : 'no_order_stock_available',
+    remarksText: '', status: 'closed',
+  })
+}
+
+/** A beat and the shops it is meant to cover. */
+export async function beat(id: string, name: string, outletIds: string[]): Promise<void> {
+  await getFirestore(admin()).doc(`sales_routes/${id}`).set({
+    name, places: ['Kochi'], outletIds, active: true,
+    defaultTargets: { visits: 10, orderValue: 40000 },
+    createdBy: USERS.manager.uid, createdByName: USERS.manager.name, createdAt: testNow(),
+  })
+}
+
+/**
  * Something a manager logged — a meeting, a day out with a rep, an office day.
  * Written as the app writes it: `withUids` always present, empty included,
  * because the rules read it on every entry.

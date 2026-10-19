@@ -26,8 +26,11 @@ import { useTheme } from '../context/ThemeContext'
 export interface TrendPoint {
   /** Axis label — a date or a month. */
   label: string
-  current: number
-  previous?: number
+  /** Null where there is nothing yet — the line stops rather than dropping to zero. */
+  current: number | null
+  previous?: number | null
+  /** A projection, drawn dotted in the current series' colour. */
+  projected?: number | null
 }
 
 interface Props {
@@ -39,10 +42,15 @@ interface Props {
   currentLabel: string
   previousLabel: string
   height?: number
+  /** Draw the comparison as a dashed line — for a target, which is a line to reach rather than a past. */
+  previousDashed?: boolean
+  /** Names the projection series when the data carries one. */
+  projectedLabel?: string
 }
 
 export default function TrendChart({
   data, unit, format, currentLabel, previousLabel, height = 220,
+  previousDashed, projectedLabel,
 }: Props) {
   const { t, theme } = useTheme()
   const fmt = format ?? ((n: number) => String(n))
@@ -52,6 +60,7 @@ export default function TrendChart({
   const accent = t.accent
   const muted = '#94a3b8'
   const hasPrevious = data.some(d => d.previous !== undefined)
+  const hasProjected = data.some(d => d.projected !== undefined && d.projected !== null)
 
   return (
     <div>
@@ -59,10 +68,17 @@ export default function TrendChart({
           each name sits beside its own mark. */}
       {hasPrevious && (
         <div style={{ display: 'flex', gap: 16, marginBottom: 10, flexWrap: 'wrap' }}>
-          {[[currentLabel, accent], [previousLabel, muted]].map(([label, colour]) => (
+          {([
+            [currentLabel, accent, 'solid'],
+            [previousLabel, muted, previousDashed ? 'dashed' : 'solid'],
+            ...(hasProjected && projectedLabel ? [[projectedLabel, accent, 'dotted']] : []),
+          ] as [string, string, string][]).map(([label, colour, style]) => (
             <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 6,
                                        fontSize: 12, color: t.text3 }}>
-              <span style={{ width: 10, height: 2, background: colour, borderRadius: 1 }} />
+              {/* The legend mark draws the line the way the chart does, so a
+                  dashed target and a dotted projection are told apart by shape,
+                  not only by colour. */}
+              <span style={{ width: 14, height: 0, borderTop: `2px ${style} ${colour}` }} />
               {label}
             </span>
           ))}
@@ -99,14 +115,20 @@ export default function TrendChart({
               // Names, not just colours — the relief rule for the light-mode
               // gray, and the thing that makes the chart readable in print.
               formatter={(value: any, name: any) => [
-                `${fmt(Number(value))} ${unit}`,
-                name === 'current' ? currentLabel : previousLabel,
+                value === null || value === undefined ? '—' : `${fmt(Number(value))} ${unit}`,
+                name === 'current' ? currentLabel
+                  : name === 'projected' ? (projectedLabel ?? 'Projected') : previousLabel,
               ]}
             />
 
             {hasPrevious && (
               <Line type="monotone" dataKey="previous" stroke={muted} strokeWidth={2}
+                strokeDasharray={previousDashed ? '6 4' : undefined}
                 dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+            )}
+            {hasProjected && (
+              <Line type="monotone" dataKey="projected" stroke={accent} strokeWidth={2}
+                strokeDasharray="2 4" dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
             )}
             <Area type="monotone" dataKey="current" stroke={accent} strokeWidth={2}
               fill="url(#oc-trend-fill)" dot={false}
