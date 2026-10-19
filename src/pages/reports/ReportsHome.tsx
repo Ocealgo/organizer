@@ -4,10 +4,11 @@ import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
   AppUser, OutletVisit, UnifiedAllocation, PaymentTransaction,
-  SalesTarget, SalesRoute, Party, Holiday,
+  SalesTarget, SalesRoute, Party, Holiday, WorkPlan,
 } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
 import DateInput from '../../components/DateInput'
+import CustomSelect from '../../components/CustomSelect'
 import LazyChart from '../../components/LazyChart'
 import RankedBars, { RankedRow } from '../../components/RankedBars'
 import type { TrendPoint } from '../../components/TrendChart'
@@ -129,6 +130,7 @@ export default function ReportsHome({
   const [targets, setTargets] = useState<SalesTarget[]>([])
   const [monthAllocs, setMonthAllocs] = useState<UnifiedAllocation[]>([])
   const [monthVisits, setMonthVisits] = useState<OutletVisit[]>([])
+  const [monthPlans, setMonthPlans] = useState<WorkPlan[]>([])
   const [routes, setRoutes] = useState<SalesRoute[]>([])
   const [parties, setParties] = useState<Party[]>([])
   const [holidays, setHolidays] = useState<Holiday[]>([])
@@ -142,6 +144,10 @@ export default function ReportsHome({
       onSnapshot(query(collection(db, 'allocations_v2'), where('createdAt', '>=', start)),
         s => setMonthAllocs(s.docs.map(d => ({ id: d.id, ...d.data() } as UnifiedAllocation))),
         err => console.error('[ReportsHome] month orders listener failed', err)),
+      // The beats assigned this month, so coverage can be read for one person.
+      onSnapshot(query(collection(db, 'work_plans'), where('date', '>=', thisMonth + '-01')),
+        s => setMonthPlans(s.docs.map(d => ({ id: d.id, ...d.data() } as WorkPlan))),
+        err => console.error('[ReportsHome] month plans listener failed', err)),
       // This month's visits, for coverage — the window on the Compare tab may be elsewhere.
       onSnapshot(query(collection(db, 'outlet_visits'), where('date', '>=', thisMonth + '-01')),
         s => setMonthVisits(s.docs.map(d => ({ id: d.id, ...d.data() } as OutletVisit))),
@@ -224,9 +230,44 @@ export default function ReportsHome({
   const strikeBefore = strikeOf(visits.filter(v => inRange(v.date, previous)))
 
   // ── 3. coverage, over this window ─────────────────────────────────────────
-  const coverage = useMemo(
-    () => coverageOf(routes, parties, monthVisits, monthAllocs, { from: thisMonth + '-01', to: today }),
-    [routes, parties, monthVisits, monthAllocs, thisMonth, today])
+  // Coverage's own filters — inside its box, so they change only the table.
+  const [covWho, setCovWho] = useState('')
+  const [covArea, setCovArea] = useState('')
+  const [covLow, setCovLow] = useState(false)
+  const [covSort, setCovSort] = useState<'name' | 'lowest'>('lowest')
+
+  /** People with a beat this month, for the person filter. */
+  const covPeople = useMemo(() => {
+    const seen = new Map<string, string>()
+    monthPlans.forEach(pl => { if (pl.routeId) seen.set(pl.uid, pl.name) })
+    return [...seen.entries()].map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  }, [monthPlans])
+
+  /** Places that have a shop on some beat, for the area filter. */
+  const covAreas = useMemo(() => {
+    const onBeat = new Set(routes.filter(r => r.active !== false).flatMap(r => r.outletIds ?? []))
+    return [...new Set(parties.filter(pt => onBeat.has(pt.id!) && pt.place).map(pt => pt.place))]
+      .sort((a, b) => a.localeCompare(b))
+  }, [routes, parties])
+
+  const coverage = useMemo(() => {
+    const beatIds = covWho
+      ? new Set(monthPlans.filter(pl => pl.uid === covWho && pl.routeId).map(pl => pl.routeId!))
+      : undefined
+    return coverageOf(routes, parties, monthVisits, monthAllocs,
+      { from: thisMonth + '-01', to: today },
+      { uid: covWho || undefined, beatIds, area: covArea || undefined })
+  }, [routes, parties, monthVisits, monthAllocs, monthPlans, thisMonth, today, covWho, covArea])
+
+  /** The rows on show: below 85% only if asked, worst first unless asked by name. */
+  const covRows = useMemo(() => {
+    const rows = coverage.beats.filter(c => !covLow || (pct(c.visited, c.shops) ?? 0) < 85)
+    return covSort === 'lowest'
+      ? [...rows].sort((a, b) => (pct(a.visited, a.shops) ?? 0) - (pct(b.visited, b.shops) ?? 0)
+          || a.name.localeCompare(b.name))
+      : rows
+  }, [coverage, covLow, covSort])
 
   // ── growth, over the last six months ──────────────────────────────────────
   const monthTotals = useMemo(
@@ -245,6 +286,40 @@ export default function ReportsHome({
   const [rankBy, setRankBy] = useState<'visits' | 'strike' | 'orders' | 'collected'>('visits')
 
   const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
+
+  const pill = (on: boolean) => ({
+    background: 'none', border: `0.5px solid ${on ? t.text2 : t.border}`,
+    borderRadius: 99, padding: '6px 13px', fontSize: 12,
+    color: on ? t.text : t.text3, cursor: 'pointer', whiteSpace: 'nowrap' as const,
+  })
+
+  /** A coverage row. The total is pinned to the bottom of the scrolling box. */
+  const covRow = (c: ReturnType<typeof coverageOf>['all'], total: boolean) => {
+    const cov = pct(c.visited, c.shops)
+    const eff = pct(c.ordered, c.shops)
+    const cell = {
+      textAlign: 'right' as const, padding: '9px 10px', color: t.text,
+      fontVariantNumeric: 'tabular-nums' as const, whiteSpace: 'nowrap' as const,
+      borderBottom: total ? 'none' : `0.5px solid ${t.border}`, fontWeight: total ? 500 : 400,
+      ...(total ? { position: 'sticky' as const, bottom: 0, background: t.bg2,
+                    borderTop: `0.5px solid ${t.border2}` } : {}),
+    }
+    return (
+      <tr key={c.id} data-testid={`coverage-row-${c.id}`}>
+        <td style={{ ...cell, textAlign: 'left', whiteSpace: 'normal' }}>
+          {c.name}
+          {c.places && <div style={{ fontSize: 12, color: t.text3, fontWeight: 400 }}>{c.places}</div>}
+        </td>
+        <td style={cell}>{c.shops}</td>
+        <td style={cell}>{c.visited}</td>
+        <td style={{ ...cell, color: cov !== null && cov < 85 ? t.warn : t.text }}>
+          {cov === null ? '—' : `${cov}%`}
+        </td>
+        <td style={cell}>{c.ordered}</td>
+        <td style={cell}>{eff === null ? '—' : `${eff}%`}</td>
+      </tr>
+    )
+  }
 
   const ranked = useMemo<RankedRow[]>(() => {
     const name = new Map(users.map(u => [u.uid, u.name]))
@@ -414,19 +489,53 @@ export default function ReportsHome({
           {/* ── 3. ARE THE BEATS BEING WORKED ───────────────────────────────── */}
           <div>
             <div style={{ marginBottom: 4 }}><Eyebrow>Beat coverage</Eyebrow></div>
-            <div style={{ fontSize: 12, color: t.text3, marginBottom: 12, lineHeight: 1.6 }}>
+            <div style={{ fontSize: 12, color: t.text3, marginBottom: 14, lineHeight: 1.6 }}>
               This month so far. Visited: shops on the beat seen at least once. Ordered: of
               those, how many bought — what the visits turned into.
             </div>
+
+            {/* Its own filters, in one row above the table they narrow. */}
+            <div className="oc-wrap" style={{ gap: 12, marginBottom: 12, alignItems: 'flex-end' }}>
+              <div style={{ flex: '1 1 170px', minWidth: 0 }}>
+                <div style={{ marginBottom: 6 }}><Eyebrow>Person</Eyebrow></div>
+                <CustomSelect value={covWho} onChange={setCovWho}
+                  options={[{ value: '', label: 'Everybody' }, ...covPeople]}
+                  placeholder="Everybody" />
+              </div>
+              <div style={{ flex: '1 1 170px', minWidth: 0 }}>
+                <div style={{ marginBottom: 6 }}><Eyebrow>Area</Eyebrow></div>
+                <CustomSelect value={covArea} onChange={setCovArea}
+                  options={[{ value: '', label: 'Every area' }, ...covAreas.map(a => ({ value: a, label: a }))]}
+                  placeholder="Every area" />
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {([['lowest', 'Lowest first'], ['name', 'By name']] as const).map(([k, label]) => (
+                  <button key={k} className="oc-action" onClick={() => setCovSort(k)}
+                    aria-pressed={covSort === k} style={pill(covSort === k)}>{label}</button>
+                ))}
+                <button className="oc-action" onClick={() => setCovLow(v => !v)}
+                  aria-pressed={covLow} style={pill(covLow)}>Below 85% only</button>
+              </div>
+            </div>
+
             {coverage.beats.length === 0 ? (
-              <div style={{ fontSize: 13, color: t.text3 }}>No beats yet. Set them up in Beats.</div>
+              <div style={{ fontSize: 13, color: t.text3, lineHeight: 1.6 }}>
+                {covWho || covArea ? 'No beats match these filters this month.' : 'No beats yet. Set them up in Beats.'}
+              </div>
             ) : (
-              <div className="oc-scroll-x" style={{ border: `0.5px solid ${t.border}`, borderRadius: 6 }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 520 }}>
+              // A fixed height that scrolls, with the headings pinned at the
+              // top and the total pinned at the bottom, so neither scrolls away
+              // from the rows they explain.
+              <div data-testid="coverage-scroll" style={{
+                maxHeight: 380, overflow: 'auto',
+                border: `0.5px solid ${t.border}`, borderRadius: 6,
+              }}>
+                <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 13, minWidth: 520 }}>
                   <thead>
                     <tr>
                       {['Beat', 'Shops', 'Visited', 'Coverage', 'Ordered', 'Effective'].map((h, i) => (
                         <th key={h} style={{
+                          position: 'sticky', top: 0, zIndex: 1, background: t.bg2,
                           textAlign: i === 0 ? 'left' : 'right', padding: '9px 10px', fontSize: 11,
                           fontWeight: 400, letterSpacing: '0.06em', textTransform: 'uppercase',
                           color: t.text3, borderBottom: `0.5px solid ${t.border}`, whiteSpace: 'nowrap',
@@ -435,36 +544,22 @@ export default function ReportsHome({
                     </tr>
                   </thead>
                   <tbody>
-                    {[...coverage.beats, coverage.all].map(c => {
-                      const cov = pct(c.visited, c.shops)
-                      const eff = pct(c.ordered, c.shops)
-                      const total = c.id === 'all'
-                      const cell = { textAlign: 'right' as const, padding: '9px 10px', color: t.text,
-                                     fontVariantNumeric: 'tabular-nums' as const, whiteSpace: 'nowrap' as const,
-                                     borderBottom: `0.5px solid ${t.border}`, fontWeight: total ? 500 : 400 }
-                      return (
-                        <tr key={c.id} data-testid={`coverage-row-${c.id}`}>
-                          <td style={{ ...cell, textAlign: 'left', whiteSpace: 'normal' }}>
-                            {c.name}
-                            {c.places && <div style={{ fontSize: 12, color: t.text3, fontWeight: 400 }}>{c.places}</div>}
-                          </td>
-                          <td style={cell}>{c.shops}</td>
-                          <td style={cell}>{c.visited}</td>
-                          <td style={{ ...cell, color: cov !== null && cov < 85 ? t.warn : t.text }}>
-                            {cov === null ? '—' : `${cov}%`}
-                          </td>
-                          <td style={cell}>{c.ordered}</td>
-                          <td style={cell}>{eff === null ? '—' : `${eff}%`}</td>
-                        </tr>
-                      )
-                    })}
+                    {covRows.length === 0 && (
+                      <tr><td colSpan={6} style={{ padding: '14px 10px', fontSize: 13, color: t.text3 }}>
+                        Every beat here is at 85% or more.
+                      </td></tr>
+                    )}
+                    {covRows.map(c => covRow(c, false))}
                   </tbody>
+                  <tfoot>{covRow(coverage.all, true)}</tfoot>
                 </table>
               </div>
             )}
             <div style={{ fontSize: 12, color: t.text3, marginTop: 8, lineHeight: 1.6 }}>
+              {covRows.length} of {coverage.beats.length} {coverage.beats.length === 1 ? 'beat' : 'beats'} shown.
               Coverage under 85% is marked — the usual rule of thumb for a beat that is being
-              worked.{coverage.offBeat > 0 && ` ${coverage.offBeat} ${coverage.offBeat === 1 ? 'shop is' : 'shops are'} on no beat at all, so nobody is routed to ${coverage.offBeat === 1 ? 'it' : 'them'}.`}
+              worked.{covWho && ' With a person picked, only their own visits and orders count, on the beats they were given this month.'}
+              {coverage.offBeat > 0 && ` ${coverage.offBeat} ${coverage.offBeat === 1 ? 'shop is' : 'shops are'} on no beat at all, so nobody is routed to ${coverage.offBeat === 1 ? 'it' : 'them'}.`}
             </div>
           </div>
         </Panel>

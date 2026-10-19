@@ -300,6 +300,48 @@ const SHOPS = [
   { id: 'sb_quiet_4', name: 'Kakkanad Daily Needs', place: 'Kakkanad', type: 'general', category: 'General Store' },
   { id: 'sb_quiet_5', name: 'Thrikkakara Stores', place: 'Kakkanad', type: 'general', category: 'General Store' },
 ]
+/**
+ * Three more beats each, across the rest of Kochi, so Beat coverage is a long
+ * list worth filtering — by person, by area — the way a real network is.
+ *
+ * Each beat has six to nine shops; the last one to three are never visited, so
+ * every beat has a gap of its own size. Names are made up from the area so they
+ * read plausibly and never collide.
+ */
+const EXTRA_BEATS = {
+  rep: [
+    { id: 'route_x_thevara', name: 'Thevara Loop', places: ['Thevara'], shops: 7, quiet: 2 },
+    { id: 'route_x_panampilly', name: 'Panampilly Nagar', places: ['Panampilly Nagar'], shops: 8, quiet: 1 },
+    { id: 'route_x_vypin', name: 'Vypin Island', places: ['Vypin'], shops: 6, quiet: 3 },
+  ],
+  rep2: [
+    { id: 'route_x_kadavanthra', name: 'Kadavanthra', places: ['Kadavanthra'], shops: 9, quiet: 2 },
+    { id: 'route_x_maradu', name: 'Maradu & Kundannoor', places: ['Maradu'], shops: 7, quiet: 1 },
+    { id: 'route_x_tripunithura', name: 'Tripunithura Town', places: ['Tripunithura'], shops: 8, quiet: 3 },
+  ],
+  rep3: [
+    { id: 'route_x_aluva', name: 'Aluva Market', places: ['Aluva'], shops: 9, quiet: 2 },
+    { id: 'route_x_kalamassery', name: 'Kalamassery', places: ['Kalamassery'], shops: 7, quiet: 2 },
+    { id: 'route_x_palarivattom', name: 'Palarivattom', places: ['Palarivattom'], shops: 6, quiet: 1 },
+  ],
+}
+const KINDS = [
+  ['general', 'General Store', 'Stores'], ['pharmacy', 'Pharma', 'Medicals'],
+  ['supermarket', 'Supermarket', 'Mart'], ['general', 'General Store', 'Baby Shop'],
+]
+for (const beats of Object.values(EXTRA_BEATS)) {
+  for (const b of beats) {
+    b.all = []
+    for (let k = 0; k < b.shops; k++) {
+      const [type, category, word] = KINDS[k % KINDS.length]
+      const id = `${b.id.replace('route_x_', 'sb_x_')}_${k + 1}`
+      SHOPS.push({ id, name: `${b.places[0]} ${word} ${k + 1}`, place: b.places[0], type, category })
+      b.all.push(id)
+    }
+    b.visit = b.all.slice(0, b.shops - b.quiet)
+  }
+}
+
 const SEEDED = {
   party_shop: { name: 'Anand Stores', type: 'general' },
   party_pharmacy: { name: 'Guardian Pharmacy', type: 'pharmacy' },
@@ -329,7 +371,7 @@ const PRODUCTS = {
  */
 const PEOPLE = [
   {
-    user: USERS.rep, seed: 11, pace: 44, wipesShare: 0.65, odoFrom: 36500,
+    key: 'rep', user: USERS.rep, seed: 11, pace: 44, wipesShare: 0.65, odoFrom: 36500,
     route: { id: 'route_demo', name: 'Beach Road', places: ['Kochi', 'Fort Kochi', 'Mattancherry'] },
     outlets: ['party_shop', 'party_pharmacy', 'sb_fort_1', 'sb_matt_1'],
     quiet: ['sb_quiet_1'],
@@ -337,14 +379,14 @@ const PEOPLE = [
     force: { 2: 'absent', 4: 'nothing' },
   },
   {
-    user: USERS.rep2, seed: 23, pace: 26, wipesShare: 0.4, odoFrom: 18000,
+    key: 'rep2', user: USERS.rep2, seed: 23, pace: 26, wipesShare: 0.4, odoFrom: 18000,
     route: { id: 'route_market', name: 'Market Road', places: ['Ernakulam', 'Kaloor', 'Vyttila'] },
     outlets: ['party_dist', 'sb_kaloor_1', 'sb_vytt_1', 'sb_vytt_2'],
     quiet: ['sb_quiet_2', 'sb_quiet_3'],
     force: { 1: 'absent' },
   },
   {
-    user: ARJUN, seed: 37, pace: 32, wipesShare: 0.55, odoFrom: 7200,
+    key: 'rep3', user: ARJUN, seed: 37, pace: 32, wipesShare: 0.55, odoFrom: 7200,
     route: { id: 'route_hill', name: 'Hill Road', places: ['Kakkanad', 'Edappally'] },
     outlets: ['sb_kakk_1', 'sb_edap_1', 'sb_edap_2'],
     quiet: ['sb_quiet_4', 'sb_quiet_5'],
@@ -357,6 +399,12 @@ const PEOPLE = [
  * every comparison read "up 1300%" because the earlier period was nearly empty.
  */
 const DAYS_BACK = 120
+
+/** Each person's beats: their own round first, then the three more. */
+const beatsOf = (p) => [
+  { id: p.route.id, name: p.route.name, visit: p.outlets },
+  ...EXTRA_BEATS[p.key].map(b => ({ id: b.id, name: b.name, visit: b.visit })),
+]
 
 /** A small deterministic generator: the same seed, the same month. */
 function rng(seed) {
@@ -442,6 +490,15 @@ async function recentMonth() {
       active: true,
       createdBy: USERS.manager.uid, createdByName: USERS.manager.name, createdAt: Date.now(),
     }, { merge: true })
+    for (const b of EXTRA_BEATS[p.key]) {
+      await db.doc(`sales_routes/${b.id}`).set({
+        name: b.name, description: `One of ${p.user.name.split(' ')[0]}'s other rounds.`,
+        places: b.places, outletIds: b.all,
+        defaultTargets: { visits: 10, orderValue: 40000 },
+        active: true,
+        createdBy: USERS.manager.uid, createdByName: USERS.manager.name, createdAt: Date.now(),
+      })
+    }
   }
 
   // ── targets: last month for everyone, this month for Arjun ────────────────
@@ -491,13 +548,19 @@ async function recentMonth() {
       const kind = fresh(back) ? 'sold' : p.force[back] ?? (roll < 0.07 ? 'absent' : roll < 0.15 ? 'nothing' : 'sold')
       if (kind === 'absent') continue
 
+      // Their own round on most days, one of their other three on the rest.
+      // The forced days keep the main round, so the states they set up hold.
+      const mine = beatsOf(p)
+      const beat = fresh(back) || p.force[back] || r() < 0.55
+        ? mine[0] : mine[1 + Math.floor(r() * 3)]
+
       const km = 18 + Math.round(r() * 60)
       const sessionId = `demo_${u.uid}_${date}`
       const start = odo
       odo += km
       await db.doc(`duty_sessions/${sessionId}`).set({
         uid: u.uid, name: u.name, date,
-        routeId: p.route.id, routeName: p.route.name,
+        routeId: beat.id, routeName: beat.name,
         startAt: at(date, 9, 10), startLocation: fix(DEPOT, at(date, 9, 10)),
         startOdometerKm: start, odometerStatus: 'recorded',
         startOdometerPhoto: 'demo/odometer.jpg', startOdometerPhotoVerified: false,
@@ -507,7 +570,7 @@ async function recentMonth() {
       })
       await db.doc(`work_plans/${u.uid}_${date}`).set({
         uid: u.uid, name: u.name, date,
-        routeId: p.route.id, routeName: p.route.name,
+        routeId: beat.id, routeName: beat.name,
         targets: { visits: 10, orderValue: 40000 },
         assignedBy: USERS.manager.uid, assignedByName: USERS.manager.name,
         createdAt: at(date, 8, 0),
@@ -516,9 +579,9 @@ async function recentMonth() {
       // Visits, and the orders that came out of some of them.
       const shops = 2 + Math.floor(r() * 4)
       const sellingTo = kind === 'sold' ? 1 + Math.floor(r() * Math.min(3, shops)) : 0
-      const offset = Math.floor(r() * p.outlets.length)
+      const offset = Math.floor(r() * beat.visit.length)
       for (let i = 0; i < shops; i++) {
-        const o = outlet(p.outlets[(offset + i) % p.outlets.length])
+        const o = outlet(beat.visit[(offset + i) % beat.visit.length])
         const hour = 10 + Math.floor(i * 1.5)
         const sold = i < sellingTo
         const mins = 12 + Math.floor(r() * 30)

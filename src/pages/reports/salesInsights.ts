@@ -193,21 +193,38 @@ const live = (p: Party) => (p as any).status !== 'inactive' && (p as any).status
  * columns is the selling; the gap between visited and the beat's size is the
  * walking.
  */
+/** Narrowing for the coverage table. Every field optional; none means everything. */
+export interface CoverageFilter {
+  /**
+   * One rep: only the beats they were assigned in the window, and only their
+   * own visits and orders counted against them.
+   */
+  uid?: string
+  /** The beats that rep was assigned — worked out by the caller from the plans. */
+  beatIds?: Set<string>
+  /** One place: only that area's shops, and only beats that have some. */
+  area?: string
+}
+
 export function coverageOf(
   routes: SalesRoute[],
   parties: Party[],
   visits: OutletVisit[],
   allocations: UnifiedAllocation[],
   range: { from: string; to: string },
+  filter: CoverageFilter = {},
 ): { beats: Coverage[]; all: Coverage; offBeat: number } {
-  const liveIds = new Set(parties.filter(live).map(p => p.id!))
+  const liveIds = new Set(parties.filter(live)
+    .filter(p => !filter.area || (p.place || '') === filter.area)
+    .map(p => p.id!))
   const inRange = (d: string) => d >= range.from && d <= range.to
   const visitedIds = new Set(visits
-    .filter(v => v.status !== 'abandoned' && inRange(v.date))
+    .filter(v => v.status !== 'abandoned' && inRange(v.date) && (!filter.uid || v.uid === filter.uid))
     .map(v => v.partyId))
   const orderedIds = new Set(allocations
     .filter(a => a.status !== 'cancelled' && a.createdAt
-      && inRange(localDateStr(new Date(a.createdAt))) && a.partyId)
+      && inRange(localDateStr(new Date(a.createdAt))) && a.partyId
+      && (!filter.uid || a.createdBy === filter.uid))
     .map(a => a.partyId as string))
 
   const of = (ids: string[], id: string, name: string, places: string): Coverage => {
@@ -220,16 +237,25 @@ export function coverageOf(
     }
   }
 
-  const beats = routes
-    .filter(r => (r as any).active !== false)
-    .map(r => of([...new Set(r.outletIds ?? [])], r.id!, r.name, routePlaces(r).join(', ')))
+  const active = routes.filter(r => r.active !== false)
+  const shown = active.filter(r => !filter.beatIds || filter.beatIds.has(r.id!))
+  const beats = shown
+    .map(r => of([...new Set(r.outletIds ?? [])], r.id!, r.name,
+      // With an area picked, the beat names only that area — the rest of its
+      // round is not what is being counted.
+      filter.area ? filter.area : routePlaces(r).join(', ')))
+    .filter(c => c.shops > 0)
     .sort((a, b) => a.name.localeCompare(b.name))
 
-  const onABeat = new Set(routes.filter(r => r.active !== false).flatMap(r => r.outletIds ?? []))
+  const onABeat = new Set(active.flatMap(r => r.outletIds ?? []))
+  // With a person picked, "all shops" is all the shops on their beats.
+  const allIds = filter.beatIds
+    ? [...new Set(shown.flatMap(r => r.outletIds ?? []))]
+    : [...liveIds]
   return {
     beats,
-    all: of([...liveIds], 'all', 'All shops', ''),
-    offBeat: [...liveIds].filter(x => !onABeat.has(x)).length,
+    all: of(allIds, 'all', filter.beatIds ? 'All their beats' : 'All shops', ''),
+    offBeat: filter.beatIds ? 0 : [...liveIds].filter(x => !onABeat.has(x)).length,
   }
 }
 

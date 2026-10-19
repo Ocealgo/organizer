@@ -320,6 +320,16 @@ export async function outletVisit(
   })
 }
 
+/** A rep given a beat for a day — the plan that coverage's person filter reads. */
+export async function beatDay(who: UserKey, date: string, routeId: string, routeName = routeId): Promise<void> {
+  const u = USERS[who]
+  await getFirestore(admin()).doc(`work_plans/${u.uid}_${date}`).set({
+    uid: u.uid, name: u.name, date, routeId, routeName,
+    targets: { visits: 10, orderValue: 40000 },
+    assignedBy: USERS.manager.uid, assignedByName: USERS.manager.name, createdAt: testNow(),
+  })
+}
+
 /** A beat and the shops it is meant to cover. */
 export async function beat(id: string, name: string, outletIds: string[]): Promise<void> {
   await getFirestore(admin()).doc(`sales_routes/${id}`).set({
