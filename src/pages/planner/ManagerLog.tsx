@@ -11,6 +11,7 @@ import { useConfirm } from '../../hooks/useConfirm'
 import { isAdminRole } from '../../auth/permissions'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
+import WeekPicker from '../../components/WeekPicker'
 import {
   PageHeader, Section, Field, Note, EmptyState, Eyebrow,
   ChipGroup, GhostButton, PrimaryButton, inputStyle,
@@ -22,6 +23,17 @@ interface Props { onBack: () => void }
 const longDay = (d: string) =>
   new Date(d + 'T00:00:00').toLocaleDateString('en-IN',
     { weekday: 'long', day: 'numeric', month: 'short' })
+
+type WhenMode = 'day' | 'week' | 'month' | 'custom'
+const WHEN_LABEL: Record<WhenMode, string> = {
+  day: 'A day', week: 'A week', month: 'A month', custom: 'A range',
+}
+
+function mondayOf(d: string): string {
+  const x = new Date(d + 'T00:00:00')
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7))
+  return localDateStr(x)
+}
 
 function addDays(d: string, n: number): string {
   const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() + n); return localDateStr(x)
@@ -56,12 +68,31 @@ export default function ManagerLog({ onBack }: Props) {
   const [reps, setReps] = useState<AppUser[]>([])
   const [parties, setParties] = useState<Party[]>([])
   const [readError, setReadError] = useState<string | null>(null)
+  /** The window's first answer has arrived — until then a PDF would be of nothing. */
+  const [loaded, setLoaded] = useState(false)
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const [pdfError, setPdfError] = useState<string | null>(null)
   /** uid → when they punched in today. Only these can be named in a meeting. */
   const [startedToday, setStartedToday] = useState<Map<string, number>>(new Map())
 
   // Admin view: a window and a person.
-  const [from, setFrom] = useState(addDays(today, -6))
-  const [to, setTo] = useState(today)
+  // The same "When" as Monitor reps, so the two read alike. A manager's week is
+  // Monday to Sunday — an office day or a meeting is not tied to the round.
+  const [mode, setMode] = useState<WhenMode>('week')
+  const [day, setDay] = useState(today)
+  const [weekStart, setWeekStart] = useState(mondayOf(today))
+  const [month, setMonth] = useState(today.slice(0, 7))
+  const [customFrom, setCustomFrom] = useState(addDays(today, -6))
+  const [customTo, setCustomTo] = useState(today)
+  const [from, to] = useMemo((): [string, string] => {
+    if (mode === 'day') return [day, day]
+    if (mode === 'week') return [weekStart, addDays(weekStart, 6)]
+    if (mode === 'month') {
+      const [y, m] = month.split('-').map(Number)
+      return [`${month}-01`, localDateStr(new Date(y, m, 0))]
+    }
+    return customFrom <= customTo ? [customFrom, customTo] : [customTo, customFrom]
+  }, [mode, day, weekStart, month, customFrom, customTo])
   const [who, setWho] = useState('')
 
   // The form.
@@ -105,6 +136,7 @@ export default function ManagerLog({ onBack }: Props) {
   useEffect(() => {
     if (!appUser) return
     setReadError(null)
+    setLoaded(false)
     // A manager asks only for their own, which is the shape their rule allows.
     // An admin asks by date, which the standalone admin branch answers.
     const q = isAdmin
@@ -112,10 +144,13 @@ export default function ManagerLog({ onBack }: Props) {
           where('date', '>=', from), where('date', '<=', to))
       : query(collection(db, 'manager_activities'), where('uid', '==', appUser.uid))
     return onSnapshot(q,
-      s => setEntries(s.docs.map(d => ({ id: d.id, ...d.data() } as ManagerActivity))),
-      err => setReadError(err?.code === 'permission-denied'
-        ? 'Firestore turned down the read. The deployed rules may be older than this build.'
-        : 'Could not load the log.'),
+      s => { setLoaded(true); setEntries(s.docs.map(d => ({ id: d.id, ...d.data() } as ManagerActivity))) },
+      err => {
+        setLoaded(true)
+        setReadError(err?.code === 'permission-denied'
+          ? 'Firestore turned down the read. The deployed rules may be older than this build.'
+          : 'Could not load the log.')
+      },
     )
   }, [appUser, isAdmin, from, to])
 
@@ -211,6 +246,28 @@ export default function ManagerLog({ onBack }: Props) {
     await deleteDoc(doc(db, 'manager_activities', e.id!))
   }
 
+  /** The window as shown, so the file still says what it covers once it has left the app. */
+  const downloadPdf = async () => {
+    setPdfBusy(true)
+    setPdfError(null)
+    try {
+      const { downloadManagerLogPdf } = await import('./managerLogPdf')
+      const [a, b] = from <= to ? [from, to] : [to, from]
+      const short = (d: string) => new Date(d + 'T00:00:00')
+        .toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+      await downloadManagerLogPdf(forAdmin, {
+        period: a === b ? short(a) : `${short(a)} - ${short(b)}`,
+        who: who ? managers.find(m => m.value === who)?.label ?? 'One manager' : 'Everybody',
+        from: a, to: b,
+      })
+    } catch (e) {
+      console.error('[ManagerLog] PDF failed', e)
+      setPdfError('The PDF could not be made. Try again, or check the connection if this keeps happening.')
+    } finally {
+      setPdfBusy(false)
+    }
+  }
+
   const line = (e: ManagerActivity) => [
     MANAGER_ACTIVITY_LABEL[e.kind],
     e.withNames?.length ? e.withNames.join(', ') : null,
@@ -223,7 +280,7 @@ export default function ManagerLog({ onBack }: Props) {
       {modal}
       <PageHeader
         eyebrow={isAdmin ? 'Reports' : 'My day'}
-        title={isAdmin ? 'Manager activity' : 'What I did today'}
+        title={isAdmin ? 'Monitor managers' : 'What I did today'}
         subtitle={isAdmin
           ? 'Meetings, days out with a rep, and desk days.'
           : 'Only the parts the app cannot see for itself.'}
@@ -381,23 +438,68 @@ export default function ManagerLog({ onBack }: Props) {
         {/* ── AN ADMIN READING IT BACK ────────────────────────────────────── */}
         {isAdmin && (
           <>
+            <div>
+              <div style={{ marginBottom: 8 }}><Eyebrow>When</Eyebrow></div>
+              <div className="oc-wrap" style={{ gap: 6, alignItems: 'center' }}>
+                {(['day', 'week', 'month', 'custom'] as WhenMode[]).map(m => (
+                  <button key={m} className="oc-action" onClick={() => setMode(m)}
+                    aria-pressed={mode === m}
+                    style={{
+                      background: 'none',
+                      border: `0.5px solid ${mode === m ? t.text2 : t.border}`,
+                      borderRadius: 99, padding: '6px 13px', fontSize: 12,
+                      color: mode === m ? t.text : t.text3, cursor: 'pointer', whiteSpace: 'nowrap',
+                    }}>
+                    {WHEN_LABEL[m]}
+                  </button>
+                ))}
+                <div style={{ flex: '1 1 300px', display: 'flex', gap: 10, minWidth: 0 }}>
+                  {mode === 'day' && (
+                    <div style={{ flex: 1, minWidth: 140 }}>
+                      <DateInput type="date" value={day} onChange={setDay} ariaLabel="Day" />
+                    </div>
+                  )}
+                  {mode === 'week' && (
+                    <div style={{ flex: 1, minWidth: 140 }}>
+                      <WeekPicker value={weekStart} onChange={setWeekStart} days={7} />
+                    </div>
+                  )}
+                  {mode === 'month' && (
+                    <div style={{ flex: 1, minWidth: 140 }}>
+                      <DateInput type="month" value={month} onChange={setMonth} ariaLabel="Month" />
+                    </div>
+                  )}
+                  {mode === 'custom' && (
+                    <>
+                      <div style={{ flex: 1, minWidth: 130 }}>
+                        <DateInput type="date" value={customFrom} onChange={setCustomFrom} ariaLabel="From" />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 130 }}>
+                        <DateInput type="date" value={customTo} onChange={setCustomTo} ariaLabel="To" />
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
             <div className="oc-wrap" style={{ gap: 16 }}>
-              <div style={{ flex: 1, minWidth: 150 }}>
-                <Field label="From"><DateInput type="date" value={from} onChange={setFrom} /></Field>
-              </div>
-              <div style={{ flex: 1, minWidth: 150 }}>
-                <Field label="To"><DateInput type="date" value={to} onChange={setTo} /></Field>
-              </div>
               <div style={{ flex: 1, minWidth: 180 }}>
-                <Field label="Who">
-                  <CustomSelect
-                    value={who}
-                    onChange={setWho}
-                    options={[{ value: '', label: 'Everybody' }, ...managers]}
-                    placeholder="Everybody"
-                  />
-                </Field>
+                <div style={{ marginBottom: 8 }}><Eyebrow>Who</Eyebrow></div>
+                <CustomSelect
+                  value={who}
+                  onChange={setWho}
+                  options={[{ value: '', label: 'Everybody' }, ...managers]}
+                  placeholder="Everybody"
+                />
               </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              {pdfError && <span style={{ fontSize: 12, color: t.warn }}>{pdfError}</span>}
+              <GhostButton onClick={downloadPdf} disabled={pdfBusy || !loaded || forAdmin.length === 0}>
+                {pdfBusy ? 'Making the PDF…' : !loaded ? 'Loading…' : 'Download PDF'}
+              </GhostButton>
             </div>
 
             {forAdmin.length === 0 ? (

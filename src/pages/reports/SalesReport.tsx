@@ -7,6 +7,7 @@ import {
   AppUser, Holiday, LeaveRecord, SalesTarget,
   VISIT_OUTCOME_LABEL, VisitOutcomeCategory, packetsOrdered,
 } from '../../types'
+import { isProductive } from './salesInsights'
 import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
@@ -63,6 +64,13 @@ interface PersonStats {
   visits: number
   uniqueParties: number
   interested: number
+  /**
+   * Field-app visits, and how many of them ended in an order. Kept apart from
+   * `visits` because the older day log never recorded whether an order came of
+   * a visit — a strike rate over both would count those as misses.
+   */
+  fieldVisits: number
+  productive: number
   notInterested: number
   followUp: number
   newParties: number
@@ -89,7 +97,7 @@ interface PersonStats {
 const EMPTY = (uid: string, name: string): PersonStats => ({
   uid, name,
   daysLogged: 0, visits: 0, uniqueParties: 0,
-  interested: 0, notInterested: 0, followUp: 0,
+  interested: 0, notInterested: 0, followUp: 0, fieldVisits: 0, productive: 0,
   newParties: 0, visitMinutes: 0, timedVisits: 0,
   orders: 0, orderValue: 0,
   packetsOrdered: 0, targetUnits: 0,
@@ -236,6 +244,8 @@ export default function SalesReport({ onBack }: Props) {
       // denominator entry that could never have converted.
       if (v.status === 'abandoned') return
       s.visits++
+      s.fieldVisits++
+      if (isProductive(v)) s.productive++
       partySets.get(v.uid)!.add(v.partyId)
       daySets.get(v.uid)!.add(v.date)
       if (v.remarksCategory === 'order_booked') s.interested++
@@ -301,6 +311,8 @@ export default function SalesReport({ onBack }: Props) {
       daysLogged: acc.daysLogged + s.daysLogged,
       visits: acc.visits + s.visits,
       interested: acc.interested + s.interested,
+      fieldVisits: acc.fieldVisits + s.fieldVisits,
+      productive: acc.productive + s.productive,
       notInterested: acc.notInterested + s.notInterested,
       followUp: acc.followUp + s.followUp,
       newParties: acc.newParties + s.newParties,
@@ -339,6 +351,11 @@ export default function SalesReport({ onBack }: Props) {
     { label: 'Not interested', get: s => s.notInterested },
     { label: 'Follow up', get: s => s.followUp },
     { label: 'Conversion %', get: s => s.visits > 0 ? +((s.interested / s.visits) * 100).toFixed(1) : 0 },
+    // The industry's strike rate: visits that ended in an order, over the visits
+    // that could have said so. Beside conversion rather than instead of it —
+    // conversion also counts the older log's "interested", which is a judgement.
+    { label: 'Visits with an order', get: s => s.productive },
+    { label: 'Strike rate %', get: s => s.fieldVisits > 0 ? +((s.productive / s.fieldVisits) * 100).toFixed(1) : 0 },
     { label: 'New parties', get: s => s.newParties },
     { label: 'Avg minutes in outlet', get: s => s.timedVisits > 0 ? Math.round(s.visitMinutes / s.timedVisits) : 0 },
     { label: 'Orders', get: s => s.orders },

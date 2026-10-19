@@ -271,6 +271,17 @@ const ARJUN = {
   name: 'Arjun Rep', role: 'offline_sales',
 }
 
+/**
+ * A super admin, which the shared seed has none of. The app treats one
+ * differently from an admin in a few places — only a super admin may touch an
+ * admin's account, or make another super admin — so those are only testable
+ * signed in as one. Emulator only, like everything here.
+ */
+const SUPER = {
+  uid: 'sandbox_super', email: 'super@ocealgo.test', phone: '9800000008',
+  name: 'Sara Superadmin', role: 'super_admin',
+}
+
 /** Shops on each beat, in their own areas, so the Area column has places to name. */
 const SHOPS = [
   { id: 'sb_fort_1', name: 'Fort Supermart', place: 'Fort Kochi', type: 'supermarket', category: 'Supermarket' },
@@ -281,6 +292,13 @@ const SHOPS = [
   { id: 'sb_kakk_1', name: 'Infopark Mart', place: 'Kakkanad', type: 'supermarket', category: 'Supermarket' },
   { id: 'sb_edap_1', name: 'Lulu Kids Corner', place: 'Edappally', type: 'general', category: 'General Store' },
   { id: 'sb_edap_2', name: 'Edappally Care Pharmacy', place: 'Edappally', type: 'pharmacy', category: 'Pharma' },
+  // On a beat, and never visited — so Beat coverage has gaps to show, the way a
+  // real beat does. Nobody's outlet list below includes these.
+  { id: 'sb_quiet_1', name: 'Seaside Provisions', place: 'Fort Kochi', type: 'general', category: 'General Store' },
+  { id: 'sb_quiet_2', name: 'Kaloor Corner Mart', place: 'Kaloor', type: 'general', category: 'General Store' },
+  { id: 'sb_quiet_3', name: 'Vyttila Junction Medicals', place: 'Vyttila', type: 'pharmacy', category: 'Pharma' },
+  { id: 'sb_quiet_4', name: 'Kakkanad Daily Needs', place: 'Kakkanad', type: 'general', category: 'General Store' },
+  { id: 'sb_quiet_5', name: 'Thrikkakara Stores', place: 'Kakkanad', type: 'general', category: 'General Store' },
 ]
 const SEEDED = {
   party_shop: { name: 'Anand Stores', type: 'general' },
@@ -311,9 +329,10 @@ const PRODUCTS = {
  */
 const PEOPLE = [
   {
-    user: USERS.rep, seed: 11, pace: 44, wipesShare: 0.65, odoFrom: 40500,
+    user: USERS.rep, seed: 11, pace: 44, wipesShare: 0.65, odoFrom: 36500,
     route: { id: 'route_demo', name: 'Beach Road', places: ['Kochi', 'Fort Kochi', 'Mattancherry'] },
     outlets: ['party_shop', 'party_pharmacy', 'sb_fort_1', 'sb_matt_1'],
+    quiet: ['sb_quiet_1'],
     // Kept from the hand-made week this replaced, so those states stay findable.
     force: { 2: 'absent', 4: 'nothing' },
   },
@@ -321,16 +340,23 @@ const PEOPLE = [
     user: USERS.rep2, seed: 23, pace: 26, wipesShare: 0.4, odoFrom: 18000,
     route: { id: 'route_market', name: 'Market Road', places: ['Ernakulam', 'Kaloor', 'Vyttila'] },
     outlets: ['party_dist', 'sb_kaloor_1', 'sb_vytt_1', 'sb_vytt_2'],
+    quiet: ['sb_quiet_2', 'sb_quiet_3'],
     force: { 1: 'absent' },
   },
   {
     user: ARJUN, seed: 37, pace: 32, wipesShare: 0.55, odoFrom: 7200,
     route: { id: 'route_hill', name: 'Hill Road', places: ['Kakkanad', 'Edappally'] },
     outlets: ['sb_kakk_1', 'sb_edap_1', 'sb_edap_2'],
+    quiet: ['sb_quiet_4', 'sb_quiet_5'],
     force: { 3: 'absent', 6: 'nothing' },
   },
 ]
-const DAYS_BACK = 30
+/**
+ * Four months of history. A month against the one before needs both to be
+ * whole, and a growth rate needs several months of them — thirty days made
+ * every comparison read "up 1300%" because the earlier period was nearly empty.
+ */
+const DAYS_BACK = 120
 
 /** A small deterministic generator: the same seed, the same month. */
 function rng(seed) {
@@ -376,15 +402,17 @@ function monthTarget(u, month, byProduct, extra = {}) {
 async function recentMonth() {
   const db = getFirestore()
 
-  // ── the third officer ─────────────────────────────────────────────────────
-  await getAuth().createUser({
-    uid: ARJUN.uid, email: ARJUN.email, password: PASSWORD, displayName: ARJUN.name,
-    phoneNumber: `+91${ARJUN.phone}`,
-  })
-  await db.doc(`users/${ARJUN.uid}`).set({
-    email: ARJUN.email, name: ARJUN.name, phone: `+91${ARJUN.phone}`,
-    role: ARJUN.role, status: 'approved', createdAt: Date.now(),
-  })
+  // ── the third officer, and a super admin ──────────────────────────────────
+  for (const u of [ARJUN, SUPER]) {
+    await getAuth().createUser({
+      uid: u.uid, email: u.email, password: PASSWORD, displayName: u.name,
+      phoneNumber: `+91${u.phone}`,
+    })
+    await db.doc(`users/${u.uid}`).set({
+      email: u.email, name: u.name, phone: `+91${u.phone}`,
+      role: u.role, status: 'approved', createdAt: Date.now(),
+    })
+  }
 
   // ── shops, in their places ────────────────────────────────────────────────
   for (const s of SHOPS) {
@@ -409,7 +437,7 @@ async function recentMonth() {
       name: p.route.name,
       description: `${p.user.name.split(' ')[0]}'s round.`,
       places: p.route.places,
-      outletIds: p.outlets,
+      outletIds: [...p.outlets, ...p.quiet],
       defaultTargets: { visits: 10, orderValue: 40000 },
       active: true,
       createdBy: USERS.manager.uid, createdByName: USERS.manager.name, createdAt: Date.now(),
@@ -437,7 +465,9 @@ async function recentMonth() {
   const cfg = { hq: 200, ex: 300, os: 450, ratePerKm: 4.5 }
   const thisWeek = weekStartOf(todayLocal())
 
-  for (const p of PEOPLE) {
+  // The three people at once: each has its own generator and its own records,
+  // so nothing one writes depends on another, and four months take a third the time.
+  await Promise.all(PEOPLE.map(async p => {
     const u = p.user
     const r = rng(p.seed)
     let odo = p.odoFrom
@@ -514,18 +544,50 @@ async function recentMonth() {
           orders++
           if (pid === 'prod_wipes') wipesOrders++
           const pr = PRODUCTS[pid]
-          const want = (p.pace / sellingTo) * (0.5 + r())
+          // Selling builds over the four months — from about 70% of the
+          // person's pace to about 130% — so month on month there is growth
+          // to measure, as there would be in a business that is going well.
+          const ramp = 0.7 + 0.6 * (1 - back / DAYS_BACK)
+          const want = (p.pace * ramp / sellingTo) * (0.5 + r())
           const packets = Math.max(pr.step, Math.round(want / pr.step) * pr.step)
-          await companyAllocation({
+          const total = packets * pr.price
+          const partyType = o.type === 'distributor' ? 'distributor' : 'retailer'
+          const allocId = await companyAllocation({
             createdBy: u.uid, createdByName: u.name,
             createdAt: at(date, hour, 30),
-            partyId: o.id, partyName: o.name, partyType: o.type === 'distributor' ? 'distributor' : 'retailer',
+            partyId: o.id, partyName: o.name, partyType,
             productId: pid, productName: pr.name,
             packets, cartons: Math.max(1, Math.round(packets / pr.perCarton)),
-            pricePerPacket: pr.price, totalAmount: packets * pr.price,
+            pricePerPacket: pr.price, totalAmount: total,
             status: 'sent', sentAt: at(date, 15, 0), sentDate: date,
             month: date.slice(0, 7),
           })
+
+          // Most bills are collected a week or so later, by the rep, the way
+          // the outlet screen records it: the payment applied to the bill, the
+          // bill marked paid. Older ones are approved; the last fortnight's are
+          // still waiting on an admin. Some stay unpaid, so the credit book has
+          // money outstanding.
+          const payBack = back - (5 + Math.floor(r() * 6))
+          if (payBack >= 1 && r() < 0.75) {
+            const payDate = dayBack(payBack)
+            const approved = payBack > 14
+            await db.collection('payment_transactions').add({
+              partyId: o.id, partyName: o.name, partyType,
+              amount: total, paymentMethod: r() < 0.6 ? 'cash' : 'upi',
+              collectionType: 'collected_by_salesperson',
+              collectedBy: u.uid, collectedByName: u.name,
+              notes: '', date: payDate, createdAt: at(payDate, 13, 0),
+              appliedTo: [{ allocId, amount: total }],
+              ...(approved
+                ? { status: 'approved', approvedBy: USERS.admin.uid, approvedByName: USERS.admin.name,
+                    approvedAt: at(payDate, 18, 0) }
+                : { status: 'pending_approval' }),
+            })
+            await db.doc(`allocations_v2/${allocId}`).update({
+              paidAmount: total, status: 'paid', paidAt: at(payDate, 13, 0),
+            })
+          }
         }
       }
 
@@ -579,7 +641,7 @@ async function recentMonth() {
     for (const rep of reports.values()) {
       await db.doc(`expense_reports/${rep.id}`).update({ totalAmount: Math.round(rep.total * 100) / 100 })
     }
-  }
+  }))
 
   // One cancelled order, so the line that says cancellations are not counted
   // has something to not count.
@@ -592,12 +654,50 @@ async function recentMonth() {
 
 const PAD = Math.max(...Object.keys(USERS).map(k => k.length))
 
+/**
+ * A week of what the managers did, so Monitor managers has something to read
+ * and to download. Meetings, a day out with a rep, office days — the three
+ * kinds the log takes — spread over two managers, a few days back.
+ */
+async function managerWeek() {
+  const db = getFirestore()
+  const m1 = USERS.manager, m2 = USERS.managerPlus
+  const ENTRIES = [
+    { back: 6, who: m1, kind: 'meeting', title: 'Monday team review', with: [USERS.rep, USERS.rep2, ARJUN], minutes: 45,
+      notes: 'Agreed the Onam scheme targets. Ravi to chase Anand Stores.' },
+    { back: 5, who: m1, kind: 'joint_field', title: 'Out with Priya on Market Road', with: [USERS.rep2], minutes: 240,
+      notes: 'Two new pharmacies interested. Kaloor Baby Store wants a better margin.' },
+    { back: 5, who: m2, kind: 'office', title: 'Month-end stock reconciliation', minutes: 180 },
+    { back: 4, who: m2, kind: 'meeting', title: 'Rajan Distributors — credit terms', party: { id: 'party_dist', name: 'Rajan Distributors' },
+      minutes: 60, notes: 'They asked for 30 days. Said we would come back by Friday.' },
+    { back: 3, who: m1, kind: 'joint_field', title: 'Out with Arjun, Hill Road', with: [ARJUN], minutes: 300,
+      notes: 'Coached on the order pitch at Infopark Mart.' },
+    { back: 2, who: m2, kind: 'office', title: 'Planning next week\'s beats' },
+    { back: 1, who: m1, kind: 'meeting', title: 'Call with the Fort Kochi supermarket', party: { id: 'sb_fort_1', name: 'Fort Supermart' },
+      minutes: 30 },
+  ]
+  for (const [i, e] of ENTRIES.entries()) {
+    const date = dayBack(e.back)
+    await db.doc(`manager_activities/sandbox_${i}`).set({
+      uid: e.who.uid, name: e.who.name, date, kind: e.kind, title: e.title,
+      // Always written, empty included — the rules read it on every entry.
+      withUids: (e.with ?? []).map(u => u.uid),
+      withNames: (e.with ?? []).map(u => u.name),
+      ...(e.party ? { partyId: e.party.id, partyName: e.party.name } : {}),
+      ...(e.minutes ? { minutes: e.minutes } : {}),
+      ...(e.notes ? { notes: e.notes } : {}),
+      createdAt: at(date, 18, i),
+    })
+  }
+}
+
 async function main() {
   console.log(`\n  Rebuilding the ${PROJECT_ID} world…`)
   await resetWorld()
   await seedWorld()
   await sandboxExtras()
   await recentMonth()
+  await managerWeek()
   await closeAdmin()
 
   console.log('\n  Signed-out and ready. Every account uses the same password.\n')
@@ -605,6 +705,7 @@ async function main() {
     console.log(`    ${key.padEnd(PAD)}  ${u.email.padEnd(24)} ${u.phone}  ${u.role}`)
   }
   console.log(`    ${'rep3'.padEnd(PAD)}  ${ARJUN.email.padEnd(24)} ${ARJUN.phone}  ${ARJUN.role}  (sandbox only)`)
+  console.log(`    ${'super'.padEnd(PAD)}  ${SUPER.email.padEnd(24)} ${SUPER.phone}  ${SUPER.role}  (sandbox only)`)
   console.log(`\n    password  ${PASSWORD}`)
   console.log('\n  Either the email or the mobile number signs them in.')
   console.log('\n  App: http://127.0.0.1:5174')
