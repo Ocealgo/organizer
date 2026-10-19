@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures/app'
 import { readFileSync } from 'node:fs'
+import { testDate } from './fixtures/clock'
 import {
   companyAllocation, companyStock, noAllocations, noTargetsSet,
   packetTarget, todayLocal, closedDay, claimedExpense, noOneOnDuty, noWeeksFiled,
@@ -228,6 +229,37 @@ test.describe('the report', () => {
     await page.getByRole('group', { name: 'Rank by' }).getByRole('button', { name: 'Packets' }).click()
     await expect(page.getByRole('group', { name: /^1st, Ravi Rep: 24 pkts/ })).toBeVisible()
     await expect(page.getByRole('group', { name: /^2nd, Priya Rep: 12 pkts/ })).toBeVisible()
+  })
+
+  /** One day on its own: the figures follow the day picked, and so does the PDF. */
+  test('a single day can be reported, and downloaded', async ({ page, loginAs }) => {
+    await companyStock('prod_wipes', 500)
+    await companyAllocation()                                   // Ravi, today: 24 packets
+
+    await loginAs('manager')
+    await page.getByRole('button', { name: /^Reports/ }).first().click()
+    await page.getByRole('button', { name: /^Monitor reps/ }).click()
+    await page.getByRole('button', { name: 'Report', exact: true }).click()
+    await page.getByRole('button', { name: 'A day', exact: true }).click()
+
+    const day = page.getByLabel('Report day')
+    const row = page.getByTestId('report-row-e2e_rep')
+    await day.fill(todayLocal())
+    await expect(row).toContainText('₹1,440')
+
+    // Another day has none of it — the report follows the day picked.
+    const before = testDate(); before.setDate(before.getDate() - 1)
+    const yesterday = `${before.getFullYear()}-${String(before.getMonth() + 1).padStart(2, '0')}-${String(before.getDate()).padStart(2, '0')}`
+    await day.fill(yesterday)
+    await expect(row).toContainText('₹0')
+
+    await day.fill(todayLocal())
+    await expect(row).toContainText('₹1,440')
+    const [file] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: 'Download PDF' }).click(),
+    ])
+    expect(file.suggestedFilename()).toBe(`ocealgo-rep-report_${todayLocal()}_${todayLocal()}.pdf`)
   })
 
   /** The week is shown as a week: tapping any day picks its Monday to Saturday, and says so. */

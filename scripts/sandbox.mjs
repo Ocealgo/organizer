@@ -592,12 +592,50 @@ async function recentMonth() {
 
 const PAD = Math.max(...Object.keys(USERS).map(k => k.length))
 
+/**
+ * A week of what the managers did, so Monitor managers has something to read
+ * and to download. Meetings, a day out with a rep, office days — the three
+ * kinds the log takes — spread over two managers, a few days back.
+ */
+async function managerWeek() {
+  const db = getFirestore()
+  const m1 = USERS.manager, m2 = USERS.managerPlus
+  const ENTRIES = [
+    { back: 6, who: m1, kind: 'meeting', title: 'Monday team review', with: [USERS.rep, USERS.rep2, ARJUN], minutes: 45,
+      notes: 'Agreed the Onam scheme targets. Ravi to chase Anand Stores.' },
+    { back: 5, who: m1, kind: 'joint_field', title: 'Out with Priya on Market Road', with: [USERS.rep2], minutes: 240,
+      notes: 'Two new pharmacies interested. Kaloor Baby Store wants a better margin.' },
+    { back: 5, who: m2, kind: 'office', title: 'Month-end stock reconciliation', minutes: 180 },
+    { back: 4, who: m2, kind: 'meeting', title: 'Rajan Distributors — credit terms', party: { id: 'party_dist', name: 'Rajan Distributors' },
+      minutes: 60, notes: 'They asked for 30 days. Said we would come back by Friday.' },
+    { back: 3, who: m1, kind: 'joint_field', title: 'Out with Arjun, Hill Road', with: [ARJUN], minutes: 300,
+      notes: 'Coached on the order pitch at Infopark Mart.' },
+    { back: 2, who: m2, kind: 'office', title: 'Planning next week\'s beats' },
+    { back: 1, who: m1, kind: 'meeting', title: 'Call with the Fort Kochi supermarket', party: { id: 'sb_fort_1', name: 'Fort Supermart' },
+      minutes: 30 },
+  ]
+  for (const [i, e] of ENTRIES.entries()) {
+    const date = dayBack(e.back)
+    await db.doc(`manager_activities/sandbox_${i}`).set({
+      uid: e.who.uid, name: e.who.name, date, kind: e.kind, title: e.title,
+      // Always written, empty included — the rules read it on every entry.
+      withUids: (e.with ?? []).map(u => u.uid),
+      withNames: (e.with ?? []).map(u => u.name),
+      ...(e.party ? { partyId: e.party.id, partyName: e.party.name } : {}),
+      ...(e.minutes ? { minutes: e.minutes } : {}),
+      ...(e.notes ? { notes: e.notes } : {}),
+      createdAt: at(date, 18, i),
+    })
+  }
+}
+
 async function main() {
   console.log(`\n  Rebuilding the ${PROJECT_ID} world…`)
   await resetWorld()
   await seedWorld()
   await sandboxExtras()
   await recentMonth()
+  await managerWeek()
   await closeAdmin()
 
   console.log('\n  Signed-out and ready. Every account uses the same password.\n')

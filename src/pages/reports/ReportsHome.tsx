@@ -16,6 +16,8 @@ interface Props {
   onOpenSales: () => void
   onOpenOpportunities: () => void
   onOpenMonitor: () => void
+  /** Admins only; absent for everyone else, and the row with it. */
+  onOpenManagers?: () => void
 }
 
 /** Month arithmetic that does not care what today is. */
@@ -52,7 +54,7 @@ const EMPTY: Totals = { visits: 0, outlets: 0, orderValue: 0, collected: 0 }
  * rather than how long anybody stood in a doorway.
  */
 export default function ReportsHome({
-  onBack, onOpenSales, onOpenOpportunities, onOpenMonitor,
+  onBack, onOpenSales, onOpenOpportunities, onOpenMonitor, onOpenManagers,
 }: Props) {
   const { t } = useTheme()
 
@@ -312,6 +314,13 @@ export default function ReportsHome({
             <ListRow title="Monitor reps"
               desc="Field activity, the end of each day, and a report ranking the reps"
               onClick={onOpenMonitor} />
+            {/* Its own screen, not a tab of Monitor reps: other people, an admin's
+                question about them, and data only an admin may read. */}
+            {onOpenManagers && (
+              <ListRow title="Monitor managers"
+                desc="Meetings, days out with a rep, and office days — admins only"
+                onClick={onOpenManagers} />
+            )}
             <ListRow title="Sales report"
               desc="Totals per person over any range, with conversion and an Excel export"
               onClick={onOpenSales} />

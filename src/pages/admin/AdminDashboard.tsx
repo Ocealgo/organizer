@@ -1168,6 +1168,7 @@ export default function AdminDashboard() {
         onOpenSales={() => setSubScreen("reports")}
         onOpenOpportunities={() => setSubScreen("opportunities")}
         onOpenMonitor={() => setSubScreen("monitor")}
+        onOpenManagers={isAdminRole(appUser) ? () => setSubScreen("managerLog") : undefined}
       />
     );
   if (subScreen === "opportunities")
@@ -1220,7 +1221,7 @@ export default function AdminDashboard() {
     return <Planner onBack={() => setSubScreen("dashboard")} />;
 
   if (subScreen === "managerLog")
-    return <ManagerLog onBack={() => setSubScreen("dashboard")} />;
+    return <ManagerLog onBack={() => setSubScreen("reportsHome")} />;
 
   const handleAdminMarkLeave = async (
     uid: string,
@@ -1404,17 +1405,6 @@ export default function AdminDashboard() {
       value: plannedThisWeek > 0 ? `${plannedThisWeek} days planned` : "Nothing planned",
       warn: plannedThisWeek === 0 && routeCount > 0,
     },
-    // Reading it back, not writing it. A manager logs their own day from the
-    // field screen — the one they are on when the day happens — so this side
-    // is only the report.
-    ...(isAdminRole(appUser)
-      ? [{
-          name: "Manager activity",
-          desc: "Meetings, days out with a rep, and desk days",
-          screen: "managerLog" as SubScreen,
-          value: "Report",
-        }]
-      : []),
     {
       name: "Leave tracker",
       desc: "Approve time off and see who is out",

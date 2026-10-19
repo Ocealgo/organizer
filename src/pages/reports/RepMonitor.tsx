@@ -28,7 +28,7 @@ interface Props {
 type RangeMode = 'day' | 'week' | 'month' | 'custom'
 type Outcome = 'all' | 'met' | 'missed' | 'untargeted'
 type Tab = 'eod' | 'field' | 'report'
-type ReportRange = 'week' | 'month' | 'custom'
+type ReportRange = 'day' | 'week' | 'month' | 'custom'
 type Rank = 'packets' | 'orders' | 'value'
 const RANK_TITLE: Record<Rank, string> = {
   packets: 'Packets ordered', orders: 'Orders placed', value: 'Order value',
@@ -188,6 +188,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
   // drag one view's window into the other.
   const [rMode, setRMode] = useState<ReportRange>('week')
   const [rWeekStart, setRWeekStart] = useState(mondayOf(localDateStr()))
+  const [rDay, setRDay] = useState(localDateStr())
   const [rMonth, setRMonth] = useState(localMonthStr())
   const [rFrom, setRFrom] = useState(addDays(localDateStr(), -6))
   const [rTo, setRTo] = useState(localDateStr())
@@ -238,9 +239,10 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
    */
   const [repFrom, repTo] = useMemo((): [string, string] => {
     if (rMode === 'week') return [rWeekStart, addDays(rWeekStart, 5)]
+    if (rMode === 'day') return [rDay, rDay]
     if (rMode === 'month') return [`${rMonth}-01`, lastDayOfMonth(rMonth)]
     return rFrom <= rTo ? [rFrom, rTo] : [rTo, rFrom]
-  }, [rMode, rWeekStart, rMonth, rFrom, rTo])
+  }, [rMode, rDay, rWeekStart, rMonth, rFrom, rTo])
 
   // One set of listeners, pointed at whichever window is on screen.
   const [from, to] = tab === 'report' ? [repFrom, repTo] : [eodFrom, eodTo]
@@ -546,7 +548,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
       const { downloadRepReportPdf } = await import('./repReportPdf')
       const counted = repTo > localDateStr() ? ' · counted up to today' : ''
       await downloadRepReportPdf(report, {
-        period: `${shortDay(repFrom)} – ${shortDay(repTo)}`
+        period: (repFrom === repTo ? shortDay(repFrom) : `${shortDay(repFrom)} – ${shortDay(repTo)}`)
           + (rMode === 'week' ? ' · Monday to Saturday' : '') + counted,
         product: rProduct ? products.find(x => x.id === rProduct)?.name ?? 'One product' : 'All products',
         beat: rBeat ? routes.find(x => x.id === rBeat)?.name ?? 'One beat' : 'Any beat',
@@ -883,15 +885,20 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
           <div>
             <div style={{ marginBottom: 8 }}><Eyebrow>When</Eyebrow></div>
             <div className="oc-wrap" style={{ gap: 6, alignItems: 'center' }}>
-              {(['week', 'month', 'custom'] as ReportRange[]).map(m => (
+              {(['day', 'week', 'month', 'custom'] as ReportRange[]).map(m => (
                 <button key={m} className="oc-action" onClick={() => setRMode(m)} style={chip(rMode === m)}>
-                  {m === 'week' ? 'A week' : m === 'month' ? 'A month' : 'A range'}
+                  {m === 'day' ? 'A day' : m === 'week' ? 'A week' : m === 'month' ? 'A month' : 'A range'}
                 </button>
               ))}
               <div style={{ flex: '1 1 300px', display: 'flex', gap: 10, minWidth: 0 }}>
                 {rMode === 'week' && (
                   <div style={{ flex: 1, minWidth: 140 }}>
                     <WeekPicker value={rWeekStart} onChange={setRWeekStart} days={6} ariaLabel="Week" />
+                  </div>
+                )}
+                {rMode === 'day' && (
+                  <div style={{ flex: 1, minWidth: 140 }}>
+                    <DateInput type="date" value={rDay} onChange={setRDay} ariaLabel="Report day" />
                   </div>
                 )}
                 {rMode === 'month' && (
@@ -912,7 +919,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
               </div>
             </div>
             <div style={{ fontSize: 12, color: t.text3, marginTop: 6 }}>
-              {shortDay(repFrom)} – {shortDay(repTo)}{rMode === 'week' ? ' · Monday to Saturday' : ''}
+              {repFrom === repTo ? shortDay(repFrom) : `${shortDay(repFrom)} – ${shortDay(repTo)}`}{rMode === 'week' ? ' · Monday to Saturday' : ''}
               {repTo > localDateStr() ? ' · counted up to today' : ''}
             </div>
           </div>

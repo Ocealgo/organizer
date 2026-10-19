@@ -56,6 +56,10 @@ export default function ManagerLog({ onBack }: Props) {
   const [reps, setReps] = useState<AppUser[]>([])
   const [parties, setParties] = useState<Party[]>([])
   const [readError, setReadError] = useState<string | null>(null)
+  /** The window's first answer has arrived — until then a PDF would be of nothing. */
+  const [loaded, setLoaded] = useState(false)
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const [pdfError, setPdfError] = useState<string | null>(null)
   /** uid → when they punched in today. Only these can be named in a meeting. */
   const [startedToday, setStartedToday] = useState<Map<string, number>>(new Map())
 
@@ -105,6 +109,7 @@ export default function ManagerLog({ onBack }: Props) {
   useEffect(() => {
     if (!appUser) return
     setReadError(null)
+    setLoaded(false)
     // A manager asks only for their own, which is the shape their rule allows.
     // An admin asks by date, which the standalone admin branch answers.
     const q = isAdmin
@@ -112,10 +117,13 @@ export default function ManagerLog({ onBack }: Props) {
           where('date', '>=', from), where('date', '<=', to))
       : query(collection(db, 'manager_activities'), where('uid', '==', appUser.uid))
     return onSnapshot(q,
-      s => setEntries(s.docs.map(d => ({ id: d.id, ...d.data() } as ManagerActivity))),
-      err => setReadError(err?.code === 'permission-denied'
-        ? 'Firestore turned down the read. The deployed rules may be older than this build.'
-        : 'Could not load the log.'),
+      s => { setLoaded(true); setEntries(s.docs.map(d => ({ id: d.id, ...d.data() } as ManagerActivity))) },
+      err => {
+        setLoaded(true)
+        setReadError(err?.code === 'permission-denied'
+          ? 'Firestore turned down the read. The deployed rules may be older than this build.'
+          : 'Could not load the log.')
+      },
     )
   }, [appUser, isAdmin, from, to])
 
@@ -211,6 +219,28 @@ export default function ManagerLog({ onBack }: Props) {
     await deleteDoc(doc(db, 'manager_activities', e.id!))
   }
 
+  /** The window as shown, so the file still says what it covers once it has left the app. */
+  const downloadPdf = async () => {
+    setPdfBusy(true)
+    setPdfError(null)
+    try {
+      const { downloadManagerLogPdf } = await import('./managerLogPdf')
+      const [a, b] = from <= to ? [from, to] : [to, from]
+      const short = (d: string) => new Date(d + 'T00:00:00')
+        .toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+      await downloadManagerLogPdf(forAdmin, {
+        period: a === b ? short(a) : `${short(a)} - ${short(b)}`,
+        who: who ? managers.find(m => m.value === who)?.label ?? 'One manager' : 'Everybody',
+        from: a, to: b,
+      })
+    } catch (e) {
+      console.error('[ManagerLog] PDF failed', e)
+      setPdfError('The PDF could not be made. Try again, or check the connection if this keeps happening.')
+    } finally {
+      setPdfBusy(false)
+    }
+  }
+
   const line = (e: ManagerActivity) => [
     MANAGER_ACTIVITY_LABEL[e.kind],
     e.withNames?.length ? e.withNames.join(', ') : null,
@@ -223,7 +253,7 @@ export default function ManagerLog({ onBack }: Props) {
       {modal}
       <PageHeader
         eyebrow={isAdmin ? 'Reports' : 'My day'}
-        title={isAdmin ? 'Manager activity' : 'What I did today'}
+        title={isAdmin ? 'Monitor managers' : 'What I did today'}
         subtitle={isAdmin
           ? 'Meetings, days out with a rep, and desk days.'
           : 'Only the parts the app cannot see for itself.'}
@@ -398,6 +428,13 @@ export default function ManagerLog({ onBack }: Props) {
                   />
                 </Field>
               </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              {pdfError && <span style={{ fontSize: 12, color: t.warn }}>{pdfError}</span>}
+              <GhostButton onClick={downloadPdf} disabled={pdfBusy || !loaded || forAdmin.length === 0}>
+                {pdfBusy ? 'Making the PDF…' : !loaded ? 'Loading…' : 'Download PDF'}
+              </GhostButton>
             </div>
 
             {forAdmin.length === 0 ? (

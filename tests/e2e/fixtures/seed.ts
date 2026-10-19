@@ -299,6 +299,23 @@ export async function assignedDay(
   })
 }
 
+/**
+ * Something a manager logged — a meeting, a day out with a rep, an office day.
+ * Written as the app writes it: `withUids` always present, empty included,
+ * because the rules read it on every entry.
+ */
+export async function managerActivity(
+  who: UserKey, date: string,
+  over: Record<string, unknown> = {},
+): Promise<void> {
+  const u = USERS[who]
+  await getFirestore(admin()).collection('manager_activities').add({
+    uid: u.uid, name: u.name, date, kind: 'meeting', title: 'Team review',
+    withUids: [], withNames: [], minutes: 45, createdAt: testNow(),
+    ...over,
+  })
+}
+
 /** Local date today, the way the app means it. */
 export const todayLocal = (): string => {
   const d = testDate()
