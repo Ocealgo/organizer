@@ -293,3 +293,32 @@ test.describe('the report', () => {
     await expect(row).toContainText('Not set')
   })
 })
+
+/**
+ * Field activity is a tab of Monitor reps now, and the old way in still works:
+ * the Reports menu's row lands on that tab rather than on a screen of its own.
+ */
+test.describe('field activity', () => {
+  test('the reports menu opens it as a tab of Monitor reps', async ({ page, loginAs }) => {
+    await loginAs('manager')
+    await page.getByRole('button', { name: /^Reports/ }).first().click()
+    await page.getByRole('button', { name: /^Field activity/ }).click()
+
+    await expect(page.getByRole('heading', { name: 'Monitor reps' })).toBeVisible()
+    await expect(page.getByText('Attendance, meter readings and every outlet visit with its remarks.')).toBeVisible()
+    // Its own filters, and one header — the tab's, not a second page's.
+    await expect(page.getByText('Who', { exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Field activity' })).toHaveCount(0)
+
+    // Its week is on the calendar too, all seven days of it.
+    await page.getByRole('button', { name: 'Week', exact: true }).click()
+    await page.getByRole('button', { name: /^Week: / }).click()
+    await expect(page.getByRole('dialog', { name: 'Choose a week' })
+      .getByRole('gridcell', { selected: true })).toHaveCount(7)
+
+    // And the other tabs are one tap away.
+    await page.keyboard.press('Escape')
+    await page.getByRole('button', { name: 'Report', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Download PDF' })).toBeVisible()
+  })
+})

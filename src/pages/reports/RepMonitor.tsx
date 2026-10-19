@@ -11,16 +11,23 @@ import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
 import WeekPicker from '../../components/WeekPicker'
+import FieldReport from '../admin/FieldReport'
 import { PageHeader, Eyebrow, EmptyState, Note, TabBar, GhostButton } from '../../components/ui'
 import RankedBars from '../../components/RankedBars'
 import { localDateStr, localMonthStr, isSunday } from '../../utils/date'
 import { pathLengthKm } from '../../device/location'
 
-interface Props { onBack: () => void }
+interface Props {
+  onBack: () => void
+  /** Which tab to open on — the dashboard's rep rows open Field activity. */
+  initialTab?: Tab
+  /** Field activity opened already filtered to one person. */
+  initialWho?: string
+}
 
 type RangeMode = 'day' | 'week' | 'month' | 'custom'
 type Outcome = 'all' | 'met' | 'missed' | 'untargeted'
-type Tab = 'eod' | 'report'
+type Tab = 'eod' | 'field' | 'report'
 type ReportRange = 'week' | 'month' | 'custom'
 type Rank = 'packets' | 'orders' | 'value'
 const RANK_TITLE: Record<Rank, string> = {
@@ -152,7 +159,7 @@ interface Eod {
   fuelAboveMeter: boolean
 }
 
-export default function RepMonitor({ onBack }: Props) {
+export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
   const { t } = useTheme()
 
   const [reps, setReps] = useState<AppUser[]>([])
@@ -173,7 +180,7 @@ export default function RepMonitor({ onBack }: Props) {
    */
   const [pending, setPending] = useState(0)
 
-  const [tab, setTab] = useState<Tab>('eod')
+  const [tab, setTab] = useState<Tab>(initialTab ?? 'eod')
 
   // ── the report's own filters ───────────────────────────────────────────────
   // Separate from the end-of-day ones above, so moving between the tabs does not
@@ -255,6 +262,7 @@ export default function RepMonitor({ onBack }: Props) {
   }, [])
 
   useEffect(() => {
+    if (tab === 'field') return
     setReadError(null)
     setPending(6)
     /** Wraps a listener so its first answer, good or bad, counts it as arrived. */
@@ -319,7 +327,7 @@ export default function RepMonitor({ onBack }: Props) {
       ),
     ]
     return () => unsubs.forEach(u => u())
-  }, [from, to])
+  }, [from, to, tab])
 
   // ── one card per rep per day ───────────────────────────────────────────────
   const cards = useMemo((): Eod[] => {
@@ -621,14 +629,27 @@ export default function RepMonitor({ onBack }: Props) {
         title="Monitor reps"
         subtitle={tab === 'eod'
           ? 'The end of each day, one card per person — what they covered and whether it met the target.'
-          : 'Who is leading over a stretch of days, and what sits behind it.'}
+          : tab === 'field'
+            ? 'Attendance, meter readings and every outlet visit with its remarks.'
+            : 'Who is leading over a stretch of days, and what sits behind it.'}
         onBack={onBack}
       />
       <TabBar<Tab>
-        tabs={[{ id: 'eod', label: 'End of day' }, { id: 'report', label: 'Report' }]}
+        tabs={[
+          { id: 'eod', label: 'End of day' },
+          { id: 'field', label: 'Field activity' },
+          { id: 'report', label: 'Report' },
+        ]}
         value={tab} onChange={setTab}
       />
 
+      {tab === 'field' && (
+        <div style={{ maxWidth: 900 }}>
+          <FieldReport embedded onBack={onBack} initialWho={initialWho} />
+        </div>
+      )}
+
+      {tab !== 'field' && (
       <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 860 }}>
         {readError && <Note tone="warn">{readError}</Note>}
 
@@ -651,8 +672,7 @@ export default function RepMonitor({ onBack }: Props) {
             )}
             {mode === 'week' && (
               <div style={{ flex: 1, minWidth: 150 }}>
-                <DateInput type="date" value={weekStart}
-                  onChange={d => setWeekStart(mondayOf(d))} />
+                <WeekPicker value={weekStart} onChange={setWeekStart} days={7} />
               </div>
             )}
             {mode === 'month' && (
@@ -1043,6 +1063,7 @@ export default function RepMonitor({ onBack }: Props) {
         </div>
         </>)}
       </div>
+      )}
     </div>
   )
 }
