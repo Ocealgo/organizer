@@ -271,6 +271,17 @@ const ARJUN = {
   name: 'Arjun Rep', role: 'offline_sales',
 }
 
+/**
+ * A super admin, which the shared seed has none of. The app treats one
+ * differently from an admin in a few places — only a super admin may touch an
+ * admin's account, or make another super admin — so those are only testable
+ * signed in as one. Emulator only, like everything here.
+ */
+const SUPER = {
+  uid: 'sandbox_super', email: 'super@ocealgo.test', phone: '9800000008',
+  name: 'Sara Superadmin', role: 'super_admin',
+}
+
 /** Shops on each beat, in their own areas, so the Area column has places to name. */
 const SHOPS = [
   { id: 'sb_fort_1', name: 'Fort Supermart', place: 'Fort Kochi', type: 'supermarket', category: 'Supermarket' },
@@ -376,15 +387,17 @@ function monthTarget(u, month, byProduct, extra = {}) {
 async function recentMonth() {
   const db = getFirestore()
 
-  // ── the third officer ─────────────────────────────────────────────────────
-  await getAuth().createUser({
-    uid: ARJUN.uid, email: ARJUN.email, password: PASSWORD, displayName: ARJUN.name,
-    phoneNumber: `+91${ARJUN.phone}`,
-  })
-  await db.doc(`users/${ARJUN.uid}`).set({
-    email: ARJUN.email, name: ARJUN.name, phone: `+91${ARJUN.phone}`,
-    role: ARJUN.role, status: 'approved', createdAt: Date.now(),
-  })
+  // ── the third officer, and a super admin ──────────────────────────────────
+  for (const u of [ARJUN, SUPER]) {
+    await getAuth().createUser({
+      uid: u.uid, email: u.email, password: PASSWORD, displayName: u.name,
+      phoneNumber: `+91${u.phone}`,
+    })
+    await db.doc(`users/${u.uid}`).set({
+      email: u.email, name: u.name, phone: `+91${u.phone}`,
+      role: u.role, status: 'approved', createdAt: Date.now(),
+    })
+  }
 
   // ── shops, in their places ────────────────────────────────────────────────
   for (const s of SHOPS) {
@@ -643,6 +656,7 @@ async function main() {
     console.log(`    ${key.padEnd(PAD)}  ${u.email.padEnd(24)} ${u.phone}  ${u.role}`)
   }
   console.log(`    ${'rep3'.padEnd(PAD)}  ${ARJUN.email.padEnd(24)} ${ARJUN.phone}  ${ARJUN.role}  (sandbox only)`)
+  console.log(`    ${'super'.padEnd(PAD)}  ${SUPER.email.padEnd(24)} ${SUPER.phone}  ${SUPER.role}  (sandbox only)`)
   console.log(`\n    password  ${PASSWORD}`)
   console.log('\n  Either the email or the mobile number signs them in.')
   console.log('\n  App: http://127.0.0.1:5174')
