@@ -374,6 +374,9 @@ for (const beats of Object.values(EXTRA_BEATS)) {
     b.visit = b.all.slice(0, b.shops - b.quiet)
   }
 }
+// One place typed the way people type: lower case, a trailing space. The
+// report must count it as the Kadavanthra it is, not as a second place.
+SHOPS.find(x => x.id === 'sb_x_kadavanthra_2').place = 'kadavanthra '
 
 const SEEDED = {
   party_shop: { name: 'Anand Stores', type: 'general' },

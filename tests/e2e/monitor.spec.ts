@@ -4,6 +4,7 @@ import { testDate } from './fixtures/clock'
 import {
   companyAllocation, companyStock, noAllocations, noTargetsSet,
   packetTarget, todayLocal, closedDay, openDay, claimedExpense, noOneOnDuty, noWeeksFiled,
+  outletVisit, partyPlace,
 } from './fixtures/seed'
 
 /**
@@ -264,6 +265,33 @@ test.describe('the report', () => {
     await page.getByRole('group', { name: 'Rank by' }).getByRole('button', { name: 'Packets' }).click()
     await expect(page.getByRole('group', { name: /^1st, Ravi Rep: 24 pkts/ })).toBeVisible()
     await expect(page.getByRole('group', { name: /^2nd, Priya Rep: 12 pkts/ })).toBeVisible()
+  })
+
+  /**
+   * Areas stay short: two and a count, the rest a tap away. A place typed
+   * twice with different capitals or spaces is one place.
+   */
+  test('a long list of areas collapses, and the same place typed twice counts once', async ({ page, loginAs }) => {
+    await partyPlace('party_shop', 'Aluva')
+    await partyPlace('party_pharmacy', 'aluva ')
+    await partyPlace('party_dist', 'Kaloor')
+    await outletVisit('rep', todayLocal(), 'party_shop', false)
+    await outletVisit('rep', todayLocal(), 'party_pharmacy', false)
+    await outletVisit('rep', todayLocal(), 'party_dist', false)
+
+    await loginAs('manager')
+    await openReport(page)
+    const area = page.getByTestId('report-row-e2e_rep').locator('td').nth(1)
+    // Aluva and aluva are one place, so two in all: no "more" to offer.
+    await expect(area).toHaveText('Aluva, Kaloor')
+
+    await partyPlace('party_dist', 'Vyttila')
+    await partyPlace('party_pharmacy', 'Kaloor')
+    await page.reload()
+    await openReport(page)
+    await expect(area).toContainText('Aluva, Kaloor')
+    await area.getByRole('button', { name: '+ 1 more' }).click()
+    await expect(area).toContainText('Vyttila')
   })
 
   /** One day on its own: the figures follow the day picked, and so does the PDF. */
