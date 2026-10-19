@@ -258,7 +258,9 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
                       </span>
                       <span style={{ display: 'block', fontSize: 13, color: t.text3, marginTop: 3 }}>
                         {s.date} · {hhmm(s.startAt)}
-                        {s.autoClosed ? ' · never ended' : s.endAt ? `–${hhmm(s.endAt)}` : ' · still out'}
+                        {s.endAt ? `–${hhmm(s.endAt)}` : ' · still out'}
+                        {/* The nightly job ended it, not the rep: said so beside the time. */}
+                        {s.autoClosed && <span style={{ color: t.warn }}> · auto-closed</span>}
                         {/* Counted apart, always. A call is cheap to claim and
                             a visit is not; adding them together would destroy
                             the only number that says anybody went anywhere. */}

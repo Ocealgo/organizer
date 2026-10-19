@@ -138,6 +138,14 @@ interface Eod {
   /** Whether they started the day at all — a card with no session says so. */
   present: boolean
   /**
+   * Where the day stands — the same reading Field activity gives. A card for a
+   * day still open is a running total, not an end of day, and must say so: its
+   * meter has no closing reading yet, and its target is not missed yet.
+   */
+  day: 'not_started' | 'out' | 'finished' | 'auto_closed'
+  startAt?: number
+  endAt?: number
+  /**
    * What the odometer said. Null whenever there is no reading to give — no
    * session, a broken meter, no vehicle, or a day closed automatically with no
    * closing reading — and the card says "Nil" rather than guessing.
@@ -423,7 +431,11 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
         if (!showQuiet && quiet) continue
 
         if (outcome === 'met' && !(target !== null && packets >= target)) continue
-        if (outcome === 'missed' && !(target !== null && packets < target)) continue
+        const day: Eod['day'] = !session ? 'not_started'
+          : session.autoClosed ? 'auto_closed'
+          : session.endAt ? 'finished' : 'out'
+        // A day still open is not short yet — it has hours left in it.
+        if (outcome === 'missed' && !(target !== null && packets < target && day !== 'out')) continue
         if (outcome === 'untargeted' && target !== null) continue
 
         out.push({
@@ -435,6 +447,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
             .map(([type, n]) => ({ type, n }))
             .sort((a, b) => b.n - a.n),
           target, packets, orders, present,
+          day, startAt: session?.startAt, endAt: session?.endAt,
           meterKm, visitKm, expense, fuelAboveMeter,
         })
       }
@@ -574,7 +587,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
 
   const tally = useMemo(() => ({
     met: cards.filter(c => c.target !== null && c.packets >= c.target).length,
-    missed: cards.filter(c => c.target !== null && c.packets < c.target).length,
+    missed: cards.filter(c => c.target !== null && c.packets < c.target && c.day !== 'out').length,
     untargeted: cards.filter(c => c.target === null).length,
   }), [cards])
 
@@ -758,9 +771,12 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {rows.map(c => {
                 const met = c.target !== null && c.packets >= c.target
-                const missed = c.target !== null && c.packets < c.target
+                const missed = c.target !== null && c.packets < c.target && c.day !== 'out'
+                const hhmm = (ms?: number) => ms
+                  ? new Date(ms).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ''
                 return (
                   <div key={`${c.uid}_${c.date}`} style={{
+                    background: t.card,
                     border: `0.5px solid ${missed ? t.border2 : t.border}`,
                     borderLeft: `2px solid ${met ? t.good : missed ? t.warn : t.border}`,
                     borderRadius: 6, padding: '14px 16px',
@@ -775,12 +791,35 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
                       </span>
                       <span style={{ fontSize: 15, fontWeight: 500, color: t.text }}>{c.name}</span>
                       <span style={{ fontSize: 13, color: t.text3 }}>{plainDate(c.date)}</span>
+                      {/* The same words Field activity uses, so the two screens agree. */}
+                      <span data-testid={`eod-day-${c.uid}-${c.date}`} style={{
+                        fontSize: 12, whiteSpace: 'nowrap',
+                        color: c.day === 'out' || c.day === 'auto_closed' ? t.warn : t.text3,
+                        fontWeight: c.day === 'out' ? 500 : 400,
+                      }}>
+                        {c.day === 'out' ? `Still out · since ${hhmm(c.startAt)}`
+                          : c.day === 'finished' ? `Finished · ${hhmm(c.startAt)}–${hhmm(c.endAt)}`
+                          : c.day === 'auto_closed' ? `${hhmm(c.startAt)}–${hhmm(c.endAt)}`
+                          : 'Not started'}
+                      </span>
+                      {/* Said by the system, not the rep — the end time is when
+                          the nightly job closed it, and no distance was claimed. */}
+                      {c.day === 'auto_closed' && (
+                        <span style={{
+                          fontSize: 11, fontWeight: 500, color: t.warn, whiteSpace: 'nowrap',
+                          border: `0.5px solid ${t.warn}`, borderRadius: 99, padding: '1px 8px',
+                        }}>
+                          Auto-closed
+                        </span>
+                      )}
                       <span style={{ flex: 1 }} />
                       {/* The verdict, in words as well as colour. Colour alone
                           is not an answer for everybody reading it. */}
                       <span style={{ fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap',
                                      color: met ? t.good : missed ? t.warn : t.text3 }}>
-                        {met ? '✓ Target met' : missed ? '✗ Short' : 'No target'}
+                        {met ? '✓ Target met' : missed ? '✗ Short'
+                          : c.target !== null && c.day === 'out' ? `So far · ${c.packets} of ${c.target}`
+                          : 'No target'}
                       </span>
                     </div>
 
@@ -823,10 +862,12 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
                     }}>
                       <Cell
                         label="Meter"
-                        value={c.meterKm === null ? 'Nil' : `${c.meterKm} km`}
-                        sub={c.meterKm === null
-                          ? (c.present ? 'no reading' : 'day not started')
-                          : 'on the odometer'}
+                        value={c.day === 'out' ? '—' : c.meterKm === null ? 'Nil' : `${c.meterKm} km`}
+                        sub={c.day === 'out' ? 'pending — day still open'
+                          : c.day === 'auto_closed' ? 'closed automatically — no closing reading'
+                          : c.meterKm === null
+                            ? (c.present ? 'no reading' : 'day not started')
+                            : 'on the odometer'}
                       />
                       <Cell
                         label="Between shops"
@@ -834,7 +875,8 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
                         // Said on the card, because two distances side by side
                         // invite the question of why they differ — and the
                         // answer has to be where the question is asked.
-                        sub={c.visitKm === null ? 'not enough positions' : 'straight line, a floor'}
+                        sub={c.visitKm === null ? 'not enough positions'
+                          : c.day === 'out' ? 'so far, straight line' : 'straight line, a floor'}
                       />
                       <Cell
                         label="Expenses"
