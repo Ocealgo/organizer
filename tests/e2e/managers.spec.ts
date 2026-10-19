@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { test, expect } from './fixtures/app'
 import { managerActivity, todayLocal } from './fixtures/seed'
+import { testDate } from './fixtures/clock'
 
 /**
  * Monitor managers: what the managers did, read back by an admin.
@@ -54,4 +55,32 @@ test('downloads as a PDF of the entries shown', async ({ page, loginAs }) => {
   expect(text).toContain('(Out with a rep)')
   expect(text).toContain('(Out with Ravi)')
   expect(text).toContain('(240 min)')
+})
+
+/** The same "When" as Monitor reps: a day, a week, a month or a range, and the list follows it. */
+test('the When filter narrows the entries to the window picked', async ({ page, loginAs }) => {
+  const d = testDate(); d.setDate(d.getDate() - 10)
+  const earlier = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  await managerActivity('manager', todayLocal(), { title: 'Today review' })
+  await managerActivity('manager', earlier, { title: 'Older review' })
+
+  await loginAs('admin')
+  await openManagers(page)
+
+  // A week opens on this one: today in, ten days ago out.
+  await expect(page.getByText('Manoj Manager — Today review')).toBeVisible()
+  await expect(page.getByText('Manoj Manager — Older review')).toHaveCount(0)
+
+  // A range reaching back takes in both.
+  await page.getByRole('button', { name: 'A range', exact: true }).click()
+  await page.getByLabel('From').fill(earlier)
+  await page.getByLabel('To', { exact: true }).fill(todayLocal())
+  await expect(page.getByText('Manoj Manager — Older review')).toBeVisible()
+  await expect(page.getByText('Manoj Manager — Today review')).toBeVisible()
+
+  // A day is that day alone.
+  await page.getByRole('button', { name: 'A day', exact: true }).click()
+  await page.getByLabel('Day').fill(earlier)
+  await expect(page.getByText('Manoj Manager — Older review')).toBeVisible()
+  await expect(page.getByText('Manoj Manager — Today review')).toHaveCount(0)
 })
