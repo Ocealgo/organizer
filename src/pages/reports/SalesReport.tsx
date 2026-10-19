@@ -10,6 +10,7 @@ import {
 import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
+import WeekPicker from '../../components/WeekPicker'
 import { PageHeader, PrimaryButton, Eyebrow, EmptyState } from '../../components/ui'
 import { localDateStr, localMonthStr, isSunday } from '../../utils/date'
 
@@ -483,7 +484,7 @@ export default function SalesReport({ onBack }: Props) {
           {mode === 'week' && (
             <div>
               <div style={{ fontSize: 11, color: t.text3, marginBottom: 4 }}>Any day in the week</div>
-              <DateInput type="date" value={week} onChange={v => setWeek(mondayOf(v))} />
+              <WeekPicker value={week} onChange={setWeek} days={7} />
             </div>
           )}
           {mode === 'month' && <DateInput type="month" value={month} onChange={setMonth} />}

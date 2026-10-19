@@ -13,7 +13,6 @@ import { localDateStr } from '../../utils/date'
 
 interface Props {
   onBack: () => void
-  onOpenField: () => void
   onOpenSales: () => void
   onOpenOpportunities: () => void
   onOpenMonitor: () => void
@@ -53,7 +52,7 @@ const EMPTY: Totals = { visits: 0, outlets: 0, orderValue: 0, collected: 0 }
  * rather than how long anybody stood in a doorway.
  */
 export default function ReportsHome({
-  onBack, onOpenField, onOpenSales, onOpenOpportunities, onOpenMonitor,
+  onBack, onOpenSales, onOpenOpportunities, onOpenMonitor,
 }: Props) {
   const { t } = useTheme()
 
@@ -309,12 +308,10 @@ export default function ReportsHome({
             <ListRow title="Worth going back to"
               desc="Shops that stopped ordering, ran empty, or nobody has visited"
               onClick={onOpenOpportunities} />
+            {/* Field activity lives inside this, as its first tab — one door, not two. */}
             <ListRow title="Monitor reps"
-              desc="The end of each day, one card per person — shops covered, orders placed, and whether the target was met"
+              desc="Field activity, the end of each day, and a report ranking the reps"
               onClick={onOpenMonitor} />
-            <ListRow title="Field activity"
-              desc="Day by day, per rep — punch in and out, time in each shop, meter readings, every remark"
-              onClick={onOpenField} />
             <ListRow title="Sales report"
               desc="Totals per person over any range, with conversion and an Excel export"
               onClick={onOpenSales} />

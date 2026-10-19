@@ -10,6 +10,7 @@ import {
 import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
+import WeekPicker from '../../components/WeekPicker'
 import { PageHeader, Eyebrow, StatGrid, StatCard, EmptyState } from '../../components/ui'
 import LazyRouteMap from '../../components/LazyRouteMap'
 import { RouteStop, stopLabel } from '../../components/RouteMap'
@@ -21,6 +22,8 @@ interface Props {
   onBack: () => void
   /** Open already filtered to one person — used by the dashboard's day rows. */
   initialWho?: string
+  /** Shown as a tab of Monitor reps: no page header of its own. */
+  embedded?: boolean
 }
 
 type RangeMode = 'day' | 'week' | 'month' | 'custom'
@@ -77,7 +80,7 @@ function StoragePhoto({ path, label, unverified }: {
   )
 }
 
-export default function FieldReport({ onBack, initialWho }: Props) {
+export default function FieldReport({ onBack, initialWho, embedded }: Props) {
   const { t } = useTheme()
 
   const [mode, setMode] = useState<RangeMode>('day')
@@ -165,13 +168,14 @@ export default function FieldReport({ onBack, initialWho }: Props) {
   })
 
   return (
-    <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 56 }}>
-      <PageHeader
+    <div style={embedded ? undefined : { minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 56 }}>
+      {/* Inside Monitor reps the header and back button are that screen's. */}
+      {!embedded && <PageHeader
         eyebrow="Reports"
         title="Field activity"
         subtitle="Attendance, meter readings and every outlet visit with its remarks."
         onBack={onBack}
-      />
+      />}
 
       <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 26 }}>
 
@@ -186,7 +190,7 @@ export default function FieldReport({ onBack, initialWho }: Props) {
             ))}
           </div>
           {mode === 'day' && <DateInput type="date" value={day} onChange={setDay} />}
-          {mode === 'week' && <DateInput type="date" value={week} onChange={v => setWeek(mondayOf(v))} />}
+          {mode === 'week' && <WeekPicker value={week} onChange={setWeek} days={7} />}
           {mode === 'month' && <DateInput type="month" value={month} onChange={setMonth} />}
           {mode === 'custom' && (
             <div style={{ display: 'flex', gap: 8 }}>

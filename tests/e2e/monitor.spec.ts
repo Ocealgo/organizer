@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures/app'
+import { readFileSync } from 'node:fs'
 import {
   companyAllocation, companyStock, noAllocations, noTargetsSet,
   packetTarget, todayLocal, closedDay, claimedExpense, noOneOnDuty, noWeeksFiled,
@@ -30,6 +31,8 @@ async function openMonitor(page: any) {
   await page.getByRole('button', { name: /^Reports/ }).first().click()
   await page.getByRole('button', { name: /^Monitor reps/ }).click()
   await expect(page.getByRole('heading', { name: 'Monitor reps' })).toBeVisible()
+  // Field activity is the first tab; these specs are about the end of the day.
+  await page.getByRole('button', { name: 'End of day', exact: true }).click()
   await page.getByLabel('Day').fill(todayLocal())
 }
 
@@ -227,6 +230,54 @@ test.describe('the report', () => {
     await expect(page.getByRole('group', { name: /^2nd, Priya Rep: 12 pkts/ })).toBeVisible()
   })
 
+  /** The week is shown as a week: tapping any day picks its Monday to Saturday, and says so. */
+  test('a week is picked on a calendar that shows the whole week', async ({ page, loginAs }) => {
+    await loginAs('manager')
+    await page.getByRole('button', { name: /^Reports/ }).first().click()
+    await page.getByRole('button', { name: /^Monitor reps/ }).click()
+    await page.getByRole('button', { name: 'Report', exact: true }).click()
+
+    await page.getByRole('button', { name: /^Week: / }).click()
+    const picker = page.getByRole('dialog', { name: 'Choose a week' })
+    await expect(picker).toBeVisible()
+
+    // The calendar's first full row, whatever month it is: its Wednesday picks its week.
+    const wednesday = picker.getByRole('gridcell').nth(9)
+    await wednesday.click()
+    await expect(picker).toHaveCount(0)
+
+    // Reopened, the six days of that week are marked chosen, and the Sunday is not.
+    await page.getByRole('button', { name: /^Week: / }).click()
+    await expect(picker.getByRole('gridcell', { selected: true })).toHaveCount(6)
+    await expect(picker.getByRole('gridcell').nth(13)).toHaveAttribute('aria-selected', 'false')
+  })
+
+  /**
+   * The PDF carries what the screen shows — the leaderboard and the table —
+   * under a header naming the window, so it still makes sense once sent on.
+   */
+  test('downloads as a PDF of the same report', async ({ page, loginAs }) => {
+    await companyStock('prod_wipes', 500)
+    await companyAllocation()                                   // Ravi: 24 packets, ₹1,440
+
+    await loginAs('manager')
+    await openReport(page)
+    const button = page.getByRole('button', { name: 'Download PDF' })
+    await expect(button).toBeEnabled()
+
+    const [file] = await Promise.all([page.waitForEvent('download'), button.click()])
+    expect(file.suggestedFilename()).toBe(`ocealgo-rep-report_${todayLocal()}_${todayLocal()}.pdf`)
+
+    // jsPDF writes its text uncompressed, so the content can be read straight off the bytes.
+    const bytes = readFileSync(await file.path())
+    const text = bytes.toString('latin1')
+    expect(text.startsWith('%PDF-')).toBe(true)
+    expect(text).toContain('(Ocealgo')
+    expect(text).toContain('(1st)')
+    expect(text).toContain('(Ravi Rep)')
+    expect(text).toContain('(Rs 1,440)')
+  })
+
   test('a product filter narrows the orders and the target to that product', async ({ page, loginAs }) => {
     await companyStock('prod_wipes', 500)
     await companyAllocation()                                   // all of it prod_wipes
@@ -242,5 +293,39 @@ test.describe('the report', () => {
     // An old-shape target has no per-product split, so there is nothing for
     // the 30s to have been held to — "Not set", not a miss.
     await expect(row).toContainText('Not set')
+  })
+})
+
+/**
+ * Field activity lives only in Monitor reps, as its first tab — the Reports
+ * menu no longer has a row of its own for it.
+ */
+test.describe('field activity', () => {
+  test('is the first tab of Monitor reps, and not a row of its own', async ({ page, loginAs }) => {
+    await loginAs('manager')
+    await page.getByRole('button', { name: /^Reports/ }).first().click()
+    await expect(page.getByRole('button', { name: /^Field activity/ })).toHaveCount(0)
+    await page.getByRole('button', { name: /^Monitor reps/ }).click()
+
+    // The tabs, in order, and the first one open.
+    const tabs = page.getByRole('button', { name: /^(Field activity|End of day|Report)$/ })
+    await expect(tabs).toHaveText(['Field activity', 'End of day', 'Report'])
+
+    await expect(page.getByRole('heading', { name: 'Monitor reps' })).toBeVisible()
+    await expect(page.getByText('Attendance, meter readings and every outlet visit with its remarks.')).toBeVisible()
+    // Its own filters, and one header — the tab's, not a second page's.
+    await expect(page.getByText('Who', { exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Field activity' })).toHaveCount(0)
+
+    // Its week is on the calendar too, all seven days of it.
+    await page.getByRole('button', { name: 'Week', exact: true }).click()
+    await page.getByRole('button', { name: /^Week: / }).click()
+    await expect(page.getByRole('dialog', { name: 'Choose a week' })
+      .getByRole('gridcell', { selected: true })).toHaveCount(7)
+
+    // And the other tabs are one tap away.
+    await page.keyboard.press('Escape')
+    await page.getByRole('button', { name: 'Report', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Download PDF' })).toBeVisible()
   })
 })

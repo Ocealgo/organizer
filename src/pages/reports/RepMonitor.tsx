@@ -10,16 +10,24 @@ import {
 import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
-import { PageHeader, Eyebrow, EmptyState, Note, TabBar } from '../../components/ui'
+import WeekPicker from '../../components/WeekPicker'
+import FieldReport from '../admin/FieldReport'
+import { PageHeader, Eyebrow, EmptyState, Note, TabBar, GhostButton } from '../../components/ui'
 import RankedBars from '../../components/RankedBars'
 import { localDateStr, localMonthStr, isSunday } from '../../utils/date'
 import { pathLengthKm } from '../../device/location'
 
-interface Props { onBack: () => void }
+interface Props {
+  onBack: () => void
+  /** Which tab to open on — the dashboard's rep rows open Field activity. */
+  initialTab?: Tab
+  /** Field activity opened already filtered to one person. */
+  initialWho?: string
+}
 
 type RangeMode = 'day' | 'week' | 'month' | 'custom'
 type Outcome = 'all' | 'met' | 'missed' | 'untargeted'
-type Tab = 'eod' | 'report'
+type Tab = 'eod' | 'field' | 'report'
 type ReportRange = 'week' | 'month' | 'custom'
 type Rank = 'packets' | 'orders' | 'value'
 const RANK_TITLE: Record<Rank, string> = {
@@ -38,7 +46,7 @@ const RANK_FORMAT: Record<Rank, (n: number) => string> = {
  * One rep over the report's range — everything the table shows and the graph
  * ranks, worked out once so the two cannot disagree.
  */
-interface RepWeek {
+export interface RepWeek {
   uid: string
   name: string
   /** Where they actually went: the places of the shops they punched into. */
@@ -151,7 +159,7 @@ interface Eod {
   fuelAboveMeter: boolean
 }
 
-export default function RepMonitor({ onBack }: Props) {
+export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
   const { t } = useTheme()
 
   const [reps, setReps] = useState<AppUser[]>([])
@@ -165,8 +173,15 @@ export default function RepMonitor({ onBack }: Props) {
   const [parties, setParties] = useState<Party[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [readError, setReadError] = useState<string | null>(null)
+  /**
+   * Ranged reads still owed their first answer. Until it reaches zero the
+   * figures on screen are part-loaded — fine to watch fill in, wrong to
+   * freeze into a PDF, so the download waits for it.
+   */
+  const [pending, setPending] = useState(0)
 
-  const [tab, setTab] = useState<Tab>('eod')
+  // Opens on the first tab, Field activity, unless asked for another.
+  const [tab, setTab] = useState<Tab>(initialTab ?? 'field')
 
   // ── the report's own filters ───────────────────────────────────────────────
   // Separate from the end-of-day ones above, so moving between the tabs does not
@@ -180,6 +195,9 @@ export default function RepMonitor({ onBack }: Props) {
   const [rProduct, setRProduct] = useState('')
   const [rBeat, setRBeat] = useState('')
   const [rank, setRank] = useState<Rank>('packets')
+  /** The PDF is being built; the button says so and is not pressed twice. */
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const [pdfError, setPdfError] = useState<string | null>(null)
 
   // ── filters ───────────────────────────────────────────────────────────────
   const [mode, setMode] = useState<RangeMode>('day')
@@ -245,11 +263,20 @@ export default function RepMonitor({ onBack }: Props) {
   }, [])
 
   useEffect(() => {
+    if (tab === 'field') return
     setReadError(null)
-    const fail = (what: string) => (err: any) =>
+    setPending(6)
+    /** Wraps a listener so its first answer, good or bad, counts it as arrived. */
+    const first = () => {
+      let done = false
+      return () => { if (!done) { done = true; setPending(n => Math.max(0, n - 1)) } }
+    }
+    const fail = (what: string, arrived: () => void) => (err: any) => {
+      arrived()
       setReadError(err?.code === 'permission-denied'
         ? 'Firestore turned down a read. The deployed rules may be older than this build.'
         : `Could not load ${what}.`)
+    }
 
     /**
      * Each collection by the field it is dated on, which is not the same field
@@ -265,42 +292,43 @@ export default function RepMonitor({ onBack }: Props) {
     // months it touches rather than by its days.
     const months = [...new Set(eachDay(from, to).map(d => d.slice(0, 7)))].slice(0, 12)
 
+    const arrived = Array.from({ length: 6 }, first)
     const unsubs = [
       onSnapshot(
         query(collection(db, 'outlet_visits'), where('date', '>=', from), where('date', '<=', to)),
-        s => setVisits(s.docs.map(d => ({ id: d.id, ...d.data() } as OutletVisit))),
-        fail('the visits'),
+        s => { arrived[0](); setVisits(s.docs.map(d => ({ id: d.id, ...d.data() } as OutletVisit))) },
+        fail('the visits', arrived[0]),
       ),
       onSnapshot(
         query(collection(db, 'duty_sessions'), where('date', '>=', from), where('date', '<=', to)),
-        s => setSessions(s.docs.map(d => ({ id: d.id, ...d.data() } as DutySession))),
-        fail('the days'),
+        s => { arrived[1](); setSessions(s.docs.map(d => ({ id: d.id, ...d.data() } as DutySession))) },
+        fail('the days', arrived[1]),
       ),
       onSnapshot(
         query(collection(db, 'work_plans'), where('date', '>=', from), where('date', '<=', to)),
-        s => setPlans(s.docs.map(d => ({ id: d.id, ...d.data() } as WorkPlan))),
-        fail('the beats assigned'),
+        s => { arrived[2](); setPlans(s.docs.map(d => ({ id: d.id, ...d.data() } as WorkPlan))) },
+        fail('the beats assigned', arrived[2]),
       ),
       onSnapshot(
         query(collection(db, 'allocations_v2'),
           where('createdAt', '>=', fromMs), where('createdAt', '<=', toMs)),
-        s => setAllocations(s.docs.map(d => ({ id: d.id, ...d.data() } as UnifiedAllocation))),
-        fail('the orders'),
+        s => { arrived[3](); setAllocations(s.docs.map(d => ({ id: d.id, ...d.data() } as UnifiedAllocation))) },
+        fail('the orders', arrived[3]),
       ),
       onSnapshot(
         query(collection(db, 'sales_targets'), where('month', 'in', months)),
-        s => setTargets(s.docs.map(d => ({ id: d.id, ...d.data() } as SalesTarget))),
-        fail('the targets'),
+        s => { arrived[4](); setTargets(s.docs.map(d => ({ id: d.id, ...d.data() } as SalesTarget))) },
+        fail('the targets', arrived[4]),
       ),
       // Dated by the day the money was spent, a string, like visits.
       onSnapshot(
         query(collection(db, 'expense_entries'), where('date', '>=', from), where('date', '<=', to)),
-        s => setExpenses(s.docs.map(d => ({ id: d.id, ...d.data() } as ExpenseEntry))),
-        fail('the expenses'),
+        s => { arrived[5](); setExpenses(s.docs.map(d => ({ id: d.id, ...d.data() } as ExpenseEntry))) },
+        fail('the expenses', arrived[5]),
       ),
     ]
     return () => unsubs.forEach(u => u())
-  }, [from, to])
+  }, [from, to, tab])
 
   // ── one card per rep per day ───────────────────────────────────────────────
   const cards = useMemo((): Eod[] => {
@@ -507,6 +535,35 @@ export default function RepMonitor({ onBack }: Props) {
   }, [tab, repFrom, repTo, reps, plans, visits, allocations, sessions, expenses, targets,
       parties, rProduct, rBeat, rank])
 
+  /**
+   * The report as a PDF, with whatever filters are on screen — the file says
+   * which, so it still makes sense once it has left the app.
+   */
+  const downloadPdf = async () => {
+    setPdfBusy(true)
+    setPdfError(null)
+    try {
+      const { downloadRepReportPdf } = await import('./repReportPdf')
+      const counted = repTo > localDateStr() ? ' · counted up to today' : ''
+      await downloadRepReportPdf(report, {
+        period: `${shortDay(repFrom)} – ${shortDay(repTo)}`
+          + (rMode === 'week' ? ' · Monday to Saturday' : '') + counted,
+        product: rProduct ? products.find(x => x.id === rProduct)?.name ?? 'One product' : 'All products',
+        beat: rBeat ? routes.find(x => x.id === rBeat)?.name ?? 'One beat' : 'Any beat',
+        rankTitle: RANK_TITLE[rank],
+        rankValue,
+        rankFormat: RANK_FORMAT[rank],
+        from: repFrom,
+        to: repTo,
+      })
+    } catch (e) {
+      console.error('[RepMonitor] PDF failed', e)
+      setPdfError('The PDF could not be made. Try again, or check the connection if this keeps happening.')
+    } finally {
+      setPdfBusy(false)
+    }
+  }
+
   /** Who is first — more than one when they are level. Nobody, when nothing was ordered. */
   const leaders = useMemo(() => {
     const top = report.length ? rankValue(report[0]) : 0
@@ -573,14 +630,27 @@ export default function RepMonitor({ onBack }: Props) {
         title="Monitor reps"
         subtitle={tab === 'eod'
           ? 'The end of each day, one card per person — what they covered and whether it met the target.'
-          : 'Who is leading over a stretch of days, and what sits behind it.'}
+          : tab === 'field'
+            ? 'Attendance, meter readings and every outlet visit with its remarks.'
+            : 'Who is leading over a stretch of days, and what sits behind it.'}
         onBack={onBack}
       />
       <TabBar<Tab>
-        tabs={[{ id: 'eod', label: 'End of day' }, { id: 'report', label: 'Report' }]}
+        tabs={[
+          { id: 'field', label: 'Field activity' },
+          { id: 'eod', label: 'End of day' },
+          { id: 'report', label: 'Report' },
+        ]}
         value={tab} onChange={setTab}
       />
 
+      {tab === 'field' && (
+        <div style={{ maxWidth: 900 }}>
+          <FieldReport embedded onBack={onBack} initialWho={initialWho} />
+        </div>
+      )}
+
+      {tab !== 'field' && (
       <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 860 }}>
         {readError && <Note tone="warn">{readError}</Note>}
 
@@ -603,8 +673,7 @@ export default function RepMonitor({ onBack }: Props) {
             )}
             {mode === 'week' && (
               <div style={{ flex: 1, minWidth: 150 }}>
-                <DateInput type="date" value={weekStart}
-                  onChange={d => setWeekStart(mondayOf(d))} />
+                <WeekPicker value={weekStart} onChange={setWeekStart} days={7} />
               </div>
             )}
             {mode === 'month' && (
@@ -822,8 +891,7 @@ export default function RepMonitor({ onBack }: Props) {
               <div style={{ flex: '1 1 300px', display: 'flex', gap: 10, minWidth: 0 }}>
                 {rMode === 'week' && (
                   <div style={{ flex: 1, minWidth: 140 }}>
-                    <DateInput type="date" value={rWeekStart} ariaLabel="Week of"
-                      onChange={d => setRWeekStart(mondayOf(d))} />
+                    <WeekPicker value={rWeekStart} onChange={setRWeekStart} days={6} ariaLabel="Week" />
                   </div>
                 )}
                 {rMode === 'month' && (
@@ -871,6 +939,14 @@ export default function RepMonitor({ onBack }: Props) {
               />
             </div>
           </div>
+        </div>
+
+        {/* ── DOWNLOAD ──────────────────────────────────────────────────── */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          {pdfError && <span style={{ fontSize: 12, color: t.warn }}>{pdfError}</span>}
+          <GhostButton onClick={downloadPdf} disabled={pdfBusy || pending > 0 || report.length === 0}>
+            {pdfBusy ? 'Making the PDF…' : pending > 0 ? 'Loading…' : 'Download PDF'}
+          </GhostButton>
         </div>
 
         {/* ── THE GRAPH ─────────────────────────────────────────────────── */}
@@ -988,6 +1064,7 @@ export default function RepMonitor({ onBack }: Props) {
         </div>
         </>)}
       </div>
+      )}
     </div>
   )
 }

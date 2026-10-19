@@ -30,7 +30,6 @@ import SalesReport from "../reports/SalesReport";
 import RepMonitor from "../reports/RepMonitor";
 import ReportsHome from "../reports/ReportsHome";
 import OpportunitiesScreen from "../reports/OpportunitiesScreen";
-import FieldReport from "./FieldReport";
 import BeatManager from "../planner/BeatManager";
 import Planner from "../planner/Planner";
 import ManagerLog from "../planner/ManagerLog";
@@ -1166,7 +1165,6 @@ export default function AdminDashboard() {
     return (
       <ReportsHome
         onBack={() => setSubScreen("dashboard")}
-        onOpenField={() => setSubScreen("field")}
         onOpenSales={() => setSubScreen("reports")}
         onOpenOpportunities={() => setSubScreen("opportunities")}
         onOpenMonitor={() => setSubScreen("monitor")}
@@ -1180,7 +1178,9 @@ export default function AdminDashboard() {
     return <RepMonitor onBack={() => setSubScreen("reportsHome")} />;
   if (subScreen === "field")
     return (
-      <FieldReport
+      <RepMonitor
+        initialTab="field"
+        // Field activity now lives as a tab of Monitor reps; this opens it there.
         // Remounts when the person changes. initialWho seeds useState, which
         // only runs on mount — without this, opening one rep and then another
         // would leave the first one's filter in place.
