@@ -343,6 +343,11 @@ export async function beatDay(who: UserKey, date: string, routeId: string, route
   })
 }
 
+/** Put a shop in a place — typed however a spec needs it typed. */
+export async function partyPlace(id: string, place: string): Promise<void> {
+  await getFirestore(admin()).doc(`parties/${id}`).set({ place }, { merge: true })
+}
+
 /** A beat and the shops it is meant to cover. */
 export async function beat(id: string, name: string, outletIds: string[]): Promise<void> {
   await getFirestore(admin()).doc(`sales_routes/${id}`).set({

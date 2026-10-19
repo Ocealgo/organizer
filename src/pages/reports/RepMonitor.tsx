@@ -207,6 +207,8 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
   /** The PDF is being built; the button says so and is not pressed twice. */
   const [pdfBusy, setPdfBusy] = useState(false)
   const [pdfError, setPdfError] = useState<string | null>(null)
+  /** Reps whose full list of areas is open in the table. */
+  const [openAreas, setOpenAreas] = useState<Set<string>>(new Set())
 
   // ── filters ───────────────────────────────────────────────────────────────
   const [mode, setMode] = useState<RangeMode>('day')
@@ -520,9 +522,25 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
         if (did >= goal) daysMet++
       }
 
-      const areas = [...new Set(theirVisits
-        .map(v => placeOf.get(v.partyId))
-        .filter((x): x is string => !!x))].sort()
+      // One entry per place, however it was typed: "Kadavanthra" and
+      // "kadavanthra " are the same place. Genuinely different spellings are
+      // left apart — merging those would be guessing which place was meant.
+      // Shown as its tidiest spelling: the one typed most, and on a tie the
+      // one with a capital — not whichever visit happened to come first.
+      const byKey = new Map<string, Map<string, number>>()
+      theirVisits.forEach(v => {
+        const raw = (placeOf.get(v.partyId) ?? '').trim().replace(/\s+/g, ' ')
+        if (!raw) return
+        const key = raw.toLowerCase()
+        const seen = byKey.get(key) ?? new Map<string, number>()
+        seen.set(raw, (seen.get(raw) ?? 0) + 1)
+        byKey.set(key, seen)
+      })
+      const capital = (x: string) => (x[0] !== x[0].toLowerCase() ? 1 : 0)
+      const areas = [...byKey.values()]
+        .map(seen => [...seen.entries()]
+          .sort((a, b) => b[1] - a[1] || capital(b[0]) - capital(a[0]) || a[0].localeCompare(b[0]))[0][0])
+        .sort((a, b) => a.localeCompare(b))
 
       return {
         uid: r.uid,
@@ -1076,8 +1094,28 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
                           {r.daysWorked} day{r.daysWorked === 1 ? '' : 's'} worked
                         </div>
                       </td>
-                      <td style={{ ...num, textAlign: 'left', whiteSpace: 'normal', color: r.areas.length ? t.text : t.text3, minWidth: 110 }}>
-                        {r.areas.length ? r.areas.join(', ') : '—'}
+                      {/* Two places and a count, so one rep's long list cannot
+                          stretch the row and push the figures out of line. The
+                          rest is a tap away, and on hover. */}
+                      <td title={r.areas.join(', ')}
+                        style={{ ...num, textAlign: 'left', whiteSpace: 'normal', color: r.areas.length ? t.text : t.text3,
+                                 minWidth: 120, maxWidth: 220 }}>
+                        {r.areas.length === 0 ? '—'
+                          : openAreas.has(r.uid) || r.areas.length <= 2 ? r.areas.join(', ')
+                          : r.areas.slice(0, 2).join(', ')}
+                        {r.areas.length > 2 && (
+                          <button className="oc-action"
+                            onClick={() => setOpenAreas(prev => {
+                              const next = new Set(prev)
+                              next.has(r.uid) ? next.delete(r.uid) : next.add(r.uid)
+                              return next
+                            })}
+                            aria-expanded={openAreas.has(r.uid)}
+                            style={{ background: 'none', border: 'none', padding: 0, marginLeft: 4,
+                                     fontSize: 12, color: t.accent, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                            {openAreas.has(r.uid) ? 'less' : `+ ${r.areas.length - 2} more`}
+                          </button>
+                        )}
                       </td>
                       <td style={num}>{r.visits}</td>
                       <td style={num}>{r.shops}</td>
