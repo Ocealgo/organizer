@@ -1,6 +1,6 @@
 import { test, expect } from './fixtures/app'
 import {
-  companyStock, companyAllocation, packetTarget, outletVisit, beat, todayLocal,
+  companyStock, companyAllocation, packetTarget, outletVisit, beat, beatDay, todayLocal,
   noAllocations, noTargetsSet,
 } from './fixtures/seed'
 import { testDate } from './fixtures/clock'
@@ -142,4 +142,92 @@ test('a first month that began late is shown as partial and left out', async ({ 
   await expect(first).toContainText('not counted')
   // Against a partial month there is no change to state.
   await expect(page.getByTestId(`growth-row-${monthsBack(1, 2).slice(0, 7)}`)).not.toContainText('up')
+})
+
+/**
+ * Coverage's own filters. A person narrows to the beats they were given this
+ * month and counts only their own visits. (The area filter is the same narrowing
+ * by place; the seeded shops all sit in one place, so the sandbox is where it shows.)
+ */
+test('coverage can be read for one person', async ({ page, loginAs }) => {
+  // Two beats. Ravi works the first, Priya the second; each visits one shop.
+  await beat('route_a', 'Beat A', ['party_shop', 'party_pharmacy'])
+  await beat('route_b', 'Beat B', ['party_dist'])
+  await beatDay('rep', todayLocal(), 'route_a', 'Beat A')
+  await beatDay('rep2', todayLocal(), 'route_b', 'Beat B')
+  await outletVisit('rep', todayLocal(), 'party_shop', false)
+  await outletVisit('rep2', todayLocal(), 'party_dist', false)
+
+  await loginAs('manager')
+  await openReports(page)
+  const box = page.getByTestId('coverage-scroll')
+  await expect(page.getByTestId('coverage-row-route_a')).toBeVisible()
+  await expect(page.getByTestId('coverage-row-route_b')).toBeVisible()
+
+  // Ravi: only Beat A, half covered by him.
+  await page.getByText('Everybody', { exact: true }).first().click()
+  await page.getByText('Ravi Rep', { exact: true }).last().click()
+  await expect(page.getByTestId('coverage-row-route_b')).toHaveCount(0)
+  await expect(page.getByTestId('coverage-row-route_a')).toContainText('50%')
+  await expect(page.getByTestId('coverage-row-all')).toContainText('All their beats')
+
+  // The box scrolls rather than growing without end.
+  expect(await box.evaluate(e => getComputedStyle(e).maxHeight)).toBe('380px')
+})
+
+test('coverage below 85% only, worst first', async ({ page, loginAs }) => {
+  // Beat Full: its one shop visited, 100%. Beat Gap: 0 of 2.
+  await beat('route_full', 'Beat Full', ['party_dist'])
+  await beat('route_gap', 'Beat Gap', ['party_shop', 'party_pharmacy'])
+  await outletVisit('rep', todayLocal(), 'party_dist', false)
+
+  await loginAs('manager')
+  await openReports(page)
+  // Lowest first is the default: the gap leads.
+  await expect(page.locator('[data-testid^=coverage-row-route_]').first()).toContainText('Beat Gap')
+  await page.getByRole('button', { name: 'Below 85% only' }).click()
+  await expect(page.getByTestId('coverage-row-route_full')).toHaveCount(0)
+  await expect(page.getByTestId('coverage-row-route_gap')).toBeVisible()
+})
+
+/** Product: pick one and the pace, strike rate and labels follow it. */
+async function pickProduct(page: any, name: string) {
+  await page.getByText('All products', { exact: true }).first().click()
+  await page.getByText(name, { exact: true }).last().click()
+}
+
+test('pace follows the product picked', async ({ page, loginAs }) => {
+  await companyStock('prod_wipes', 500)
+  await companyAllocation()                                          // Ravi: 24 of the 72s today
+  await packetTarget('rep', todayLocal().slice(0, 7), 1000, undefined, { prod_wipes: 600, prod_mini: 400 })
+
+  await loginAs('manager')
+  await openReports(page)
+  await pickProduct(page, 'Baby Wet Wipes 72s')
+  // Columns: rep, target, ordered, due by today, pace, at this pace, needed a day.
+  const cell = (n: number) => page.getByTestId('pace-row-e2e_rep').locator('td').nth(n)
+  await expect(cell(1)).toHaveText('600')
+  await expect(cell(2)).toHaveText('24')
+
+  await page.getByText('Baby Wet Wipes 72s', { exact: true }).first().click()
+  await page.getByText('Baby Wet Wipes 30s', { exact: true }).last().click()
+  await expect(cell(1)).toHaveText('400')
+  await expect(cell(2)).toHaveText('0')
+})
+
+test('strike rate follows the product picked, and visits say they are all products', async ({ page, loginAs }) => {
+  // Six visits at one shop, three with an order — and the order was the 72s.
+  for (let i = 0; i < 6; i++) await outletVisit('rep', todayLocal(), 'party_shop', i < 3)
+  await companyStock('prod_wipes', 500)
+  await companyAllocation({ partyId: 'party_shop', partyName: 'Anand Stores', partyType: 'retailer' })
+
+  await loginAs('manager')
+  await openReports(page, 'Compare')
+  await pickProduct(page, 'Baby Wet Wipes 72s')
+  await expect(page.getByText('3 of 6 visits ended in an order of Baby Wet Wipes 72s')).toBeVisible()
+  await expect(page.getByText('all products — a visit is not for one')).toBeVisible()
+
+  await page.getByText('Baby Wet Wipes 72s', { exact: true }).first().click()
+  await page.getByText('Baby Wet Wipes 30s', { exact: true }).last().click()
+  await expect(page.getByText('0 of 6 visits ended in an order of Baby Wet Wipes 30s')).toBeVisible()
 })

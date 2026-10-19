@@ -1,5 +1,5 @@
 import {
-  dailyTargetFor, packetsOrdered, packetsOrderedOn, routePlaces,
+  dailyTargetFor, packetsOrdered, packetsOrderedOn, routePlaces, productDailyTargets,
   type OutletVisit, type Party, type SalesRoute, type SalesTarget, type UnifiedAllocation,
 } from '../../types'
 import { localDateStr } from '../../utils/date'
@@ -76,27 +76,38 @@ export function paceOf(
   month: string,
   today: string,
   holidays: Set<string>,
+  /**
+   * One product. Its target is the rep's split for it, its days the planner's
+   * per-product days; a rep with no split for it has no target for it.
+   */
+  productId?: string,
 ): { reps: Pace[]; team: Pace; series: PacePoint[] } {
   const work = workingDaysOf(month, holidays)
   const elapsed = work.filter(d => d <= today)
   const left = work.filter(d => d > today)
 
+  /** The month's figure for the product asked about, or the whole target. */
+  const monthFigure = (t: SalesTarget) =>
+    productId ? (t.byProduct?.[productId] ?? 0) : (t.units || 0)
+  /** The planner's own figure for a day, or null where it set none. */
+  const setFigure = (t: SalesTarget, d: string): number | null =>
+    productId ? (productDailyTargets(t, d)?.[productId] ?? null) : dailyTargetFor(t, d)
   /** A rep's figure for one day — divided where it was, spread evenly where not. */
   const dayFigure = (t: SalesTarget, d: string, divided: boolean): number => {
-    if (divided) return dailyTargetFor(t, d) ?? 0
-    return work.includes(d) && work.length ? (t.units || 0) / work.length : 0
+    if (divided) return setFigure(t, d) ?? 0
+    return work.includes(d) && work.length ? monthFigure(t) / work.length : 0
   }
 
   const reps: (Pace & { divided: boolean; t: SalesTarget })[] = targets
-    .filter(t => t.month === month && (t.units || 0) > 0)
+    .filter(t => t.month === month && monthFigure(t) > 0)
     .map(t => {
-      const divided = datesOf(month).some(d => dailyTargetFor(t, d) !== null)
+      const divided = datesOf(month).some(d => setFigure(t, d) !== null)
       const dueByToday = Math.round(datesOf(month)
         .filter(d => d <= today)
         .reduce((n, d) => n + dayFigure(t, d, divided), 0))
-      const done = packetsOrdered(allocations as any, t.uid, month)
+      const done = packetsOrdered(allocations as any, t.uid, month, productId)
       const rate = elapsed.length ? done / elapsed.length : 0
-      const target = t.units || 0
+      const target = monthFigure(t)
       return {
         uid: t.uid, name: t.name, target, dueByToday, done,
         projected: Math.round(done + rate * left.length),
@@ -126,7 +137,7 @@ export function paceOf(
   let target = 0, actual = 0, projected = teamDone
   const series: PacePoint[] = datesOf(month).map(d => {
     target += reps.reduce((n, p) => n + dayFigure(p.t, d, p.divided), 0)
-    if (d <= today) actual += reps.reduce((n, p) => n + packetsOrderedOn(allocations as any, p.uid, d), 0)
+    if (d <= today) actual += reps.reduce((n, p) => n + packetsOrderedOn(allocations as any, p.uid, d, productId), 0)
     if (d > today && work.includes(d)) projected += teamRate
     return {
       label: new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
@@ -156,9 +167,40 @@ export interface Strike {
   rate: number | null
 }
 
-export function strikeOf(visits: OutletVisit[]): Strike {
+/**
+ * "Did this visit order this product?"
+ *
+ * The visit carries the ids of the orders raised during it, and that decides.
+ * A visit from before that link was kept falls back to an order by the same
+ * rep, at the same shop, on the same day — the order the visit produced in all
+ * but name.
+ */
+export function orderedProductAt(allocations: UnifiedAllocation[], productId: string) {
+  const byId = new Map(allocations.map(a => [a.id!, a]))
+  const sameDay = new Set(allocations
+    .filter(a => a.status !== 'cancelled' && a.productId === productId && a.createdAt)
+    .map(a => `${a.createdBy}|${a.partyId}|${localDateStr(new Date(a.createdAt))}`))
+  return (v: OutletVisit) => {
+    const ids = v.allocationIds ?? []
+    if (ids.length) {
+      return ids.some(id => {
+        const a = byId.get(id)
+        return !!a && a.status !== 'cancelled' && a.productId === productId
+      })
+    }
+    // Without the link, the visit must itself have ended in an order — a
+    // second, empty call at the same shop that day did not order anything.
+    return isProductive(v) && sameDay.has(`${v.uid}|${v.partyId}|${v.date}`)
+  }
+}
+
+export function strikeOf(
+  visits: OutletVisit[],
+  /** Counts a visit as productive only when it ordered this — for one product. */
+  productive_?: (v: OutletVisit) => boolean,
+): Strike {
   const vs = visits.filter(v => v.status !== 'abandoned')
-  const productive = vs.filter(isProductive).length
+  const productive = vs.filter(productive_ ?? isProductive).length
   return {
     visits: vs.length,
     productive,
@@ -193,21 +235,41 @@ const live = (p: Party) => (p as any).status !== 'inactive' && (p as any).status
  * columns is the selling; the gap between visited and the beat's size is the
  * walking.
  */
+/** Narrowing for the coverage table. Every field optional; none means everything. */
+export interface CoverageFilter {
+  /**
+   * One rep: only the beats they were assigned in the window, and only their
+   * own visits and orders counted against them.
+   */
+  uid?: string
+  /** The beats that rep was assigned — worked out by the caller from the plans. */
+  beatIds?: Set<string>
+  /** One place: only that area's shops, and only beats that have some. */
+  area?: string
+  /** One product: "ordered" means ordered this. Visited stays every visit. */
+  productId?: string
+}
+
 export function coverageOf(
   routes: SalesRoute[],
   parties: Party[],
   visits: OutletVisit[],
   allocations: UnifiedAllocation[],
   range: { from: string; to: string },
+  filter: CoverageFilter = {},
 ): { beats: Coverage[]; all: Coverage; offBeat: number } {
-  const liveIds = new Set(parties.filter(live).map(p => p.id!))
+  const liveIds = new Set(parties.filter(live)
+    .filter(p => !filter.area || (p.place || '') === filter.area)
+    .map(p => p.id!))
   const inRange = (d: string) => d >= range.from && d <= range.to
   const visitedIds = new Set(visits
-    .filter(v => v.status !== 'abandoned' && inRange(v.date))
+    .filter(v => v.status !== 'abandoned' && inRange(v.date) && (!filter.uid || v.uid === filter.uid))
     .map(v => v.partyId))
   const orderedIds = new Set(allocations
     .filter(a => a.status !== 'cancelled' && a.createdAt
-      && inRange(localDateStr(new Date(a.createdAt))) && a.partyId)
+      && inRange(localDateStr(new Date(a.createdAt))) && a.partyId
+      && (!filter.uid || a.createdBy === filter.uid)
+      && (!filter.productId || a.productId === filter.productId))
     .map(a => a.partyId as string))
 
   const of = (ids: string[], id: string, name: string, places: string): Coverage => {
@@ -220,16 +282,25 @@ export function coverageOf(
     }
   }
 
-  const beats = routes
-    .filter(r => (r as any).active !== false)
-    .map(r => of([...new Set(r.outletIds ?? [])], r.id!, r.name, routePlaces(r).join(', ')))
+  const active = routes.filter(r => r.active !== false)
+  const shown = active.filter(r => !filter.beatIds || filter.beatIds.has(r.id!))
+  const beats = shown
+    .map(r => of([...new Set(r.outletIds ?? [])], r.id!, r.name,
+      // With an area picked, the beat names only that area — the rest of its
+      // round is not what is being counted.
+      filter.area ? filter.area : routePlaces(r).join(', ')))
+    .filter(c => c.shops > 0)
     .sort((a, b) => a.name.localeCompare(b.name))
 
-  const onABeat = new Set(routes.filter(r => r.active !== false).flatMap(r => r.outletIds ?? []))
+  const onABeat = new Set(active.flatMap(r => r.outletIds ?? []))
+  // With a person picked, "all shops" is all the shops on their beats.
+  const allIds = filter.beatIds
+    ? [...new Set(shown.flatMap(r => r.outletIds ?? []))]
+    : [...liveIds]
   return {
     beats,
-    all: of([...liveIds], 'all', 'All shops', ''),
-    offBeat: [...liveIds].filter(x => !onABeat.has(x)).length,
+    all: of(allIds, 'all', filter.beatIds ? 'All their beats' : 'All shops', ''),
+    offBeat: filter.beatIds ? 0 : [...liveIds].filter(x => !onABeat.has(x)).length,
   }
 }
 
@@ -268,10 +339,12 @@ export function lastMonths(today: string, count: number): string[] {
 /** Orders by calendar month, cancellations excluded. */
 export function monthlyTotals(
   allocations: UnifiedAllocation[], months: string[], today: string,
+  productId?: string,
 ): MonthTotal[] {
   const current = today.slice(0, 7)
   return months.map(month => {
     const mine = allocations.filter(a => a.status !== 'cancelled' && a.createdAt
+      && (!productId || a.productId === productId)
       && localDateStr(new Date(a.createdAt)).slice(0, 7) === month)
     const firstDay = mine.length
       ? Math.min(...mine.map(a => new Date(a.createdAt).getDate())) : null
