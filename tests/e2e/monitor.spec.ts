@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures/app'
+import { readFileSync } from 'node:fs'
 import {
   companyAllocation, companyStock, noAllocations, noTargetsSet,
   packetTarget, todayLocal, closedDay, claimedExpense, noOneOnDuty, noWeeksFiled,
@@ -225,6 +226,32 @@ test.describe('the report', () => {
     await page.getByRole('group', { name: 'Rank by' }).getByRole('button', { name: 'Packets' }).click()
     await expect(page.getByRole('group', { name: /^1st, Ravi Rep: 24 pkts/ })).toBeVisible()
     await expect(page.getByRole('group', { name: /^2nd, Priya Rep: 12 pkts/ })).toBeVisible()
+  })
+
+  /**
+   * The PDF carries what the screen shows — the leaderboard and the table —
+   * under a header naming the window, so it still makes sense once sent on.
+   */
+  test('downloads as a PDF of the same report', async ({ page, loginAs }) => {
+    await companyStock('prod_wipes', 500)
+    await companyAllocation()                                   // Ravi: 24 packets, ₹1,440
+
+    await loginAs('manager')
+    await openReport(page)
+    const button = page.getByRole('button', { name: 'Download PDF' })
+    await expect(button).toBeEnabled()
+
+    const [file] = await Promise.all([page.waitForEvent('download'), button.click()])
+    expect(file.suggestedFilename()).toBe(`ocealgo-rep-report_${todayLocal()}_${todayLocal()}.pdf`)
+
+    // jsPDF writes its text uncompressed, so the content can be read straight off the bytes.
+    const bytes = readFileSync(await file.path())
+    const text = bytes.toString('latin1')
+    expect(text.startsWith('%PDF-')).toBe(true)
+    expect(text).toContain('(Ocealgo')
+    expect(text).toContain('(1st)')
+    expect(text).toContain('(Ravi Rep)')
+    expect(text).toContain('(Rs 1,440)')
   })
 
   test('a product filter narrows the orders and the target to that product', async ({ page, loginAs }) => {
