@@ -149,3 +149,34 @@ test('a holiday worked is shown as a day off that was worked', async ({ page, lo
   await expect(page.getByTestId('attendance-detail')).toContainText('Holiday — Vijayadashami · worked anyway')
   await expect(page.getByTestId('attendance-summary')).toContainText('1 worked on a day off')
 })
+
+test.describe('the leave tabs', () => {
+  test('each answers its own question: a day, a month, everything', async ({ page, loginAs }) => {
+    await approvedLeave('rep2', todayLocal(), 'full_day')
+    await loginAs('admin')
+    await page.getByRole('button', { name: /^Attendance/ }).first().click()
+
+    await page.getByRole('button', { name: 'Leave on a day', exact: true }).click()
+    const box = page.getByTestId('leave-box')
+    await expect(box).toContainText('Leave on a day')
+    await expect(box).toContainText('On leave today')
+    await expect(box.getByLabel('Leave day')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Leave in a month', exact: true }).click()
+    await expect(box).toContainText('Leave days in')
+    await expect(box.getByRole('button', { name: 'Previous month' })).toBeVisible()
+
+    await page.getByRole('button', { name: 'All leave', exact: true }).click()
+    await expect(box).toContainText('Leave days on record')
+  })
+
+  test('a holiday picked is named, on the day tab and in the register', async ({ page, loginAs }) => {
+    await holiday(todayLocal(), 'Test Holiday')
+    await loginAs('admin')
+    await page.getByRole('button', { name: /^Attendance/ }).first().click()
+    await expect(page.getByTestId('attendance-today')).toContainText('Holiday — Test Holiday')
+
+    await page.getByRole('button', { name: 'Leave on a day', exact: true }).click()
+    await expect(page.getByTestId('leave-day-off')).toContainText('Holiday — Test Holiday')
+  })
+})

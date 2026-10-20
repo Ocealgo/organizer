@@ -61,9 +61,11 @@ export default function AttendanceRegister({ reps, leaves, holidays }: Props) {
     if (!today.startsWith(month)) return null
     const marks = rows.map(r => r.days.find(d => d.date === today)?.mark)
     const n = (m: string[]) => marks.filter(x => x && m.includes(x)).length
+    const h = holidays.find(x => x.date === today)
+    const off = h ? `Holiday — ${h.name}` : new Date(today + 'T00:00:00').getDay() === 0 ? 'Sunday' : null
     return { in: n(['present', 'auto_closed']), notYet: n(['not_yet']),
-             half: n(['half']), out: n(['absent', 'leave']) }
-  }, [rows, today, month])
+             half: n(['half']), out: n(['absent', 'leave']), off }
+  }, [rows, today, month, holidays])
 
   const step = (n: number) => {
     const [y, m] = month.split('-').map(Number)
@@ -129,6 +131,13 @@ export default function AttendanceRegister({ reps, leaves, holidays }: Props) {
       <HolidayNote from={dates[0]} to={dates[dates.length - 1]} />
 
       {todayLine && (
+        todayLine.off ? (
+        // A day off: nobody is expected, so "0 in · 0 not started" would only mislead.
+        <div data-testid="attendance-today" style={{ fontSize: 13, color: t.off }}>
+          Today: {todayLine.off} — a day off for everyone
+          {todayLine.in > 0 && <span style={{ color: t.text }}> · <b>{todayLine.in}</b> working anyway</span>}
+        </div>
+        ) :
         <div data-testid="attendance-today" style={{ fontSize: 13, color: t.text }}>
           Today: <b>{todayLine.in}</b> in · <b>{todayLine.notYet}</b> not started yet
           {todayLine.half > 0 && <> · <b>{todayLine.half}</b> half day</>}
