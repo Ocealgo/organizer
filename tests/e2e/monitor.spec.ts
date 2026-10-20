@@ -224,6 +224,12 @@ test('a holiday is named on the day and on the card', async ({ page, loginAs }) 
   await openMonitor(page)
   await expect(page.getByTestId(`holiday-${todayLocal()}`)).toContainText('Vijayadashami')
   await expect(page.getByTestId(`eod-day-e2e_rep-${todayLocal()}`)).toContainText('Holiday · Vijayadashami')
+
+  // The filter says so too: under the field, and red in its calendar.
+  await expect(page.getByTestId('day-off-note')).toContainText('Holiday — Vijayadashami')
+  await page.getByLabel('Day', { exact: true }).click()
+  await expect(page.getByRole('dialog', { name: 'Choose a day' })
+    .getByRole('gridcell', { name: `${todayLocal()}, holiday: Vijayadashami` })).toBeVisible()
 })
 
 test.describe('the report', () => {

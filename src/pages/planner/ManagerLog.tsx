@@ -12,6 +12,7 @@ import { useConfirm } from '../../hooks/useConfirm'
 import { isAdminRole } from '../../auth/permissions'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
+import DayPicker, { HolidayNote } from '../../components/DayPicker'
 import WeekPicker from '../../components/WeekPicker'
 import {
   PageHeader, Section, Field, Note, EmptyState, Eyebrow,
@@ -458,7 +459,7 @@ export default function ManagerLog({ onBack }: Props) {
                 <div style={{ flex: '1 1 300px', display: 'flex', gap: 10, minWidth: 0 }}>
                   {mode === 'day' && (
                     <div style={{ flex: 1, minWidth: 140 }}>
-                      <DateInput type="date" value={day} onChange={setDay} ariaLabel="Day" />
+                      <DayPicker value={day} onChange={setDay} ariaLabel="Day" />
                     </div>
                   )}
                   {mode === 'week' && (
@@ -474,15 +475,16 @@ export default function ManagerLog({ onBack }: Props) {
                   {mode === 'custom' && (
                     <>
                       <div style={{ flex: 1, minWidth: 130 }}>
-                        <DateInput type="date" value={customFrom} onChange={setCustomFrom} ariaLabel="From" />
+                        <DayPicker value={customFrom} onChange={setCustomFrom} ariaLabel="From" />
                       </div>
                       <div style={{ flex: 1, minWidth: 130 }}>
-                        <DateInput type="date" value={customTo} onChange={setCustomTo} ariaLabel="To" />
+                        <DayPicker value={customTo} onChange={setCustomTo} ariaLabel="To" />
                       </div>
                     </>
                   )}
                 </div>
               </div>
+              {(mode === 'month' || mode === 'custom') && <HolidayNote from={from} to={to} />}
             </div>
 
             <div className="oc-wrap" style={{ gap: 16 }}>

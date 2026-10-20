@@ -10,6 +10,7 @@ import {
 import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
+import DayPicker, { HolidayNote } from '../../components/DayPicker'
 import WeekPicker from '../../components/WeekPicker'
 import FieldReport from '../admin/FieldReport'
 import { PageHeader, Eyebrow, EmptyState, Note, TabBar, GhostButton } from '../../components/ui'
@@ -710,7 +711,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
           <div className="oc-wrap" style={{ gap: 12 }}>
             {mode === 'day' && (
               <div style={{ flex: 1, minWidth: 150 }}>
-                <DateInput type="date" value={day} onChange={setDay} ariaLabel="Day" />
+                <DayPicker value={day} onChange={setDay} ariaLabel="Day" />
               </div>
             )}
             {mode === 'week' && (
@@ -726,14 +727,15 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
             {mode === 'custom' && (
               <>
                 <div style={{ flex: 1, minWidth: 140 }}>
-                  <DateInput type="date" value={customFrom} onChange={setCustomFrom} />
+                  <DayPicker value={customFrom} onChange={setCustomFrom} />
                 </div>
                 <div style={{ flex: 1, minWidth: 140 }}>
-                  <DateInput type="date" value={customTo} onChange={setCustomTo} />
+                  <DayPicker value={customTo} onChange={setCustomTo} />
                 </div>
               </>
             )}
           </div>
+          {(mode === 'month' || mode === 'custom') && <HolidayNote from={eodFrom} to={eodTo} />}
         </div>
 
         {/* ── WHO, WHICH BEAT, WHAT HAPPENED ────────────────────────────── */}
@@ -974,7 +976,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
                 )}
                 {rMode === 'day' && (
                   <div style={{ flex: 1, minWidth: 140 }}>
-                    <DateInput type="date" value={rDay} onChange={setRDay} ariaLabel="Report day" />
+                    <DayPicker value={rDay} onChange={setRDay} ariaLabel="Report day" />
                   </div>
                 )}
                 {rMode === 'month' && (
@@ -985,15 +987,16 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
                 {rMode === 'custom' && (
                   <>
                     <div style={{ flex: 1, minWidth: 130 }}>
-                      <DateInput type="date" value={rFrom} onChange={setRFrom} ariaLabel="From" />
+                      <DayPicker value={rFrom} onChange={setRFrom} ariaLabel="From" />
                     </div>
                     <div style={{ flex: 1, minWidth: 130 }}>
-                      <DateInput type="date" value={rTo} onChange={setRTo} ariaLabel="To" />
+                      <DayPicker value={rTo} onChange={setRTo} ariaLabel="To" />
                     </div>
                   </>
                 )}
               </div>
             </div>
+            {(rMode === 'month' || rMode === 'custom') && <HolidayNote from={repFrom} to={repTo} />}
             <div style={{ fontSize: 12, color: t.text3, marginTop: 6 }}>
               {repFrom === repTo ? shortDay(repFrom) : `${shortDay(repFrom)} – ${shortDay(repTo)}`}{rMode === 'week' ? ' · Monday to Saturday' : ''}
               {repTo > localDateStr() ? ' · counted up to today' : ''}

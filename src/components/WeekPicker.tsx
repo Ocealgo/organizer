@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTheme } from '../context/ThemeContext'
 import { localDateStr } from '../utils/date'
+import { useHolidays } from '../data/useHolidays'
 
 /**
  * Pick a week, and see it.
@@ -31,6 +32,7 @@ const short = (d: string) => parse(d).toLocaleDateString('en-IN', { weekday: 'sh
 
 export default function WeekPicker({ value, onChange, days = 6, ariaLabel = 'Week' }: Props) {
   const { t } = useTheme()
+  const holidays = useHolidays()
   const [open, setOpen] = useState(false)
   const [month, setMonth] = useState(value.slice(0, 7))   // the month on show
   const [hover, setHover] = useState<string | null>(null)  // Monday under the pointer
@@ -87,7 +89,18 @@ export default function WeekPicker({ value, onChange, days = 6, ariaLabel = 'Wee
           minHeight: 44, fontSize: 16, color: t.text, boxSizing: 'border-box',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
         }}>
-        <span>{short(value)} – {short(end)}</span>
+        <span>
+          {short(value)} – {short(end)}
+          {/* A holiday inside the week, said on the field before anyone reads the report. */}
+          {(() => {
+            const inWeek = [...holidays.entries()].filter(([d]) => d >= value && d <= end)
+            return inWeek.length > 0 && (
+              <span data-testid="week-holiday" style={{ color: t.off, fontSize: 13 }}>
+                {' '}· includes {inWeek.map(([, n]) => n).join(', ')}
+              </span>
+            )
+          })()}
+        </span>
         <span aria-hidden style={{ color: t.text3, fontSize: 12 }}>{open ? '▲' : '▼'}</span>
       </button>
 
@@ -118,12 +131,15 @@ export default function WeekPicker({ value, onChange, days = 6, ariaLabel = 'Wee
               const chosen = mon === value && inWeek
               const previewed = mon === hover && mon !== value && inWeek
               const otherMonth = day.slice(0, 7) !== month
+              const holidayName = holidays.get(day)
+              const dayOff = !!holidayName || i === 6
               // The shaded run is one bar across the week: rounded only at its two ends.
               const first = i === 0, lastIn = i === days - 1
               return (
                 <button key={day} type="button" role="gridcell"
                   aria-selected={chosen}
-                  aria-label={`${short(day)}${chosen ? ', in the chosen week' : ''}`}
+                  aria-label={`${short(day)}${holidayName ? `, holiday: ${holidayName}` : ''}${chosen ? ', in the chosen week' : ''}`}
+                  title={holidayName ?? (i === 6 ? 'Sunday' : undefined)}
                   onClick={() => pick(day)}
                   onPointerEnter={() => setHover(mon)}
                   onFocus={() => setHover(mon)}
@@ -133,7 +149,8 @@ export default function WeekPicker({ value, onChange, days = 6, ariaLabel = 'Wee
                     // A tint of the bar colour rather than the solid bar: white on the
                     // solid blue misses 4.5:1 in the dark theme, text on a tint does not.
                     background: chosen ? `${t.mark}40` : previewed ? t.hover : 'transparent',
-                    color: otherMonth || !inWeek ? t.text3 : t.text,
+                    // Sundays and holidays are red, in the week or out of it.
+                    color: dayOff ? t.off : otherMonth || !inWeek ? t.text3 : t.text,
                     fontWeight: chosen || day === today ? 600 : 400,
                     textDecoration: day === today ? 'underline' : undefined,
                     borderRadius: chosen || previewed
@@ -148,7 +165,7 @@ export default function WeekPicker({ value, onChange, days = 6, ariaLabel = 'Wee
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                         marginTop: 10, fontSize: 12, color: t.text3 }}>
-            <span>Tap any day to pick its week</span>
+            <span>Tap any day to pick its week · <span style={{ color: t.off }}>red</span> is a day off</span>
             <button type="button" className="oc-action" onClick={() => pick(today)}
               style={{ background: 'none', border: 'none', color: t.accent, cursor: 'pointer', fontSize: 12, padding: 4 }}>
               This week

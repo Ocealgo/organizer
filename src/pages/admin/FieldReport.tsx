@@ -11,6 +11,7 @@ import { useHolidays } from '../../data/useHolidays'
 import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
+import DayPicker, { HolidayNote } from '../../components/DayPicker'
 import WeekPicker from '../../components/WeekPicker'
 import { PageHeader, Eyebrow, StatGrid, StatCard, EmptyState } from '../../components/ui'
 import LazyRouteMap from '../../components/LazyRouteMap'
@@ -191,18 +192,19 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
               </button>
             ))}
           </div>
-          {mode === 'day' && <DateInput type="date" value={day} onChange={setDay} />}
+          {mode === 'day' && <DayPicker value={day} onChange={setDay} />}
           {mode === 'week' && <WeekPicker value={week} onChange={setWeek} days={7} />}
           {mode === 'month' && <DateInput type="month" value={month} onChange={setMonth} />}
+          {(mode === 'month' || mode === 'custom') && <HolidayNote from={range.from} to={range.to} />}
           {mode === 'custom' && (
             <div style={{ display: 'flex', gap: 8 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 12, color: t.text3, marginBottom: 5 }}>From</div>
-                <DateInput type="date" value={from} onChange={setFrom} />
+                <DayPicker value={from} onChange={setFrom} />
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 12, color: t.text3, marginBottom: 5 }}>To</div>
-                <DateInput type="date" value={to} onChange={setTo} />
+                <DayPicker value={to} onChange={setTo} />
               </div>
             </div>
           )}

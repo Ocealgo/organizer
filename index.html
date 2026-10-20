@@ -88,6 +88,10 @@
          scrolls inside itself rather than widening the page. */
       .oc-scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
 
+      /* A date field that opens the app's own calendar (one that can show the
+         days off in red), so the browser's own icon and picker stay away. */
+      .oc-date-own::-webkit-calendar-picker-indicator { display: none; }
+
       /* A row of controls that should stack rather than squeeze on a phone. */
       .oc-wrap { display: flex; flex-wrap: wrap; }
 

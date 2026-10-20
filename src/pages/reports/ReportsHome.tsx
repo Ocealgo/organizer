@@ -8,6 +8,7 @@ import {
 } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
 import DateInput from '../../components/DateInput'
+import DayPicker, { HolidayNote } from '../../components/DayPicker'
 import CustomSelect from '../../components/CustomSelect'
 import LazyChart from '../../components/LazyChart'
 import RankedBars, { RankedRow } from '../../components/RankedBars'
@@ -630,13 +631,14 @@ export default function ReportsHome({
             {preset === 'custom' && (
               <div className="oc-wrap" style={{ gap: 10, marginTop: 12 }}>
                 <div style={{ flex: '1 1 150px' }}>
-                  <DateInput type="date" value={from} onChange={setFrom} max={to} />
+                  <DayPicker value={from} onChange={setFrom} max={to} ariaLabel="From" />
                 </div>
                 <div style={{ flex: '1 1 150px' }}>
-                  <DateInput type="date" value={to} onChange={setTo} min={from} />
+                  <DayPicker value={to} onChange={setTo} min={from} ariaLabel="To" />
                 </div>
               </div>
             )}
+            <HolidayNote from={current.from} to={current.to} />
             <div style={{ fontSize: 12, color: t.text3, marginTop: 10, lineHeight: 1.6 }}>
               {current.from} to {current.to}, against {previous.from} to {previous.to} —
               the same {spanDays} {spanDays === 1 ? 'day' : 'days'} immediately before, so a
