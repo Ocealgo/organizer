@@ -688,3 +688,8 @@ export async function pendingLeave(who: UserKey, date: string): Promise<string> 
   })
   return ref.id
 }
+
+/** A leave record's status as stored, for checking what a screen wrote. */
+export async function leaveStatus(id: string): Promise<string | undefined> {
+  return (await getFirestore(admin()).doc(`leave_records/${id}`).get()).data()?.status
+}

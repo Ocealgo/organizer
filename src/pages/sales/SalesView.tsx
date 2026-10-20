@@ -65,7 +65,7 @@ export default function SalesView({ name }: Props) {
   const [myProducts, setMyProducts] = useState<{ id: string; name: string }[]>([])
   /** Today's packets, against whatever the day's beat asks for. */
   const [myOrderedToday, setMyOrderedToday] = useState(0)
-  const [todayLeave, setTodayLeave] = useState<LeaveRecord | null>(null)
+  const [todayLeaveRaw, setTodayLeave] = useState<LeaveRecord | null>(null)
   /**
    * The month per product, and what today owes of each.
    *
@@ -92,7 +92,7 @@ export default function SalesView({ name }: Props) {
       }))
       .sort((a, b) => b.target - a.target)
   }, [myTarget, myProducts, myAllocs, appUser])
-  const [allLeaveRecords, setAllLeaveRecords] = useState<LeaveRecord[]>([])
+  const [allLeaveRaw, setAllLeaveRecords] = useState<LeaveRecord[]>([])
   const [visitLogLoaded, setVisitLogLoaded] = useState(false)
   const [monthlyVisitLogCount, setMonthlyVisitLogCount] = useState(0)
   const [collectedToday, setCollectedToday] = useState(0)
@@ -116,6 +116,12 @@ export default function SalesView({ name }: Props) {
   const [creditReturnScreen, setCreditReturnScreen] = useState<SubScreen>('home')
   const [expenseDefaultToDay, setExpenseDefaultToDay] = useState(false)
   const [holidays, setHolidays] = useState<Holiday[]>([])
+  // A holiday means no work: an automatic absence on one (written before the
+  // holiday was declared) is void, and the rep never sees it.
+  const voidOnDayOff = React.useCallback((l: LeaveRecord) => l.autoMarked === true
+    && (holidays.some(h => h.date === l.date) || new Date(l.date + 'T00:00:00').getDay() === 0), [holidays])
+  const allLeaveRecords = React.useMemo(() => allLeaveRaw.filter(l => !voidOnDayOff(l)), [allLeaveRaw, voidOnDayOff])
+  const todayLeave = todayLeaveRaw && voidOnDayOff(todayLeaveRaw) ? null : todayLeaveRaw
   /** When a half day ends and the afternoon may be worked. From config/settings. */
   const [halfDayResumeAt, setHalfDayResumeAt] = useState('13:00')
   /** Ticks every minute so a time-based block lifts without a reload. */
