@@ -234,6 +234,7 @@ export default function LeaveTracker({ onBack }: Props) {
     const d = new Date(y, m - 1 + n, 1)
     setLeaveMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
   }
+  const dayPending = [...pendingApproval, ...pendingUnmark].filter(l => l.date === leaveDay)
   const dayWords = leaveDay === today ? 'today' : `on ${longDate(leaveDay)}`
   const totalPending = pendingApproval.length + pendingUnmark.length
   const waitingFor = (uid: string) => pendingApproval.some(l => l.uid === uid) || pendingUnmark.some(l => l.uid === uid)
@@ -433,6 +434,25 @@ export default function LeaveTracker({ onBack }: Props) {
                 {when === 'all' && <StatCard value={new Set(active.map(l => l.uid)).size} label="People who took leave" />}
               </StatGrid>
             )}
+            {when === 'day' && (
+              // The day's to-do: requests for this day still waiting on a decision.
+              <Section label={`Waiting on you for this day · ${dayPending.length}`}>
+                {dayPending.length === 0 ? (
+                  <div data-testid="day-nothing-pending" style={{ fontSize: 13, color: t.text3 }}>
+                    Nothing to decide {dayWords}.
+                  </div>
+                ) : (
+                  <div data-testid="day-pending" style={{ borderBottom: `0.5px solid ${t.border}` }}>
+                    {dayPending.map(leave => leave.status === 'pending_approval'
+                      ? <RequestRow key={leave.id} leave={leave} yes="Approve" no="Reject"
+                          onYes={() => handleApproveLeave(leave)} onNo={() => handleRejectLeave(leave)} />
+                      : <RequestRow key={leave.id} leave={leave} yes="Remove" no="Keep"
+                          onYes={() => handleApproveUnmark(leave)} onNo={() => handleRejectUnmark(leave)} />)}
+                  </div>
+                )}
+              </Section>
+            )}
+            {when !== 'day' && (
             <Section label="Team">
               {salesUsers.length === 0 ? (
                 <EmptyState title="No sales staff yet" body="Approve a sales account and their leave will be tracked here." />
@@ -442,12 +462,9 @@ export default function LeaveTracker({ onBack }: Props) {
                   {salesUsers.map(u => {
                     const total = leaveRecords.filter(l => l.uid === u.uid && l.status === 'active').length
                     const monthLeaves = leaveRecords.filter(l => l.uid === u.uid && l.date.startsWith(month) && l.status === 'active').length
-                    const onDay = active.find(l => l.uid === u.uid && l.date === leaveDay)
                     const inMonth = active.filter(l => l.uid === u.uid && l.date.startsWith(leaveMonth)).length
                     const status = waitingFor(u.uid) ? 'Request waiting'
-                      : when === 'day'
-                        ? dayOff ? 'Day off' : onDay ? (onDay.leaveType === 'half_day' ? 'Half day leave' : 'On leave') : 'Working'
-                        : when === 'month' ? `${inMonth} in ${monthName.split(' ')[0]}`
+                      : when === 'month' ? `${inMonth} in ${monthName.split(' ')[0]}`
                         : `${total} in total`
                     return (
                       <div key={u.uid} style={{ display: 'flex', alignItems: 'baseline', gap: 16, borderTop: `0.5px solid ${t.border}`, padding: '14px 0' }}>
@@ -458,7 +475,7 @@ export default function LeaveTracker({ onBack }: Props) {
                           </div>
                         </div>
                         <div style={{ fontSize: 14, fontWeight: 400, whiteSpace: 'nowrap',
-                                      color: waitingFor(u.uid) ? t.warn : when === 'day' && dayOff ? t.off : t.text2 }}>
+                                      color: waitingFor(u.uid) ? t.warn : t.text2 }}>
                           {status}
                         </div>
                       </div>
@@ -468,6 +485,7 @@ export default function LeaveTracker({ onBack }: Props) {
                 </ScrollList>
               )}
             </Section>
+            )}
 
             <Section label="Records">
               {salesUsers.length > 0 && (

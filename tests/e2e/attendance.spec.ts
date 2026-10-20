@@ -161,6 +161,9 @@ test.describe('the leave tab', () => {
     await expect(box).toContainText('On leave today')
     await expect(box.getByLabel('Leave day')).toBeVisible()
     await expect(box).toContainText('Priya')
+    // A day shows what to decide for it, not the team.
+    await expect(box.getByText('Team', { exact: true })).toHaveCount(0)
+    await expect(box.getByTestId('day-nothing-pending')).toBeVisible()
 
     await box.getByRole('button', { name: 'A month', exact: true }).click()
     await expect(box).toContainText('Leave days in')
@@ -180,12 +183,14 @@ test.describe('the leave tab', () => {
     await expect(page.getByTestId('leave-day-off')).toContainText('Holiday — Test Holiday')
   })
 
-  test('requests to decide are on the register only', async ({ page, loginAs }) => {
+  test('requests are on the register, and on the leave tab for their own day', async ({ page, loginAs }) => {
     await pendingLeave('rep2', todayLocal())
     await loginAs('admin')
     await page.getByRole('button', { name: /^Attendance/ }).first().click()
     await expect(page.getByText(/^Leave requests · 1/)).toBeVisible()
     await page.getByRole('button', { name: 'Leave', exact: true }).click()
     await expect(page.getByText(/^Leave requests ·/)).toHaveCount(0)
+    await expect(page.getByTestId('day-pending')).toContainText('Priya')
+    await expect(page.getByTestId('day-pending').getByRole('button', { name: 'Approve' })).toBeVisible()
   })
 })
