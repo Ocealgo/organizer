@@ -24,7 +24,14 @@ const START = (() => {
   while (d.getDay() === 0) d.setDate(d.getDate() - 1)
   return d.getTime()
 })()
-export const OFFSET_MS = START - Date.now()
+/**
+ * The sandbox imports the seed for its accounts and its world, and with it this
+ * clock — which put the sandbox's "today" on yesterday whenever it started
+ * before 11am. The sandbox is a place to stand in real time, so it keeps the
+ * real clock; only the specs are pinned.
+ */
+const IN_SANDBOX = typeof process !== 'undefined' && /sandbox\.mjs$/.test(process.argv?.[1] ?? '')
+export const OFFSET_MS = IN_SANDBOX ? 0 : START - Date.now()
 
 /** Now, as the suite sees it. Use in place of Date.now(). */
 export const testNow = (): number => Date.now() + OFFSET_MS

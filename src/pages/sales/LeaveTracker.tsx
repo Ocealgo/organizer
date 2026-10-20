@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr, localMonthStr } from '../../utils/date'
 import DateInput from '../../components/DateInput'
+import AttendanceRegister from '../../attendance/AttendanceRegister'
 import {
   PageHeader, TabBar, StatGrid, StatCard, Section, EmptyState,
   ChipGroup, GhostButton, PrimaryButton, inputStyle,
@@ -15,7 +16,7 @@ import {
 
 interface Props { onBack: () => void }
 
-type LeaveTab = 'today' | 'month' | 'all' | 'holidays'
+type LeaveTab = 'register' | 'today' | 'month' | 'all' | 'holidays'
 
 const todayStr = () => localDateStr()
 const thisMonth = () => localMonthStr()
@@ -55,7 +56,7 @@ export default function LeaveTracker({ onBack }: Props) {
 
   const [leaveRecords, setLeaveRecords] = useState<LeaveRecord[]>([])
   const [salesUsers, setSalesUsers] = useState<AppUser[]>([])
-  const [tab, setTab] = useState<LeaveTab>('today')
+  const [tab, setTab] = useState<LeaveTab>('register')
   const [selectedPerson, setSelectedPerson] = useState<string>('all')
   const [expandedAudit, setExpandedAudit] = useState<string | null>(null)
   const [holidays, setHolidays] = useState<Holiday[]>([])
@@ -261,8 +262,8 @@ export default function LeaveTracker({ onBack }: Props) {
   return (
     <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 40 }}>
       <PageHeader
-        eyebrow="Attendance"
-        title="Leave"
+        eyebrow="Team"
+        title="Attendance"
         subtitle={totalPending > 0
           ? `${totalPending} request${totalPending > 1 ? 's' : ''} waiting on you`
           : 'Nothing is waiting for a decision'}
@@ -273,14 +274,20 @@ export default function LeaveTracker({ onBack }: Props) {
         value={tab}
         onChange={setTab}
         tabs={[
-          { id: 'today', label: 'Today' },
-          { id: 'month', label: 'This month' },
-          { id: 'all', label: 'All' },
+          { id: 'register', label: 'Register' },
+          { id: 'today', label: 'Leave today' },
+          { id: 'month', label: 'Leave this month' },
+          { id: 'all', label: 'All leave' },
           { id: 'holidays', label: 'Holidays' },
         ]}
       />
 
       <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 28 }}>
+
+        {/* ── REGISTER: the team's month, a letter a day ── */}
+        {tab === 'register' && (
+          <AttendanceRegister reps={salesUsers} leaves={leaveRecords} holidays={holidays} />
+        )}
 
         {/* ── HOLIDAYS ── */}
         {tab === 'holidays' && (

@@ -281,6 +281,7 @@ const OUTLETS = [
   { id: 'party_dist', name: 'Rajan Distributors', type: 'distributor' },
 ]
 
+const dayAhead = (n) => dayBack(-n)
 const dayBack = (n) => {
   const d = new Date()
   d.setDate(d.getDate() - n)
@@ -442,6 +443,26 @@ const beatsOf = (p) => [
   ...EXTRA_BEATS[p.key].map(b => ({ id: b.id, name: b.name, visit: b.visit })),
 ]
 
+/**
+ * Leave as the app writes it. `auto` is the missed-punch-in sweep's record —
+ * marked by the system, appealable; otherwise a manager approved it.
+ */
+function leaveDoc(u, date, leaveType, { auto, status = 'active', reason, appeal } = {}) {
+  const at0 = new Date(`${date}T${leaveType === 'half_day' ? '10:00' : '14:00'}:00`).getTime()
+  return {
+    uid: u.uid, name: u.name, role: u.role, date, leaveType,
+    ...(reason ? { reason } : {}),
+    markedAt: at0,
+    markedBy: auto ? 'system' : USERS.manager.uid,
+    markedByName: auto ? 'Automatic' : USERS.manager.name,
+    status,
+    ...(auto ? { autoMarked: true } : {}),
+    ...(appeal ? { unmarkReason: appeal, unmarkRequestedAt: at0 + 3600_000 } : {}),
+    auditLog: [{ action: auto ? 'admin_marked' : 'leave_approved', by: auto ? 'system' : USERS.manager.uid,
+                 byName: auto ? 'Automatic' : USERS.manager.name, at: at0 }],
+  }
+}
+
 /** A small deterministic generator: the same seed, the same month. */
 function rng(seed) {
   let a = seed >>> 0
@@ -573,6 +594,11 @@ async function recentMonth() {
     let latestWork = 1
     while (isDayOff(dayBack(latestWork))) latestWork++
     const fresh = (back) => u.uid === USERS.rep.uid && back === latestWork
+    // And the working day before that, Ravi was marked absent and is appealing
+    // it — so the appeal has a day to sit on whatever weekday the sandbox starts.
+    let appealDay = latestWork + 1
+    while (isDayOff(dayBack(appealDay))) appealDay++
+    const appealed = (back) => u.uid === USERS.rep.uid && back === appealDay
 
     for (let back = DAYS_BACK; back >= 1; back--) {
       const date = dayBack(back)
@@ -581,8 +607,27 @@ async function recentMonth() {
       // What kind of day: mostly worked, now and then not started, now and
       // then out all day and nothing sold.
       const roll = r()
-      const kind = fresh(back) ? 'sold' : p.force[back] ?? (roll < 0.07 ? 'absent' : roll < 0.15 ? 'nothing' : 'sold')
-      if (kind === 'absent') continue
+      const kind = fresh(back) ? 'sold' : appealed(back) ? 'absent'
+        : p.force[back] ?? (roll < 0.07 ? 'absent' : roll < 0.15 ? 'nothing' : 'sold')
+      // A day nobody started is what the sweep marks absent. The first one
+      // in each person's history was booked leave instead — approved by the
+      // manager — and Ravi's forced absence is under appeal.
+      if (kind === 'absent') {
+        const first = !p.hadLeave
+        p.hadLeave = true
+        const appeal = appealed(back)
+        await db.doc(`leave_records/sb_${u.uid}_${date}`).set(first && !appeal
+          ? leaveDoc(u, date, 'full_day', { auto: false, reason: 'Family' })
+          : leaveDoc(u, date, 'full_day', {
+              auto: true,
+              ...(appeal ? { status: 'unmark_requested', appeal: 'Phone died at the depot — I was on the round.' } : {}),
+            }))
+        continue
+      }
+
+      // Now and then a late start: past the morning cutoff, so the sweep marked
+      // half a day before the rep punched in at one.
+      const late = !fresh(back) && r() < 0.06
 
       // Their own round on most days, one of their other three on the rest.
       // The forced days keep the main round, so the states they set up hold.
@@ -597,13 +642,15 @@ async function recentMonth() {
       await db.doc(`duty_sessions/${sessionId}`).set({
         uid: u.uid, name: u.name, date,
         routeId: beat.id, routeName: beat.name,
-        startAt: at(date, 9, 10), startLocation: fix(DEPOT, at(date, 9, 10)),
+        startAt: late ? at(date, 13, 5) : at(date, 9, 10),
+        startLocation: fix(DEPOT, late ? at(date, 13, 5) : at(date, 9, 10)),
         startOdometerKm: start, odometerStatus: 'recorded',
         startOdometerPhoto: 'demo/odometer.jpg', startOdometerPhotoVerified: false,
         endAt: at(date, 17, 40), endLocation: fix(DEPOT, at(date, 17, 40)),
         endOdometerKm: odo, endOdometerPhoto: 'demo/odometer.jpg',
         claimedDistanceKm: km, status: 'closed',
       })
+      if (late) await db.doc(`leave_records/sb_${u.uid}_${date}`).set(leaveDoc(u, date, 'half_day', { auto: true }))
       await db.doc(`work_plans/${u.uid}_${date}`).set({
         uid: u.uid, name: u.name, date,
         routeId: beat.id, routeName: beat.name,
@@ -800,6 +847,11 @@ async function managerWeek() {
  */
 async function autoClosedDay() {
   const db = getFirestore()
+  // A leave Arjun has asked for next week, not yet approved.
+  let ahead = 7
+  while (isDayOff(dayAhead(ahead))) ahead++
+  await db.doc(`leave_records/sb_${ARJUN.uid}_request`).set(
+    leaveDoc(ARJUN, dayAhead(ahead), 'full_day', { auto: false, status: 'pending_approval', reason: 'Personal' }))
   let back = 1
   while (isDayOff(dayBack(back))) back++
   const date = dayBack(back)

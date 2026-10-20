@@ -1406,8 +1406,8 @@ export default function AdminDashboard() {
       warn: plannedThisWeek === 0 && routeCount > 0,
     },
     {
-      name: "Leave tracker",
-      desc: "Approve time off and see who is out",
+      name: "Attendance",
+      desc: "Who is in, the month's register, and leave to approve",
       screen: "leaves" as SubScreen,
       value:
         pendingLeaveCount > 0

@@ -1,7 +1,10 @@
-import { useState } from 'react'
-import { deleteDoc, doc, updateDoc, addDoc, collection } from 'firebase/firestore'
+import { useState, useEffect, useMemo } from 'react'
+import { deleteDoc, doc, updateDoc, addDoc, collection, query, where } from 'firebase/firestore'
+import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
-import { LeaveRecord, LeaveReason, LEAVE_REASONS } from '../../types'
+import { LeaveRecord, LeaveReason, LEAVE_REASONS, DutySession, Holiday } from '../../types'
+import AttendanceCalendar from '../../attendance/AttendanceCalendar'
+import { monthOf, Day } from '../../attendance/attendance'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { useConfirm } from '../../hooks/useConfirm'
@@ -35,6 +38,30 @@ export default function LeaveHistory({ leaveRecords, onBack }: Props) {
   const [revokeBlocked, setRevokeBlocked] = useState<string | null>(null)
 
   const today = localDateStr()
+
+  // ── attendance: the month's duty days and the holidays ────────────────────
+  const [sessions, setSessions] = useState<DutySession[]>([])
+  const [holidays, setHolidays] = useState<Holiday[]>([])
+  useEffect(() => {
+    if (!appUser) return
+    // Own sessions only — the shape the rules allow a rep to ask for.
+    return onSnapshot(query(collection(db, 'duty_sessions'), where('uid', '==', appUser.uid)),
+      s => setSessions(s.docs.map(d => ({ id: d.id, ...d.data() } as DutySession))),
+      err => console.error('[LeaveHistory] sessions listener failed', err))
+  }, [appUser])
+  useEffect(() => onSnapshot(collection(db, 'holidays'),
+    s => setHolidays(s.docs.map(d => ({ id: d.id, ...d.data() } as Holiday))),
+    err => console.error('[LeaveHistory] holidays listener failed', err)), [])
+  const days = useMemo(
+    () => appUser ? monthOf(appUser.uid, selectedMonth, today, sessions, leaveRecords, holidays) : [],
+    [appUser, selectedMonth, today, sessions, leaveRecords, holidays])
+
+  /** The calendar's appeal opens the same appeal the list below has. */
+  const appealFromCalendar = (d: Day) => {
+    if (!d.leave?.id) return
+    setRevokeFor(d.leave.id); setRevokeReason(''); setRevokeBlocked(null)
+    setTimeout(() => document.getElementById(`leave-${d.leave!.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50)
+  }
 
   const changeMonth = (delta: number) => {
     const [y, m] = selectedMonth.split('-').map(Number)
@@ -149,8 +176,8 @@ export default function LeaveHistory({ leaveRecords, onBack }: Props) {
   return (
     <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 40 }}>
       <PageHeader
-        eyebrow="My leave"
-        title="Leave"
+        eyebrow="Yours"
+        title="Attendance"
         subtitle={pendingCount > 0
           ? `${pendingCount} request${pendingCount > 1 ? 's' : ''} awaiting approval`
           : undefined}
@@ -170,6 +197,17 @@ export default function LeaveHistory({ leaveRecords, onBack }: Props) {
             </div>
           }
         >
+          {/* The month as the app recorded it: worked, half, absent, leave. */}
+          <div style={{ marginBottom: 22 }}>
+            <AttendanceCalendar days={days} onAppeal={appealFromCalendar} />
+            <div style={{ fontSize: 12, color: t.text3, marginTop: 10, lineHeight: 1.6 }}>
+              Attendance as the app recorded it. No punch-in by the morning cutoff marks half a day,
+              and none by the afternoon marks the day absent — both automatically, and both can be
+              appealed. Tap a day to see what it was.
+            </div>
+          </div>
+          <div style={{ fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase',
+                        color: t.text3, marginBottom: 8 }}>Leave this month</div>
           {monthRecords.length === 0 ? (
             <EmptyState title="No leave this month" body="Use the arrows above to look at another month." />
           ) : (
@@ -198,7 +236,7 @@ export default function LeaveHistory({ leaveRecords, onBack }: Props) {
                  */
                 const canAppeal = l.autoMarked === true || l.date >= today
                 return (
-                  <div key={l.id} style={{ borderTop: `0.5px solid ${t.border}`, padding: '14px 0' }}>
+                  <div key={l.id} id={`leave-${l.id}`} style={{ borderTop: `0.5px solid ${t.border}`, padding: '14px 0' }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 15, fontWeight: 500, color: t.text }}>{dayLabel}</div>
