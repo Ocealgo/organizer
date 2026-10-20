@@ -37,6 +37,12 @@ export interface Day {
   automatic: boolean
   /** An appeal is with the manager. */
   appealPending: boolean
+  /**
+   * A Sunday or a declared holiday. Set whatever else the day was, so a day
+   * worked on one shows both facts: that it was a day off, and that it was
+   * worked anyway.
+   */
+  dayOff: boolean
 }
 
 /** One letter per mark, so a mark never rests on its colour alone. */
@@ -72,8 +78,9 @@ export function monthOf(
     const leave = all.find(standing) ?? all.find(l => l.status === 'pending_approval')
     const automatic = !!leave?.autoMarked
     const appealPending = leave?.status === 'unmark_requested'
-    const base = { date, session, leave, holiday: holidayOn.get(date), automatic, appealPending }
     const sunday = new Date(date + 'T00:00:00').getDay() === 0
+    const holiday = holidayOn.get(date)
+    const base = { date, session, leave, holiday, automatic, appealPending, dayOff: sunday || !!holiday }
 
     // Worked. Half a day of leave on a worked day is still half a day.
     if (session) {
@@ -107,14 +114,19 @@ export interface Summary {
   autoClosed: number
   /** Past working days with nothing at all — no session, no leave. */
   none: number
+  /** Worked on a Sunday or a holiday — on top of the working days, not among them. */
+  offWorked: number
   appealsPending: number
 }
 
 export function summaryOf(days: Day[]): Summary {
   const n = (f: (d: Day) => boolean) => days.filter(f).length
   return {
-    working: n(d => !['off', 'holiday', 'future'].includes(d.mark)),
-    present: n(d => d.mark === 'present' || d.mark === 'auto_closed'),
+    working: n(d => !d.dayOff && d.mark !== 'future'),
+    // Present on a working day. A day off worked is counted on its own, so
+    // "14 of 16 working days" never reads as 15 of 16.
+    present: n(d => (d.mark === 'present' || d.mark === 'auto_closed') && !d.dayOff),
+    offWorked: n(d => (d.mark === 'present' || d.mark === 'auto_closed') && d.dayOff),
     half: n(d => d.mark === 'half'),
     absent: n(d => d.mark === 'absent'),
     leave: n(d => d.mark === 'leave'),
@@ -129,6 +141,15 @@ const hhmm = (ms?: number) => ms
 
 /** What a day's detail line says, for the calendar and the register alike. */
 export function describe(d: Day): string {
+  // A day off that was worked: say both, the day off first.
+  if (d.dayOff && (d.mark === 'present' || d.mark === 'auto_closed')) {
+    const off = d.holiday ? `Holiday — ${d.holiday}` : 'Sunday'
+    return `${off} · worked anyway · ${describeWorked(d)}`
+  }
+  return describeWorked(d)
+}
+
+function describeWorked(d: Day): string {
   const s = d.session
   const km = s && typeof s.claimedDistanceKm === 'number' ? ` · ${s.claimedDistanceKm} km` : ''
   switch (d.mark) {

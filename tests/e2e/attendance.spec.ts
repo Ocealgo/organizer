@@ -131,3 +131,15 @@ test('leave cannot be asked for on a holiday', async ({ page, loginAs }) => {
   await page.locator('input[type=date]').last().fill(ahead)
   await expect(page.getByText('That day is a holiday — Festival. No leave is needed.')).toBeVisible()
 })
+
+/** A holiday worked anyway shows both: the day off, and that it was worked. */
+test('a holiday worked is shown as a day off that was worked', async ({ page, loginAs }) => {
+  await holiday(todayLocal(), 'Vijayadashami')
+  await closedDay('rep', todayLocal(), { km: 47 })
+  await loginAs('rep')
+  await page.getByRole('button', { name: /My attendance/ }).click()
+
+  await page.getByRole('gridcell', { name: `${todayLocal()}: Present` }).click()
+  await expect(page.getByTestId('attendance-detail')).toContainText('Holiday — Vijayadashami · worked anyway')
+  await expect(page.getByTestId('attendance-summary')).toContainText('1 worked on a day off')
+})

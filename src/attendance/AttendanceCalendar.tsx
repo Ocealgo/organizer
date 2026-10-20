@@ -42,6 +42,7 @@ export default function AttendanceCalendar({ days, onAppeal }: Props) {
         {sum.absent > 0 && <> · <b>{sum.absent}</b> absent</>}
         {sum.leave > 0 && <> · <b>{sum.leave}</b> on leave</>}
         {sum.autoClosed > 0 && <span style={{ color: t.warn }}> · {sum.autoClosed} not ended</span>}
+        {sum.offWorked > 0 && <span style={{ color: t.off }}> · {sum.offWorked} worked on a day off</span>}
         {sum.appealsPending > 0 && <span style={{ color: t.warn }}> · {sum.appealsPending} appeal pending</span>}
       </div>
 
@@ -71,9 +72,9 @@ export default function AttendanceCalendar({ days, onAppeal }: Props) {
                   display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
                   alignItems: 'flex-start', textAlign: 'left',
                   background: on ? t.hover : quiet ? 'transparent' : t.card,
-                  border: `${on ? 1 : 0.5}px solid ${d.mark === 'holiday' || d.mark === 'off' ? t.off : on ? t.text2 : t.border}`,
+                  border: `${on ? 1 : 0.5}px solid ${d.dayOff ? t.off : on ? t.text2 : t.border}`,
                 }}>
-                <span style={{ fontSize: 11, color: d.mark === 'off' || d.mark === 'holiday' ? t.off : t.text3 }}>
+                <span style={{ fontSize: 11, color: d.dayOff ? t.off : t.text3 }}>
                   {Number(d.date.slice(8))}
                 </span>
                 <span style={{ fontSize: 13, fontWeight: 600, color: c, lineHeight: 1 }}>
@@ -91,7 +92,7 @@ export default function AttendanceCalendar({ days, onAppeal }: Props) {
         <b style={{ color: t.good }}>P</b> present · <b style={{ color: t.warn }}>P·</b> present, day not ended
         {' · '}<b style={{ color: t.warn }}>½</b> half day · <b style={{ color: t.warn }}>A</b> absent
         {' · '}<b style={{ color: t.text2 }}>L</b> leave · <b style={{ color: t.off }}>H</b> holiday
-        {' · '}<b>–</b> no record
+        {' · '}<b>–</b> no record · <span style={{ color: t.off }}>red border</span> a day off, <b style={{ color: t.good }}>P</b> inside if worked
       </div>
 
       {pickedDay && (

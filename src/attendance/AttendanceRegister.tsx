@@ -195,7 +195,10 @@ export default function AttendanceRegister({ reps, leaves, holidays }: Props) {
                       data-mark={d.mark}
                       style={{ textAlign: 'center', padding: '6px 2px', borderBottom: `0.5px solid ${t.border}`,
                                color: cellColour(d), fontWeight: 600,
-                               background: d.mark === 'off' || d.mark === 'holiday' ? t.tint : undefined }}>
+                               background: d.dayOff ? t.tint : undefined,
+                               // Worked on a day off: a red underline beneath the P says so.
+                               boxShadow: d.dayOff && (d.mark === 'present' || d.mark === 'auto_closed')
+                                 ? `inset 0 -2px 0 ${t.off}` : undefined }}>
                       {MARK_LETTER[d.mark]}
                       {d.mark === 'auto_closed' && '·'}
                     </td>
@@ -214,7 +217,8 @@ export default function AttendanceRegister({ reps, leaves, holidays }: Props) {
       <div style={{ fontSize: 12, color: t.text3, lineHeight: 1.7 }}>
         <b style={{ color: t.good }}>P</b> present · <b style={{ color: t.warn }}>P·</b> present, day not ended
         {' · '}<b style={{ color: t.warn }}>½</b> half day · <b style={{ color: t.warn }}>A</b> absent
-        {' · '}<b style={{ color: t.text2 }}>L</b> leave · <b style={{ color: t.off }}>H</b> holiday · <b>–</b> no record.
+        {' · '}<b style={{ color: t.text2 }}>L</b> leave · <b style={{ color: t.off }}>H</b> holiday · <b>–</b> no record
+        {' · '}a shaded <b style={{ color: t.good }}>P</b> underlined in red was worked on a day off.
         {' '}Attendance as the app recorded it. Tap a name for that rep's own calendar, with times and reasons.
       </div>
     </div>
