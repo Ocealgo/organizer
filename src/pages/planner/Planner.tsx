@@ -93,6 +93,8 @@ export default function Planner({ onBack }: Props) {
   const [targetNote, setTargetNote] = useState<Record<string, string>>({})
   const [targetSaving, setTargetSaving] = useState<string | null>(null)
   const [targetError, setTargetError] = useState<string | null>(null)
+  /** The Targets tab narrowed to one rep; empty is everybody. */
+  const [targetWho, setTargetWho] = useState('')
   /** Whose day-by-day breakdown is open. One at a time — a month of boxes for
    *  five reps at once is a spreadsheet, and a worse one than a spreadsheet. */
   const [daysOpenFor, setDaysOpenFor] = useState<string | null>(null)
@@ -917,6 +919,14 @@ export default function Planner({ onBack }: Props) {
                 style={{ background: 'none', border: 'none', padding: '0 6px', fontSize: 18, color: t.text2, cursor: 'pointer' }}>
                 ›
               </button>
+              <span style={{ flex: 1 }} />
+              {/* One rep, or everybody — the list is long once the team is. */}
+              <div style={{ flex: '0 1 240px', minWidth: 180 }}>
+                <CustomSelect value={targetWho} onChange={setTargetWho}
+                  options={[{ value: '', label: 'Everybody' },
+                    ...reps.map(r => ({ value: r.uid, label: r.name }))]}
+                  placeholder="Everybody" />
+              </div>
             </div>
 
             <Note>
@@ -941,8 +951,8 @@ export default function Planner({ onBack }: Props) {
                 body="Approved sales officers appear here."
               />
             ) : (
-              <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
-                {reps.map(r => {
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {reps.filter(r => !targetWho || r.uid === targetWho).map(r => {
                   const existing = targets.find(x => x.uid === r.uid)
                   const ordered = packetsOrdered(allocations as any, r.uid, targetMonth)
                   // Cancelled orders are simply absent from the count above,
@@ -961,12 +971,14 @@ export default function Planner({ onBack }: Props) {
                     || (targetNote[r.uid] ?? '') !== ''
 
                   return (
-                    <div key={r.uid} style={{
-                      borderTop: `0.5px solid ${t.border}`, padding: '15px 0',
-                      display: 'flex', flexDirection: 'column', gap: 10,
+                    // A card per rep, so where one rep ends and the next begins
+                    // is never a question — the rows used to run together.
+                    <div key={r.uid} data-testid={`target-card-${r.uid}`} style={{
+                      background: t.card, border: `0.5px solid ${t.border2}`, borderRadius: 8,
+                      padding: '16px 16px 14px', display: 'flex', flexDirection: 'column', gap: 12,
                     }}>
-                      <div className="oc-wrap" style={{ alignItems: 'flex-end', gap: 14 }}>
-                        <span style={{ flex: '1 1 180px', minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+                        <span style={{ flex: 1, minWidth: 0 }}>
                           <span style={{ display: 'block', fontSize: 15, fontWeight: 500, color: t.text }}>
                             {r.name}
                           </span>
@@ -988,60 +1000,67 @@ export default function Planner({ onBack }: Props) {
                             </span>
                           )}
                         </span>
-
-                        {/* One box per product, and the total underneath them
-                            rather than in a box of its own. The total is the
-                            sum: giving it an input as well would be two places
-                            to set one thing, and whichever a manager edited
-                            second would silently win. */}
-                        <span style={{ flex: '1 1 260px', minWidth: 0 }}>
-                          {products.length === 0 ? (
-                            <Note tone="warn">
-                              No products to set a target against. Add one in Products first.
-                            </Note>
-                          ) : (
-                            <>
-                              <div className="oc-wrap" style={{ gap: 10 }}>
-                                {products.map(prod => {
-                                  // Progress per product, where the target is
-                                  // set. A manager setting four numbers wants
-                                  // to know which of the four is behind.
-                                  const did = packetsOrdered(
-                                    allocations as any, r.uid, targetMonth, prod.id!)
-                                  return (
-                                  <span key={prod.id} style={{ flex: '1 1 110px', minWidth: 0 }}>
-                                    <Field label={prod.name} hint={`${did} ordered`}>
-                                      {/* Named per person and per product. Field
-                                          renders its label as a div, so without
-                                          this every box on the screen is an
-                                          unnamed control called the same thing. */}
-                                      <input type="number" inputMode="numeric" min={0}
-                                        aria-label={`${prod.name} packets for ${r.name}`}
-                                        value={boxes[prod.id!] ?? ''}
-                                        onChange={e => setTargetDraft(prev => ({
-                                          ...prev,
-                                          [r.uid]: { ...(prev[r.uid] ?? {}), [prod.id!]: e.target.value },
-                                        }))}
-                                        placeholder="0" style={inputStyle(t)} />
-                                    </Field>
-                                  </span>
-                                  )
-                                })}
-                              </div>
-                              <div style={{ fontSize: 12, color: t.text3, marginTop: 6 }}>
-                                {draftTotal(r.uid)} packets for the month, across{' '}
-                                {products.length} product{products.length > 1 ? 's' : ''}
-                              </div>
-                            </>
-                          )}
-                        </span>
-
                         <GhostButton onClick={() => saveTarget(r)}
                           ariaLabel={`${existing ? 'Update' : 'Set'} target for ${r.name}`}
                           disabled={targetSaving === r.uid || !dirty}>
                           {targetSaving === r.uid ? 'Saving…' : existing ? 'Update' : 'Set'}
                         </GhostButton>
                       </div>
+
+                      {/* A row per product: the name, what has been ordered, the
+                          box. Rows rather than tiles, so a long product name
+                          wraps inside its own row and never pushes another
+                          product's box out of line — however many products
+                          there are. The total is the sum, under the rows: a
+                          box of its own would be two places to set one thing. */}
+                      {products.length === 0 ? (
+                        <Note tone="warn">
+                          No products to set a target against. Add one in Products first.
+                        </Note>
+                      ) : (
+                        <div>
+                          <div style={{
+                            display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto 120px',
+                            columnGap: 12, rowGap: 6, alignItems: 'center',
+                          }}>
+                            {['Product', 'Ordered', 'Target'].map((h, i) => (
+                              <span key={h} style={{
+                                fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase',
+                                color: t.text3, textAlign: i === 0 ? 'left' : 'right',
+                              }}>{h}</span>
+                            ))}
+                            {products.map(prod => {
+                              const did = packetsOrdered(allocations as any, r.uid, targetMonth, prod.id!)
+                              return [
+                                <span key={`${prod.id}_n`} style={{ fontSize: 14, color: t.text, lineHeight: 1.35 }}>
+                                  {prod.name}
+                                </span>,
+                                <span key={`${prod.id}_d`} style={{
+                                  fontSize: 13, color: t.text3, textAlign: 'right',
+                                  fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+                                }}>
+                                  {did}
+                                </span>,
+                                <input key={`${prod.id}_i`} type="number" inputMode="numeric" min={0}
+                                  // Named per person and per product, so every box
+                                  // on the screen is not an unnamed control.
+                                  aria-label={`${prod.name} packets for ${r.name}`}
+                                  value={boxes[prod.id!] ?? ''}
+                                  onChange={e => setTargetDraft(prev => ({
+                                    ...prev,
+                                    [r.uid]: { ...(prev[r.uid] ?? {}), [prod.id!]: e.target.value },
+                                  }))}
+                                  placeholder="0"
+                                  style={{ ...inputStyle(t), padding: '9px 10px', textAlign: 'right' }} />,
+                              ]
+                            })}
+                          </div>
+                          <div style={{ fontSize: 12, color: t.text3, marginTop: 8, textAlign: 'right' }}>
+                            {draftTotal(r.uid)} packets for the month, across{' '}
+                            {products.length} product{products.length > 1 ? 's' : ''}
+                          </div>
+                        </div>
+                      )}
 
                       <input
                         aria-label={`Note for ${r.name}`}

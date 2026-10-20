@@ -5,6 +5,7 @@ import { db } from '../../firebase'
 import {
   AppUser, Party, ManagerActivity, ManagerActivityKind, MANAGER_ACTIVITY_LABEL,
 } from '../../types'
+import { useHolidays } from '../../data/useHolidays'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { useConfirm } from '../../hooks/useConfirm'
@@ -57,6 +58,7 @@ function addDays(d: string, n: number): string {
  * typo. Everything else — other people, other days — is an admin's.
  */
 export default function ManagerLog({ onBack }: Props) {
+  const holidayOn = useHolidays()
   const { t } = useTheme()
   const { appUser } = useAuth()
   const { modal, showConfirm } = useConfirm()
@@ -509,7 +511,13 @@ export default function ManagerLog({ onBack }: Props) {
               />
             ) : forAdmin.map(([date, rows]) => (
               <div key={date}>
-                <div style={{ marginBottom: 10 }}><Eyebrow>{longDay(date)}</Eyebrow></div>
+                <div style={{ marginBottom: 10 }}>
+                  <Eyebrow>{longDay(date)}</Eyebrow>
+                  {holidayOn.has(date) && (
+                    <span style={{ fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase',
+                                   color: t.off, marginLeft: 8 }}>· Holiday — {holidayOn.get(date)}</span>
+                  )}
+                </div>
                 <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
                   {rows
                     .sort((a, b) => a.name.localeCompare(b.name) || a.createdAt - b.createdAt)

@@ -7,6 +7,7 @@ import {
   RemoteContact, ORDER_CHANNEL_LABEL,
   OUTLET_TYPE_LABEL, ODOMETER_STATUS_LABEL, VISIT_OUTCOME_LABEL,
 } from '../../types'
+import { useHolidays } from '../../data/useHolidays'
 import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
@@ -81,6 +82,7 @@ function StoragePhoto({ path, label, unverified }: {
 }
 
 export default function FieldReport({ onBack, initialWho, embedded }: Props) {
+  const holidayOn = useHolidays()
   const { t } = useTheme()
 
   const [mode, setMode] = useState<RangeMode>('day')
@@ -261,6 +263,8 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
                         {s.endAt ? `–${hhmm(s.endAt)}` : ' · still out'}
                         {/* The nightly job ended it, not the rep: said so beside the time. */}
                         {s.autoClosed && <span style={{ color: t.warn }}> · auto-closed</span>}
+                        {/* Worked on a declared holiday — worth seeing, it is not a usual day. */}
+                        {holidayOn.has(s.date) && <span style={{ color: t.off }}> · holiday ({holidayOn.get(s.date)})</span>}
                         {/* Counted apart, always. A call is cheap to claim and
                             a visit is not; adding them together would destroy
                             the only number that says anybody went anywhere. */}

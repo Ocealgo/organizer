@@ -4,7 +4,7 @@ import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
   AppUser, OutletVisit, DutySession, WorkPlan, SalesRoute, SalesTarget,
-  UnifiedAllocation, OutletType, OUTLET_TYPE_LABEL, ExpenseEntry, Party, Product,
+  UnifiedAllocation, OutletType, OUTLET_TYPE_LABEL, ExpenseEntry, Party, Product, Holiday,
   dailyTargetFor, packetsOrderedOn, dateOfMs, routePlaces, productDailyTargets,
 } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
@@ -130,6 +130,8 @@ interface Eod {
   /** The beat assigned, and the areas it covers. Absent when nobody assigned one. */
   routeName?: string
   routePlaces: string[]
+  /** The holiday's name when the day was one. */
+  holiday?: string
   shops: number
   byType: { type: OutletType; n: number }[]
   target: number | null
@@ -175,6 +177,9 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
   const [sessions, setSessions] = useState<DutySession[]>([])
   const [plans, setPlans] = useState<WorkPlan[]>([])
   const [routes, setRoutes] = useState<SalesRoute[]>([])
+  /** Declared holidays, so a day off reads as one on the cards and in the report. */
+  const [holidays, setHolidays] = useState<Holiday[]>([])
+  const holidayOn = useMemo(() => new Map(holidays.map(h => [h.date, h.name])), [holidays])
   const [targets, setTargets] = useState<SalesTarget[]>([])
   const [allocations, setAllocations] = useState<UnifiedAllocation[]>([])
   const [expenses, setExpenses] = useState<ExpenseEntry[]>([])
@@ -263,6 +268,8 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
         .filter(u => u.status === 'approved'
           && (u.role === 'offline_sales' || u.role === 'online_sales'))
         .sort((a, b) => a.name.localeCompare(b.name))))
+    const u2h = onSnapshot(collection(db, 'holidays'), s =>
+      setHolidays(s.docs.map(d => ({ id: d.id, ...d.data() } as Holiday))))
     const u2 = onSnapshot(collection(db, 'sales_routes'), s =>
       setRoutes(s.docs.map(d => ({ id: d.id, ...d.data() } as SalesRoute))))
     // For the report: where a visited shop is, and the products to filter by.
@@ -271,7 +278,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
     const u2q = onSnapshot(collection(db, 'products'), s =>
       setProducts(s.docs.map(d => ({ id: d.id, ...d.data() } as Product))
         .filter(x => x.active).sort((a, b) => a.name.localeCompare(b.name))))
-    return () => { u1(); u2(); u2p(); u2q() }
+    return () => { u1(); u2(); u2h(); u2p(); u2q() }
   }, [])
 
   useEffect(() => {
@@ -429,7 +436,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
          * weekday also only when no beat was assigned: a day somebody planned
          * and nobody showed up for is worth seeing.
          */
-        const quiet = !expected && !happened && (isSunday(date) || !plan)
+        const quiet = !expected && !happened && (isSunday(date) || holidayOn.has(date) || !plan)
         if (!showQuiet && quiet) continue
 
         if (outcome === 'met' && !(target !== null && packets >= target)) continue
@@ -444,6 +451,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
           uid: r.uid, name: r.name, date,
           routeName: plan?.routeName,
           routePlaces: route ? routePlaces(route) : [],
+          holiday: holidayOn.get(date),
           shops: theirs.length,
           byType: [...counts.entries()]
             .map(([type, n]) => ({ type, n }))
@@ -457,7 +465,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
     // Newest day first, people alphabetical inside it.
     return out.sort((a, b) => b.date.localeCompare(a.date) || a.name.localeCompare(b.name))
   }, [from, to, reps, who, beat, outcome, showQuiet, visits, sessions, plans, routes,
-      targets, allocations, expenses])
+      targets, allocations, expenses, holidayOn])
 
   const byDay = useMemo(() => {
     const m = new Map<string, Eod[]>()
@@ -511,6 +519,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
       let daysTargeted = 0
       let daysMet = 0
       for (const d of scoped) {
+        if (holidayOn.has(d)) continue
         const t = targets.find(x => x.uid === r.uid && x.month === d.slice(0, 7))
         const goal = rProduct
           ? (productDailyTargets(t, d)?.[rProduct] ?? null)
@@ -566,7 +575,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
     .sort((a, b) => (rankValue(b) - rankValue(a))
       || a.name.localeCompare(b.name))
   }, [tab, repFrom, repTo, reps, plans, visits, allocations, sessions, expenses, targets,
-      parties, rProduct, rBeat, rank])
+      parties, rProduct, rBeat, rank, holidayOn])
 
   /**
    * The report as a PDF, with whatever filters are on screen — the file says
@@ -785,7 +794,13 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
           />
         ) : byDay.map(([date, rows]) => (
           <div key={date}>
-            <div style={{ marginBottom: 10 }}><Eyebrow>{longDay(date)}</Eyebrow></div>
+            <div style={{ marginBottom: 10 }}>
+              <Eyebrow>{longDay(date)}</Eyebrow>
+              {holidayOn.has(date) && (
+                <span data-testid={`holiday-${date}`} style={{ fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase',
+                               color: t.off, marginLeft: 8 }}>· Holiday — {holidayOn.get(date)}</span>
+              )}
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {rows.map(c => {
                 const met = c.target !== null && c.packets >= c.target
@@ -818,6 +833,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
                         {c.day === 'out' ? `Still out · since ${hhmm(c.startAt)}`
                           : c.day === 'finished' ? `Finished · ${hhmm(c.startAt)}–${hhmm(c.endAt)}`
                           : c.day === 'auto_closed' ? `${hhmm(c.startAt)}–${hhmm(c.endAt)}`
+                          : c.holiday ? `Holiday · ${c.holiday}`
                           : 'Not started'}
                       </span>
                       {/* Said by the system, not the rep — the end time is when

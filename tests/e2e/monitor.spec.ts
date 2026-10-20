@@ -4,7 +4,7 @@ import { testDate } from './fixtures/clock'
 import {
   companyAllocation, companyStock, noAllocations, noTargetsSet,
   packetTarget, todayLocal, closedDay, openDay, claimedExpense, noOneOnDuty, noWeeksFiled,
-  outletVisit, partyPlace,
+  outletVisit, partyPlace, holiday,
 } from './fixtures/seed'
 
 /**
@@ -214,6 +214,16 @@ test.describe('where the day stands', () => {
     await expect(page.getByText('Auto-closed', { exact: true })).toBeVisible()
     await expect(page.getByText('closed automatically — no closing reading')).toBeVisible()
   })
+})
+
+/** A declared holiday says so on the day, and a card with nothing on it says why. */
+test('a holiday is named on the day and on the card', async ({ page, loginAs }) => {
+  await holiday(todayLocal(), 'Vijayadashami')
+  await packetTarget('rep', todayLocal().slice(0, 7), 1000, { [todayLocal()]: 30 })
+  await loginAs('manager')
+  await openMonitor(page)
+  await expect(page.getByTestId(`holiday-${todayLocal()}`)).toContainText('Vijayadashami')
+  await expect(page.getByTestId(`eod-day-e2e_rep-${todayLocal()}`)).toContainText('Holiday · Vijayadashami')
 })
 
 test.describe('the report', () => {

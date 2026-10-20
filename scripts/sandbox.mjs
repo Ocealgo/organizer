@@ -79,6 +79,14 @@ async function sandboxExtras() {
   await companyStock('prod_wipes', 2000)
   await companyStock('prod_mini', 2000)
 
+  // Two products added later, with long names and nothing ordered yet — the
+  // case the Targets screen has to lay out without falling out of line.
+  for (const [id, name] of [['prod_aqua', 'Facial Wet Wipes - Aqua'], ['prod_reef', 'Facial Wet Wipes - Reef']]) {
+    await db.doc(`products/${id}`).set({
+      name, active: true, defaultPricePerUnit: 80, unitsPerCarton: 24, createdAt: Date.now(),
+    })
+  }
+
   for (const h of HOLIDAYS) {
     await db.doc(`holidays/${h.date}`).set({
       ...h, createdBy: USERS.admin.uid, createdByName: USERS.admin.name, createdAt: Date.now(),

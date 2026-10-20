@@ -203,11 +203,11 @@ test.describe('a target per product', () => {
     await loginAs('manager')
     await openPlannerTargets(page)
 
-    // 24 against the wipes. "0 ordered" is not asserted here: both officers
-    // have both products, so three boxes read zero and the locator would be
-    // ambiguous for a reason that has nothing to do with the test. The
-    // rep-side assertion below covers the untouched product precisely.
-    await expect(page.getByText('24 ordered')).toBeVisible()
+    // 24 against the wipes, in Ravi's card, in the Ordered column beside the
+    // 72s — the rows are product, ordered, box. The untouched product is
+    // covered precisely by the rep-side assertion below.
+    const card = page.getByTestId('target-card-e2e_rep')
+    await expect(card.getByText('24', { exact: true })).toBeVisible()
 
     // And the rep is told the split they are working to, with today's share of
     // each worked out from the month rather than stored.
@@ -458,4 +458,19 @@ test.describe('dividing a month across its days', () => {
     await loginAs('rep')
     await expect(page.getByText(/This month ·/)).toHaveCount(0)
   })
+})
+
+/** The list is long once the team is: one rep, or everybody. */
+test('targets can be narrowed to one rep', async ({ page, loginAs }) => {
+  await loginAs('manager')
+  await openPlannerTargets(page)
+  await expect(page.getByTestId('target-card-e2e_rep')).toBeVisible()
+  await expect(page.getByTestId('target-card-e2e_rep2')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Next month' }).locator('xpath=..')
+    .getByText('Everybody', { exact: true }).click()
+  await page.locator('xpath=//*[normalize-space(text())="Priya Rep"][not(ancestor::*[starts-with(@data-testid,"target-card")])]')
+    .first().click()
+  await expect(page.getByTestId('target-card-e2e_rep2')).toBeVisible()
+  await expect(page.getByTestId('target-card-e2e_rep')).toHaveCount(0)
 })

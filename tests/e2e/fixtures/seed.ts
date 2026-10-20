@@ -348,6 +348,13 @@ export async function partyPlace(id: string, place: string): Promise<void> {
   await getFirestore(admin()).doc(`parties/${id}`).set({ place }, { merge: true })
 }
 
+/** A declared holiday. */
+export async function holiday(date: string, name: string): Promise<void> {
+  await getFirestore(admin()).doc(`holidays/${date}`).set({
+    date, name, createdBy: USERS.admin.uid, createdByName: USERS.admin.name, createdAt: testNow(),
+  })
+}
+
 /** A beat and the shops it is meant to cover. */
 export async function beat(id: string, name: string, outletIds: string[]): Promise<void> {
   await getFirestore(admin()).doc(`sales_routes/${id}`).set({
