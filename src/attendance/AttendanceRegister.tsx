@@ -72,28 +72,13 @@ export default function AttendanceRegister({ reps, leaves, holidays }: Props) {
   }
   const monthName = new Date(month + '-01T00:00:00').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
 
-  /** The register as a spreadsheet: one sheet, a row per rep, the letters and the totals. */
+  /** The register as a PDF: the month on one landscape page, a letter a day, the totals and the key. */
   const download = async () => {
     setBusy(true)
     try {
-      const XLSX = await import('xlsx')
-      const head = ['Rep', ...dates.map(d => Number(d.slice(8))), 'Working days', 'Present', 'Half', 'Absent', 'Leave', 'Not ended', 'No record']
-      const body = rows.map(r => [
-        r.rep.name, ...r.days.map(d => MARK_LETTER[d.mark] || (d.mark === 'off' ? 'Sun' : '')),
-        r.sum.working, r.sum.present, r.sum.half, r.sum.absent, r.sum.leave, r.sum.autoClosed, r.sum.none,
-      ])
-      const sheet = XLSX.utils.aoa_to_sheet([
-        ['Ocealgo — Attendance, as the app recorded it'],
-        ['Month', monthName],
-        ['Generated', new Date().toLocaleString('en-IN')],
-        ['Key', 'P present · ½ half day · A absent · L leave · H holiday · – no record'],
-        ['Holidays', holidays.filter(h => h.date.startsWith(month)).sort((a, b) => a.date.localeCompare(b.date))
-          .map(h => `${h.name} (${Number(h.date.slice(8))})`).join(', ') || 'None'],
-        [], head, ...body,
-      ])
-      const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, sheet, 'Attendance')
-      XLSX.writeFile(wb, `ocealgo-attendance_${month}.xlsx`)
+      const { downloadAttendancePdf } = await import('./attendancePdf')
+      await downloadAttendancePdf(month, dates,
+        rows.map(r => ({ name: r.rep.name, days: r.days, sum: r.sum })), holidays)
     } finally { setBusy(false) }
   }
 
@@ -136,7 +121,7 @@ export default function AttendanceRegister({ reps, leaves, holidays }: Props) {
         <button className="oc-action" aria-label="Next month" onClick={() => step(1)} style={arrow(t)}>›</button>
         <span style={{ flex: 1 }} />
         <GhostButton onClick={download} disabled={busy || !loaded || rows.length === 0}>
-          {busy ? 'Making the file…' : !loaded ? 'Loading…' : 'Download Excel'}
+          {busy ? 'Making the PDF…' : !loaded ? 'Loading…' : 'Download PDF'}
         </GhostButton>
       </div>
 

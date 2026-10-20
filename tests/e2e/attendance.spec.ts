@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { test, expect } from './fixtures/app'
 import {
   closedDay, autoMarkedLeave, approvedLeave, noOneOnDuty, noLeaveRecorded, todayLocal, holiday,
@@ -74,15 +75,20 @@ test.describe('an admin reading the team', () => {
     await expect(page.getByRole('gridcell', { name: `${todayLocal()}: Present` })).toBeVisible()
   })
 
-  test('the register downloads as a spreadsheet', async ({ page, loginAs }) => {
+  test('the register downloads as a PDF', async ({ page, loginAs }) => {
     await closedDay('rep', todayLocal(), { km: 47 })
     await loginAs('admin')
     await page.getByRole('button', { name: /^Attendance/ }).first().click()
     const [file] = await Promise.all([
       page.waitForEvent('download'),
-      page.getByRole('button', { name: 'Download Excel' }).click(),
+      page.getByRole('button', { name: 'Download PDF' }).click(),
     ])
-    expect(file.suggestedFilename()).toBe(`ocealgo-attendance_${todayLocal().slice(0, 7)}.xlsx`)
+    expect(file.suggestedFilename()).toBe(`ocealgo-attendance_${todayLocal().slice(0, 7)}.pdf`)
+    // jsPDF writes its text uncompressed, so the content can be read off the bytes.
+    const text = readFileSync(await file.path()).toString('latin1')
+    expect(text.startsWith('%PDF-')).toBe(true)
+    expect(text).toContain('(Ravi Rep')
+    expect(text).toContain('(P)')
   })
 })
 
