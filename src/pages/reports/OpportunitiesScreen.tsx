@@ -9,6 +9,7 @@ import {
   OPPORTUNITY_LABEL, OPPORTUNITY_BLURB,
 } from '../../data/opportunities'
 import { PageHeader, Eyebrow, EmptyState, Note } from '../../components/ui'
+import { FilterBox, ScrollList } from '../../components/FilterBox'
 import { localDateStr } from '../../utils/date'
 
 interface Props {
@@ -124,6 +125,7 @@ export default function OpportunitiesScreen({ onBack, uid, onVisit }: Props) {
       <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 24 }}>
         {readError && <Note tone="warn">{readError}</Note>}
 
+        <FilterBox testId="opportunities-box" note="The list you pick changes what is shown in this box.">
         {/* One row of filters above the list */}
         <div className="oc-scroll-x" style={{ display: 'flex', gap: 6 }}>
           {ORDER.map(k => {
@@ -159,6 +161,7 @@ export default function OpportunitiesScreen({ onBack, uid, onVisit }: Props) {
                 : 'Nothing matches this one. Try another list above.'}
             />
           ) : (
+            <ScrollList count={Math.min(60, grouped[open].length)} label="shops">
             <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
               {grouped[open].slice(0, 60).map(o => (
                 <div key={`${o.kind}-${o.party.id}`}
@@ -192,8 +195,10 @@ export default function OpportunitiesScreen({ onBack, uid, onVisit }: Props) {
                 </div>
               )}
             </div>
+            </ScrollList>
           )}
         </div>
+        </FilterBox>
 
         {onVisit && grouped[open].length > 0 && (
           <div style={{ fontSize: 13, color: t.text3, lineHeight: 1.6 }}>

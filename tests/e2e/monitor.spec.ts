@@ -4,7 +4,7 @@ import { testDate } from './fixtures/clock'
 import {
   companyAllocation, companyStock, noAllocations, noTargetsSet,
   packetTarget, todayLocal, closedDay, openDay, claimedExpense, noOneOnDuty, noWeeksFiled,
-  outletVisit, partyPlace,
+  outletVisit, partyPlace, holiday,
 } from './fixtures/seed'
 
 /**
@@ -214,6 +214,22 @@ test.describe('where the day stands', () => {
     await expect(page.getByText('Auto-closed', { exact: true })).toBeVisible()
     await expect(page.getByText('closed automatically — no closing reading')).toBeVisible()
   })
+})
+
+/** A declared holiday says so on the day, and a card with nothing on it says why. */
+test('a holiday is named on the day and on the card', async ({ page, loginAs }) => {
+  await holiday(todayLocal(), 'Vijayadashami')
+  await packetTarget('rep', todayLocal().slice(0, 7), 1000, { [todayLocal()]: 30 })
+  await loginAs('manager')
+  await openMonitor(page)
+  await expect(page.getByTestId(`holiday-${todayLocal()}`)).toContainText('Vijayadashami')
+  await expect(page.getByTestId(`eod-day-e2e_rep-${todayLocal()}`)).toContainText('Holiday · Vijayadashami')
+
+  // The filter says so too: under the field, and red in its calendar.
+  await expect(page.getByTestId('day-off-note')).toContainText('Holiday — Vijayadashami')
+  await page.getByLabel('Day', { exact: true }).click()
+  await expect(page.getByRole('dialog', { name: 'Choose a day' })
+    .getByRole('gridcell', { name: `${todayLocal()}, holiday: Vijayadashami` })).toBeVisible()
 })
 
 test.describe('the report', () => {

@@ -12,6 +12,7 @@ import {
   PageHeader, Section, EmptyState, Field, Note, ChipGroup,
   GhostButton, PrimaryButton, inputStyle,
 } from '../../components/ui'
+import { FilterBox, ScrollList } from '../../components/FilterBox'
 
 interface Props { onBack: () => void }
 
@@ -227,7 +228,8 @@ export default function BeatManager({ onBack }: Props) {
           </Field>
 
           {places.size > 0 && (
-            <Section label={`Shops · ${picked.size} of ${inAreas.length} chosen`}>
+            <FilterBox title={`Shops · ${picked.size} of ${inAreas.length} chosen`} testId="beat-shops-box"
+              note="The type and search you pick change the list in this box; what is ticked stays ticked.">
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <ChipGroup
                   value={typeFilter}
@@ -303,7 +305,7 @@ export default function BeatManager({ onBack }: Props) {
                   </div>
                 )}
               </div>
-            </Section>
+            </FilterBox>
           )}
 
           <Section label="Targets for a day on this beat">
@@ -389,6 +391,8 @@ export default function BeatManager({ onBack }: Props) {
           <GhostButton onClick={() => setImporting(true)}>Import from a sheet</GhostButton>
         </div>
 
+        <FilterBox title="Beats" testId="beats-box"
+          note={routes.length > 3 ? 'The search you type changes the list in this box.' : undefined}>
         {routes.length > 3 && (
           <input
             value={beatSearch}
@@ -409,6 +413,7 @@ export default function BeatManager({ onBack }: Props) {
             body={`No beat has "${beatSearch.trim()}" in its name or area.`}
           />
         ) : (
+          <ScrollList count={sorted.length} label="beats">
           <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
             {sorted.map(r => (
               <div key={r.id} style={{
@@ -438,7 +443,9 @@ export default function BeatManager({ onBack }: Props) {
               </div>
             ))}
           </div>
+          </ScrollList>
         )}
+        </FilterBox>
       </div>
     </div>
   )

@@ -7,10 +7,13 @@ import {
   RemoteContact, ORDER_CHANNEL_LABEL,
   OUTLET_TYPE_LABEL, ODOMETER_STATUS_LABEL, VISIT_OUTCOME_LABEL,
 } from '../../types'
+import { useHolidays } from '../../data/useHolidays'
 import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
+import DayPicker, { HolidayNote } from '../../components/DayPicker'
 import WeekPicker from '../../components/WeekPicker'
+import { FilterBox, ScrollList } from '../../components/FilterBox'
 import { PageHeader, Eyebrow, StatGrid, StatCard, EmptyState } from '../../components/ui'
 import LazyRouteMap from '../../components/LazyRouteMap'
 import { RouteStop, stopLabel } from '../../components/RouteMap'
@@ -81,6 +84,7 @@ function StoragePhoto({ path, label, unverified }: {
 }
 
 export default function FieldReport({ onBack, initialWho, embedded }: Props) {
+  const holidayOn = useHolidays()
   const { t } = useTheme()
 
   const [mode, setMode] = useState<RangeMode>('day')
@@ -179,6 +183,8 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
 
       <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 26 }}>
 
+        <FilterBox title="Field activity" testId="field-box"
+          note="The dates and person you pick change everything in this box.">
         {/* Range */}
         <div>
           <div style={{ marginBottom: 8 }}><Eyebrow>When</Eyebrow></div>
@@ -189,18 +195,19 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
               </button>
             ))}
           </div>
-          {mode === 'day' && <DateInput type="date" value={day} onChange={setDay} />}
+          {mode === 'day' && <DayPicker value={day} onChange={setDay} />}
           {mode === 'week' && <WeekPicker value={week} onChange={setWeek} days={7} />}
           {mode === 'month' && <DateInput type="month" value={month} onChange={setMonth} />}
+          {(mode === 'month' || mode === 'custom') && <HolidayNote from={range.from} to={range.to} />}
           {mode === 'custom' && (
             <div style={{ display: 'flex', gap: 8 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 12, color: t.text3, marginBottom: 5 }}>From</div>
-                <DateInput type="date" value={from} onChange={setFrom} />
+                <DayPicker value={from} onChange={setFrom} />
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 12, color: t.text3, marginBottom: 5 }}>To</div>
-                <DateInput type="date" value={to} onChange={setTo} />
+                <DayPicker value={to} onChange={setTo} />
               </div>
             </div>
           )}
@@ -235,6 +242,7 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
             body="Once an officer punches in, their day appears here with their meter readings and every outlet they visited."
           />
         ) : (
+          <ScrollList count={shown.length} label="days" testId="field-scroll">
           <div className="oc-list-flush" style={{ borderBottom: `0.5px solid ${t.border}` }}>
             {shown.map(s => {
               const vs = visitsFor(s.id)
@@ -261,6 +269,8 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
                         {s.endAt ? `–${hhmm(s.endAt)}` : ' · still out'}
                         {/* The nightly job ended it, not the rep: said so beside the time. */}
                         {s.autoClosed && <span style={{ color: t.warn }}> · auto-closed</span>}
+                        {/* Worked on a declared holiday — worth seeing, it is not a usual day. */}
+                        {holidayOn.has(s.date) && <span style={{ color: t.off }}> · holiday ({holidayOn.get(s.date)})</span>}
                         {/* Counted apart, always. A call is cheap to claim and
                             a visit is not; adding them together would destroy
                             the only number that says anybody went anywhere. */}
@@ -540,7 +550,9 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
               )
             })}
           </div>
+          </ScrollList>
         )}
+        </FilterBox>
       </div>
     </div>
   )

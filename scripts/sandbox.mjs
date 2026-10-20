@@ -79,6 +79,14 @@ async function sandboxExtras() {
   await companyStock('prod_wipes', 2000)
   await companyStock('prod_mini', 2000)
 
+  // Two products added later, with long names and nothing ordered yet — the
+  // case the Targets screen has to lay out without falling out of line.
+  for (const [id, name] of [['prod_aqua', 'Facial Wet Wipes - Aqua'], ['prod_reef', 'Facial Wet Wipes - Reef']]) {
+    await db.doc(`products/${id}`).set({
+      name, active: true, defaultPricePerUnit: 80, unitsPerCarton: 24, createdAt: Date.now(),
+    })
+  }
+
   for (const h of HOLIDAYS) {
     await db.doc(`holidays/${h.date}`).set({
       ...h, createdBy: USERS.admin.uid, createdByName: USERS.admin.name, createdAt: Date.now(),
@@ -110,7 +118,10 @@ async function sandboxExtras() {
   })
 
   // Today, carrying the beat's own numbers the way the planner copies them.
-  await assignedDay('rep', todayLocal(), { visits: 12, orderValue: 50000 })
+  // Nobody is planned, out or finished on a day off. On a Sunday or a holiday
+  // today is left empty; the "Working day" switch reaches a worked day.
+  const todayOff = isDayOff(todayLocal())
+  if (!todayOff) await assignedDay('rep', todayLocal(), { visits: 12, orderValue: 50000 })
 
   /**
    * A month, divided across the days that can be worked.
@@ -135,8 +146,10 @@ async function sandboxExtras() {
   // division leaves it empty, so there would be nothing to look at. 23 and 14
   // against the 24-packet order below puts one product over and one under —
   // both states on one screen.
-  ravi.prod_wipes = { ...(ravi.prod_wipes ?? {}), [todayLocal()]: 23 }
-  ravi.prod_mini = { ...(ravi.prod_mini ?? {}), [todayLocal()]: 14 }
+  if (!todayOff) {
+    ravi.prod_wipes = { ...(ravi.prod_wipes ?? {}), [todayLocal()]: 23 }
+    ravi.prod_mini = { ...(ravi.prod_mini ?? {}), [todayLocal()]: 14 }
+  }
   const priya = divideByProductAcrossDays({ prod_wipes: 250, prod_mini: 350 }, workable)
 
   await db.doc(`sales_targets/${USERS.rep.uid}_${month}`).set({
@@ -181,23 +194,32 @@ async function sandboxExtras() {
   })
 
   // One order already placed, so both lines open on something other than zero
-  // and cancelling it is one tap from showing what that does.
-  await companyAllocation()
+  // and cancelling it is one tap from showing what that does. On a day off it
+  // is dated to the last working day — an order raised on a holiday would be
+  // somebody working it.
+  if (todayOff) {
+    let back = 1
+    while (isDayOff(dayBack(back))) back++
+    await companyAllocation({ createdAt: new Date(`${dayBack(back)}T12:00:00`).getTime() })
+  } else {
+    await companyAllocation()
+  }
 
   /**
    * Today, already worked and closed, for Ravi.
    *
    * The end-of-day expenses appear only once the day is over, so a world where
    * nobody has finished today is a world where that card cannot be looked at.
-   * Seeded whatever weekday it is — including a Sunday, which is the one
-   * exception to the rule the rest of this file keeps — because a sandbox
-   * exists to put screens in front of somebody, and waiting until Monday to
-   * see one is not that.
+   * Only on a working day, though: on a Sunday or a holiday nobody works, and
+   * a sandbox that put Ravi on the round anyway showed a holiday as worked.
+   * The "Working day" switch on the sandbox bar reaches his last worked day,
+   * which is left unclaimed for exactly this.
    *
    * 47 km: beyond 25, so the allowance opens on EX, and an odd number so the
    * fuel line shows paise rather than a round figure that hides the arithmetic.
    */
   const today = todayLocal()
+  if (todayOff) return
   await db.doc(`duty_sessions/sandbox_today_${USERS.rep.uid}`).set({
     uid: USERS.rep.uid, name: USERS.rep.name, date: today,
     routeId: 'route_demo', routeName: 'Beach Road',
@@ -281,6 +303,7 @@ const OUTLETS = [
   { id: 'party_dist', name: 'Rajan Distributors', type: 'distributor' },
 ]
 
+const dayAhead = (n) => dayBack(-n)
 const dayBack = (n) => {
   const d = new Date()
   d.setDate(d.getDate() - n)
@@ -442,6 +465,26 @@ const beatsOf = (p) => [
   ...EXTRA_BEATS[p.key].map(b => ({ id: b.id, name: b.name, visit: b.visit })),
 ]
 
+/**
+ * Leave as the app writes it. `auto` is the missed-punch-in sweep's record —
+ * marked by the system, appealable; otherwise a manager approved it.
+ */
+function leaveDoc(u, date, leaveType, { auto, status = 'active', reason, appeal } = {}) {
+  const at0 = new Date(`${date}T${leaveType === 'half_day' ? '10:00' : '14:00'}:00`).getTime()
+  return {
+    uid: u.uid, name: u.name, role: u.role, date, leaveType,
+    ...(reason ? { reason } : {}),
+    markedAt: at0,
+    markedBy: auto ? 'system' : USERS.manager.uid,
+    markedByName: auto ? 'Automatic' : USERS.manager.name,
+    status,
+    ...(auto ? { autoMarked: true } : {}),
+    ...(appeal ? { unmarkReason: appeal, unmarkRequestedAt: at0 + 3600_000 } : {}),
+    auditLog: [{ action: auto ? 'admin_marked' : 'leave_approved', by: auto ? 'system' : USERS.manager.uid,
+                 byName: auto ? 'Automatic' : USERS.manager.name, at: at0 }],
+  }
+}
+
 /** A small deterministic generator: the same seed, the same month. */
 function rng(seed) {
   let a = seed >>> 0
@@ -573,6 +616,11 @@ async function recentMonth() {
     let latestWork = 1
     while (isDayOff(dayBack(latestWork))) latestWork++
     const fresh = (back) => u.uid === USERS.rep.uid && back === latestWork
+    // And the working day before that, Ravi was marked absent and is appealing
+    // it — so the appeal has a day to sit on whatever weekday the sandbox starts.
+    let appealDay = latestWork + 1
+    while (isDayOff(dayBack(appealDay))) appealDay++
+    const appealed = (back) => u.uid === USERS.rep.uid && back === appealDay
 
     for (let back = DAYS_BACK; back >= 1; back--) {
       const date = dayBack(back)
@@ -581,8 +629,27 @@ async function recentMonth() {
       // What kind of day: mostly worked, now and then not started, now and
       // then out all day and nothing sold.
       const roll = r()
-      const kind = fresh(back) ? 'sold' : p.force[back] ?? (roll < 0.07 ? 'absent' : roll < 0.15 ? 'nothing' : 'sold')
-      if (kind === 'absent') continue
+      const kind = fresh(back) ? 'sold' : appealed(back) ? 'absent'
+        : p.force[back] ?? (roll < 0.07 ? 'absent' : roll < 0.15 ? 'nothing' : 'sold')
+      // A day nobody started is what the sweep marks absent. The first one
+      // in each person's history was booked leave instead — approved by the
+      // manager — and Ravi's forced absence is under appeal.
+      if (kind === 'absent') {
+        const first = !p.hadLeave
+        p.hadLeave = true
+        const appeal = appealed(back)
+        await db.doc(`leave_records/sb_${u.uid}_${date}`).set(first && !appeal
+          ? leaveDoc(u, date, 'full_day', { auto: false, reason: 'Family' })
+          : leaveDoc(u, date, 'full_day', {
+              auto: true,
+              ...(appeal ? { status: 'unmark_requested', appeal: 'Phone died at the depot — I was on the round.' } : {}),
+            }))
+        continue
+      }
+
+      // Now and then a late start: past the morning cutoff, so the sweep marked
+      // half a day before the rep punched in at one.
+      const late = !fresh(back) && r() < 0.06
 
       // Their own round on most days, one of their other three on the rest.
       // The forced days keep the main round, so the states they set up hold.
@@ -597,13 +664,15 @@ async function recentMonth() {
       await db.doc(`duty_sessions/${sessionId}`).set({
         uid: u.uid, name: u.name, date,
         routeId: beat.id, routeName: beat.name,
-        startAt: at(date, 9, 10), startLocation: fix(DEPOT, at(date, 9, 10)),
+        startAt: late ? at(date, 13, 5) : at(date, 9, 10),
+        startLocation: fix(DEPOT, late ? at(date, 13, 5) : at(date, 9, 10)),
         startOdometerKm: start, odometerStatus: 'recorded',
         startOdometerPhoto: 'demo/odometer.jpg', startOdometerPhotoVerified: false,
         endAt: at(date, 17, 40), endLocation: fix(DEPOT, at(date, 17, 40)),
         endOdometerKm: odo, endOdometerPhoto: 'demo/odometer.jpg',
         claimedDistanceKm: km, status: 'closed',
       })
+      if (late) await db.doc(`leave_records/sb_${u.uid}_${date}`).set(leaveDoc(u, date, 'half_day', { auto: true }))
       await db.doc(`work_plans/${u.uid}_${date}`).set({
         uid: u.uid, name: u.name, date,
         routeId: beat.id, routeName: beat.name,
@@ -800,6 +869,25 @@ async function managerWeek() {
  */
 async function autoClosedDay() {
   const db = getFirestore()
+  // A holiday declared after the fact, on a day the sweep had already marked
+  // Arjun absent — so attendance can be seen to put the holiday first.
+  const month = todayLocal().slice(0, 7)
+  const absences = await db.collection('leave_records').where('uid', '==', ARJUN.uid).get()
+  const late = absences.docs.map(d => d.data())
+    .filter(l => l.autoMarked && l.leaveType === 'full_day' && l.date.startsWith(month))
+    // The earliest one, so it never lands on the day Ravi's appeal is about.
+    .sort((x, y) => x.date.localeCompare(y.date))[0]
+  if (late) {
+    await db.doc(`holidays/${late.date}`).set({
+      date: late.date, name: 'Hartal (declared late)',
+      createdBy: USERS.admin.uid, createdByName: USERS.admin.name, createdAt: Date.now(),
+    })
+  }
+  // A leave Arjun has asked for next week, not yet approved.
+  let ahead = 7
+  while (isDayOff(dayAhead(ahead))) ahead++
+  await db.doc(`leave_records/sb_${ARJUN.uid}_request`).set(
+    leaveDoc(ARJUN, dayAhead(ahead), 'full_day', { auto: false, status: 'pending_approval', reason: 'Personal' }))
   let back = 1
   while (isDayOff(dayBack(back))) back++
   const date = dayBack(back)

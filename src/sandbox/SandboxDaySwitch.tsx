@@ -1,16 +1,44 @@
+import { useState } from 'react'
+import { collection, getDocs } from 'firebase/firestore'
+import { db } from '../firebase'
 import { SANDBOX, sandboxDay, chooseSandboxDay, SandboxDay } from './dayShift'
 
 /**
  * The switch for dayShift: a small bar pinned to the bottom of the screen,
- * saying which day the app thinks it is and offering the other two.
+ * saying which day the app thinks it is and offering the others.
+ *
+ * Working day and Holiday read the declared holidays when pressed — a working
+ * day is one that is not, and a holiday is the latest one there is.
  *
  * Plain colours rather than theme tokens: it sits outside the app's providers
  * on purpose, so it still shows when something inside them has broken.
  */
 export default function SandboxDaySwitch() {
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
   if (!SANDBOX) return null
   const today = new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
-  const options: [SandboxDay, string][] = [['real', 'Real day'], ['workday', 'Working day'], ['sunday', 'Sunday']]
+  const options: [SandboxDay, string][] = [
+    ['real', 'Real day'], ['workday', 'Working day'], ['sunday', 'Sunday'], ['holiday', 'Holiday'],
+  ]
+
+  const pick = async (k: SandboxDay) => {
+    setNote(null)
+    if (k === 'real' || k === 'sunday') { chooseSandboxDay(k); return }
+    setBusy(true)
+    try {
+      const snap = await getDocs(collection(db, 'holidays'))
+      const holidays = snap.docs.map(d => d.data() as { date: string; name: string })
+      const msg = chooseSandboxDay(k, holidays)
+      if (msg) setNote(msg)
+    } catch {
+      // Holidays are only readable signed in. Before that, a working day is
+      // still the latest Monday to Saturday; a holiday cannot be known.
+      if (k === 'workday') chooseSandboxDay(k, [])
+      else setNote('Sign in first — the holidays are read from the database.')
+    } finally { setBusy(false) }
+  }
+
   return (
     <>
     {/* Room at the end of the page, so the last row can scroll clear of the bar. */}
@@ -23,11 +51,12 @@ export default function SandboxDaySwitch() {
     }}>
       <span style={{ padding: '0 4px' }}>
         Sandbox · <b>{today}</b>
+        {sandboxDay.holidayName ? ` · ${sandboxDay.holidayName}` : ''}
       </span>
       {options.map(([k, label]) => (
-        <button key={k} onClick={() => chooseSandboxDay(k)} aria-pressed={sandboxDay.choice === k}
+        <button key={k} onClick={() => void pick(k)} disabled={busy} aria-pressed={sandboxDay.choice === k}
           style={{
-            font: 'inherit', cursor: 'pointer', borderRadius: 99, padding: '4px 10px',
+            font: 'inherit', cursor: busy ? 'default' : 'pointer', borderRadius: 99, padding: '4px 10px',
             border: '1px solid ' + (sandboxDay.choice === k ? '#f9fafb' : '#4b5563'),
             background: sandboxDay.choice === k ? '#f9fafb' : 'transparent',
             color: sandboxDay.choice === k ? '#111827' : '#e5e7eb',
@@ -35,6 +64,7 @@ export default function SandboxDaySwitch() {
           {label}
         </button>
       ))}
+      {note && <span style={{ padding: '0 4px', color: '#fcd34d' }}>{note}</span>}
     </div>
     </>
   )

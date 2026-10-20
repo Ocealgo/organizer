@@ -348,6 +348,13 @@ export async function partyPlace(id: string, place: string): Promise<void> {
   await getFirestore(admin()).doc(`parties/${id}`).set({ place }, { merge: true })
 }
 
+/** A declared holiday. */
+export async function holiday(date: string, name: string): Promise<void> {
+  await getFirestore(admin()).doc(`holidays/${date}`).set({
+    date, name, createdBy: USERS.admin.uid, createdByName: USERS.admin.name, createdAt: testNow(),
+  })
+}
+
 /** A beat and the shops it is meant to cover. */
 export async function beat(id: string, name: string, outletIds: string[]): Promise<void> {
   await getFirestore(admin()).doc(`sales_routes/${id}`).set({
@@ -669,4 +676,15 @@ export async function seedWorld(): Promise<void> {
 export async function closeAdmin(): Promise<void> {
   const app = getApps()[0]
   if (app) await deleteApp(app)
+}
+
+/** A leave a rep asked for that nobody has decided on yet. */
+export async function pendingLeave(who: UserKey, date: string): Promise<string> {
+  const u = USERS[who]
+  const ref = await getFirestore(admin()).collection('leave_records').add({
+    uid: u.uid, name: u.name, role: u.role, date, leaveType: 'full_day', reason: 'Family function',
+    markedAt: testNow(), markedBy: u.uid, markedByName: u.name, status: 'pending_approval',
+    auditLog: [{ action: 'leave_marked', by: u.uid, byName: u.name, at: testNow() }],
+  })
+  return ref.id
 }

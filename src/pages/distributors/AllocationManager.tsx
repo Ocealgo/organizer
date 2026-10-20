@@ -15,6 +15,7 @@ import {
   PageHeader, TabBar, StatGrid, StatCard, Section, EmptyState,
   Field, ChipGroup, Note, GhostButton, PrimaryButton, inputStyle,
 } from '../../components/ui'
+import { FilterBox, ScrollList } from '../../components/FilterBox'
 
 import { bookAllocation } from '../../data/bookAllocation'
 
@@ -874,6 +875,8 @@ export default function AllocationManager({
                 context={totalCredit > 0 ? 'Sent but not yet paid' : undefined} />
             </StatGrid>
 
+            <FilterBox title="Allocations" testId="allocations-box"
+              note="The filters you pick change the allocations and indents in this box.">
             <Section label="Filter">
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <ChipGroup
@@ -1224,6 +1227,7 @@ export default function AllocationManager({
                       body="Retailers request stock from their distributor here. Nothing is outstanding." />
                   )
                 ) : (
+                  <ScrollList count={filteredIndents.length} label="indents">
                   <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
                     {filteredIndents.map(indent => {
                       const dist = parties.find(p => p.id === indent.distributorId)
@@ -1293,9 +1297,11 @@ export default function AllocationManager({
                       )
                     })}
                   </div>
+                  </ScrollList>
                 )}
               </Section>
             )}
+            </FilterBox>
           </>
         )}
 

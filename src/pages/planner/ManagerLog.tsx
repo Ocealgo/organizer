@@ -5,13 +5,16 @@ import { db } from '../../firebase'
 import {
   AppUser, Party, ManagerActivity, ManagerActivityKind, MANAGER_ACTIVITY_LABEL,
 } from '../../types'
+import { useHolidays } from '../../data/useHolidays'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import { isAdminRole } from '../../auth/permissions'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
+import DayPicker, { HolidayNote } from '../../components/DayPicker'
 import WeekPicker from '../../components/WeekPicker'
+import { FilterBox, ScrollList } from '../../components/FilterBox'
 import {
   PageHeader, Section, Field, Note, EmptyState, Eyebrow,
   ChipGroup, GhostButton, PrimaryButton, inputStyle,
@@ -57,6 +60,7 @@ function addDays(d: string, n: number): string {
  * typo. Everything else — other people, other days — is an admin's.
  */
 export default function ManagerLog({ onBack }: Props) {
+  const holidayOn = useHolidays()
   const { t } = useTheme()
   const { appUser } = useAuth()
   const { modal, showConfirm } = useConfirm()
@@ -437,7 +441,8 @@ export default function ManagerLog({ onBack }: Props) {
 
         {/* ── AN ADMIN READING IT BACK ────────────────────────────────────── */}
         {isAdmin && (
-          <>
+          <FilterBox title="Entries" testId="managers-box"
+            note="The dates and manager you pick change everything in this box — the PDF too.">
             <div>
               <div style={{ marginBottom: 8 }}><Eyebrow>When</Eyebrow></div>
               <div className="oc-wrap" style={{ gap: 6, alignItems: 'center' }}>
@@ -456,7 +461,7 @@ export default function ManagerLog({ onBack }: Props) {
                 <div style={{ flex: '1 1 300px', display: 'flex', gap: 10, minWidth: 0 }}>
                   {mode === 'day' && (
                     <div style={{ flex: 1, minWidth: 140 }}>
-                      <DateInput type="date" value={day} onChange={setDay} ariaLabel="Day" />
+                      <DayPicker value={day} onChange={setDay} ariaLabel="Day" />
                     </div>
                   )}
                   {mode === 'week' && (
@@ -472,15 +477,16 @@ export default function ManagerLog({ onBack }: Props) {
                   {mode === 'custom' && (
                     <>
                       <div style={{ flex: 1, minWidth: 130 }}>
-                        <DateInput type="date" value={customFrom} onChange={setCustomFrom} ariaLabel="From" />
+                        <DayPicker value={customFrom} onChange={setCustomFrom} ariaLabel="From" />
                       </div>
                       <div style={{ flex: 1, minWidth: 130 }}>
-                        <DateInput type="date" value={customTo} onChange={setCustomTo} ariaLabel="To" />
+                        <DayPicker value={customTo} onChange={setCustomTo} ariaLabel="To" />
                       </div>
                     </>
                   )}
                 </div>
               </div>
+              {(mode === 'month' || mode === 'custom') && <HolidayNote from={from} to={to} />}
             </div>
 
             <div className="oc-wrap" style={{ gap: 16 }}>
@@ -507,9 +513,18 @@ export default function ManagerLog({ onBack }: Props) {
                 title="Nothing logged in this window"
                 body="Managers log meetings, days out with a rep and desk days. Approvals and dispatches are recorded elsewhere, against their name."
               />
-            ) : forAdmin.map(([date, rows]) => (
+            ) : (
+            <ScrollList count={forAdmin.reduce((n, [, r]) => n + r.length, 0)} label="entries" testId="managers-scroll">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 18, padding: '10px 0' }}>
+            {forAdmin.map(([date, rows]) => (
               <div key={date}>
-                <div style={{ marginBottom: 10 }}><Eyebrow>{longDay(date)}</Eyebrow></div>
+                <div style={{ marginBottom: 10 }}>
+                  <Eyebrow>{longDay(date)}</Eyebrow>
+                  {holidayOn.has(date) && (
+                    <span style={{ fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase',
+                                   color: t.off, marginLeft: 8 }}>· Holiday — {holidayOn.get(date)}</span>
+                  )}
+                </div>
                 <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
                   {rows
                     .sort((a, b) => a.name.localeCompare(b.name) || a.createdAt - b.createdAt)
@@ -538,7 +553,10 @@ export default function ManagerLog({ onBack }: Props) {
                 </div>
               </div>
             ))}
-          </>
+            </div>
+            </ScrollList>
+            )}
+          </FilterBox>
         )}
       </div>
     </div>

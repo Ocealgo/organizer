@@ -8,6 +8,8 @@ import {
 } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
 import DateInput from '../../components/DateInput'
+import DayPicker, { HolidayNote } from '../../components/DayPicker'
+import { FilterBox, ScrollList } from '../../components/FilterBox'
 import CustomSelect from '../../components/CustomSelect'
 import LazyChart from '../../components/LazyChart'
 import RankedBars, { RankedRow } from '../../components/RankedBars'
@@ -434,7 +436,7 @@ export default function ReportsHome({
 
         {/* ── THIS MONTH: is it going to be made, and are the beats being worked ─ */}
         {tab === 'month' && (<>
-        <Panel>
+        <FilterBox>
           {/* ── 1. THE MONTH AGAINST ITS TARGET ─────────────────────────────── */}
           <div>
             <div style={{ marginBottom: 4 }}><Eyebrow>This month against the target</Eyebrow></div>
@@ -475,7 +477,8 @@ export default function ReportsHome({
 
                 {/* Each rep, the same five figures — the chart says how the team
                     is doing, this says who is carrying it. */}
-                <div className="oc-scroll-x" style={{ marginTop: 18, border: `0.5px solid ${t.border}`, borderRadius: 6 }}>
+                <div className="oc-scroll-x" style={{ marginTop: 18, border: `0.5px solid ${t.border}`, borderRadius: 6,
+                                                    ...(pace.reps.length > 10 ? { maxHeight: 560, overflowY: 'auto' } : {}) }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 560 }}>
                     <thead>
                       <tr>
@@ -522,9 +525,9 @@ export default function ReportsHome({
               </>
             )}
           </div>
-        </Panel>
+        </FilterBox>
 
-        <Panel>
+        <FilterBox>
           {/* ── 3. ARE THE BEATS BEING WORKED ───────────────────────────────── */}
           <div>
             <div style={{ marginBottom: 4 }}><Eyebrow>Beat coverage</Eyebrow></div>
@@ -601,14 +604,14 @@ export default function ReportsHome({
               {coverage.offBeat > 0 && ` ${coverage.offBeat} ${coverage.offBeat === 1 ? 'shop is' : 'shops are'} on no beat at all, so nobody is routed to ${coverage.offBeat === 1 ? 'it' : 'them'}.`}
             </div>
           </div>
-        </Panel>
+        </FilterBox>
         </>)}
 
         {/* ── COMPARE: against the period before, and the growth over months ── */}
         {tab === 'compare' && (<>
         {readError && <Note tone="warn">{readError}</Note>}
 
-        <Panel title="Period against period"
+        <FilterBox title="Period against period"
           note="The dates you pick here change everything in this box.">
           {/* Filters, in one row above the figures */}
           <div>
@@ -630,13 +633,14 @@ export default function ReportsHome({
             {preset === 'custom' && (
               <div className="oc-wrap" style={{ gap: 10, marginTop: 12 }}>
                 <div style={{ flex: '1 1 150px' }}>
-                  <DateInput type="date" value={from} onChange={setFrom} max={to} />
+                  <DayPicker value={from} onChange={setFrom} max={to} ariaLabel="From" />
                 </div>
                 <div style={{ flex: '1 1 150px' }}>
-                  <DateInput type="date" value={to} onChange={setTo} min={from} />
+                  <DayPicker value={to} onChange={setTo} min={from} ariaLabel="To" />
                 </div>
               </div>
             )}
+            <HolidayNote from={current.from} to={current.to} />
             <div style={{ fontSize: 12, color: t.text3, marginTop: 10, lineHeight: 1.6 }}>
               {current.from} to {current.to}, against {previous.from} to {previous.to} —
               the same {spanDays} {spanDays === 1 ? 'day' : 'days'} immediately before, so a
@@ -681,10 +685,10 @@ export default function ReportsHome({
             </div>
             {loading
               ? <div style={{ fontSize: 13, color: t.text3 }}>Loading…</div>
-              : <RankedBars rows={ranked} showRank={rankBy === 'strike'}
+              : <ScrollList count={ranked.length} label="people" height={520}><RankedBars rows={ranked} showRank={rankBy === 'strike'}
                   format={rankBy === 'visits' ? undefined : rankBy === 'strike' ? (n => `${n}%`) : inr}
                   emptyText={rankBy === 'strike'
-                    ? `Nobody has ${MIN_VISITS_FOR_RATE} or more visits in this window yet.` : undefined} />}
+                    ? `Nobody has ${MIN_VISITS_FOR_RATE} or more visits in this window yet.` : undefined} /></ScrollList>}
             {rankBy === 'strike' && (
               <div style={{ fontSize: 12, color: t.text3, marginTop: 10, lineHeight: 1.6 }}>
                 Visits that ended in an order. In general trade 60–75% is a good rep. Anyone with
@@ -692,9 +696,9 @@ export default function ReportsHome({
               </div>
             )}
           </div>
-        </Panel>
+        </FilterBox>
 
-        <Panel title="Growth, month by month"
+        <FilterBox title="Growth, month by month"
           note="Always the last six months, whatever dates are picked above.">
           {/* ── GROWTH, MONTH BY MONTH ──────────────────────────────────────── */}
           <div>
@@ -762,7 +766,7 @@ export default function ReportsHome({
               </table>
             </div>
           </div>
-        </Panel>
+        </FilterBox>
         </>)}
 
         {/* The two screens that already answer everything else */}
@@ -808,38 +812,6 @@ export default function ReportsHome({
  * alone means nothing to a reader who cannot see it as green — and because
  * "up" and "down" survive a printout.
  */
-/**
- * One bordered box per question on the page.
- *
- * Where a filter sits inside a box it is that box's alone, and the note says
- * so; a box with no filter in it says what it follows instead. Without the
- * borders the Compare tab read as one list, and nobody could tell which of it
- * the dates had just changed.
- */
-function Panel({ title, note, children }: {
-  title?: string; note?: string; children: React.ReactNode
-}) {
-  const { t } = useTheme()
-  return (
-    <section style={{
-      border: `0.5px solid ${t.border2}`, borderRadius: 8, padding: '18px 18px 20px',
-      display: 'flex', flexDirection: 'column', gap: 22,
-    }}>
-      {(title || note) && (
-        <div style={{ marginBottom: -8 }}>
-          {title && <div style={{ fontSize: 15, fontWeight: 500, color: t.text }}>{title}</div>}
-          {note && (
-            <div style={{ fontSize: 12, color: t.text2, marginTop: title ? 3 : 0, lineHeight: 1.5 }}>
-              {note}
-            </div>
-          )}
-        </div>
-      )}
-      {children}
-    </section>
-  )
-}
-
 /** A figure for the month's pace — no comparison, so no Delta, but the same tile. */
 function PaceTile({ value, label, sub, tone }: {
   value: string; label: string; sub: string; tone?: 'good' | 'warn'

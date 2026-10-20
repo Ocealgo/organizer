@@ -985,7 +985,7 @@ export default function SalesView({ name }: Props) {
               onClick={() => setScreen('opportunities')} />
             <ListRow title="My activity" desc="Everything you have logged, day by day"
               value={`${monthlyVisitLogCount} days this month`} onClick={() => setScreen('history')} />
-            <ListRow title="My leaves" desc="Apply for time off and track approvals"
+            <ListRow title="My attendance" desc="Your month day by day, and leave — ask for it or appeal a mark"
               value={pendingLeavesCount > 0 ? `${pendingLeavesCount} pending` : undefined}
               warn={pendingLeavesCount > 0}
               onClick={() => setScreen('leaves')} />

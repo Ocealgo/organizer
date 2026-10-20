@@ -504,8 +504,11 @@ service cloud.firestore {
 
     // ── DUTY SESSIONS ───────────────────────────────────────────────────────
     match /duty_sessions/{id} {
+      // view_leave too: the attendance register is a duty day per cell, and
+      // whoever approves leave has to see the days it is about.
       allow read: if isAdmin()
         || hasPerm('view_reports')
+        || hasPerm('view_leave')
         || resource.data.uid == request.auth.uid;
 
       // A reading and its photo are required only when the officer says the
@@ -663,7 +666,13 @@ service cloud.firestore {
       allow read: if isAdmin()
         || hasPerm('assign_work')
         || hasPerm('view_reports')
-        || resource.data.uid == request.auth.uid;
+        || (resource != null && resource.data.uid == request.auth.uid)
+        // A rep asking for their own plan on a day nobody assigned one. The
+        // document is missing, so there is no uid on it to compare; the id is
+        // "<uid>_<date>", and that is enough to say the question is their own.
+        // Without this, every unplanned day was a refused read on the home
+        // screen. All it reveals is that no plan exists — for them alone.
+        || (resource == null && id.matches(request.auth.uid + '_.*'));
 
       // Reps never write their own plan. A day a rep could assign themselves
       // is not a plan, it is a diary.

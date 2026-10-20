@@ -44,6 +44,7 @@ import CreditBook from "../credit/CreditBook";
 import ExpenseLogger from "../stock/ExpenseLogger";
 import AllocationManager from "../distributors/AllocationManager";
 import ProductManager from "../products/ProductManager";
+import { FilterBox, ScrollList } from "../../components/FilterBox";
 import LeaveTracker from "../sales/LeaveTracker";
 import CustomSelect from "../../components/CustomSelect";
 import { useTheme } from "../../context/ThemeContext";
@@ -1406,8 +1407,8 @@ export default function AdminDashboard() {
       warn: plannedThisWeek === 0 && routeCount > 0,
     },
     {
-      name: "Leave tracker",
-      desc: "Approve time off and see who is out",
+      name: "Attendance",
+      desc: "Who is in, the month's register, and leave to approve",
       screen: "leaves" as SubScreen,
       value:
         pendingLeaveCount > 0
@@ -1953,7 +1954,8 @@ export default function AdminDashboard() {
 
             {/* Offline Sales — filters + check-ins */}
             {salesTab === "offline" && (
-              <>
+              <FilterBox title="Sales activity" testId="dashboard-sales-box"
+                note="The person and dates you pick change everything in this box.">
                 {/* Filters */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
@@ -2441,7 +2443,8 @@ export default function AdminDashboard() {
                   const secOpen = (k: string) => !collapsedAdminSections.has(k)
 
                   return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <ScrollList count={sortedDates.length} label="days" height={760}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '10px 0' }}>
                       {sortedDates.map(date => {
                         const personMap = dayPersonMap[date]
                         const personIds = Object.keys(personMap)
@@ -2662,10 +2665,11 @@ export default function AdminDashboard() {
                         )
                       })}
                     </div>
+                    </ScrollList>
                   )
                 })()}
 
-              </>
+              </FilterBox>
             )}
           </div>
         )}

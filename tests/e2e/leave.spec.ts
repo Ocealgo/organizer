@@ -19,10 +19,10 @@ const dayBefore = (days: number) => {
   return localDateStr(d)
 }
 
-/** Open "My leaves" and land on the month the seeded record is in. */
+/** Open "My attendance" and land on the month the seeded record is in. */
 async function openLeave(page: any, date: string) {
-  await page.getByRole('button', { name: /My leaves/ }).click()
-  await expect(page.getByText('My leave')).toBeVisible()
+  await page.getByRole('button', { name: /My attendance/ }).click()
+  await expect(page.getByRole('heading', { name: 'Attendance' })).toBeVisible()
   if (date.slice(0, 7) !== localDateStr().slice(0, 7)) {
     await page.getByRole('button', { name: 'Previous month' }).click()
   }
@@ -144,8 +144,8 @@ test.describe('a rep requesting leave', () => {
   }) => {
     await noLeaveRecorded()
     await loginAs('rep')
-    await page.getByRole('button', { name: /My leaves/ }).click()
-    await expect(page.getByText('My leave')).toBeVisible()
+    await page.getByRole('button', { name: /My attendance/ }).click()
+    await expect(page.getByRole('heading', { name: 'Attendance' })).toBeVisible()
 
     await page.getByRole('button', { name: 'Half day', exact: true }).click()
     await expect(page.getByText('A half day off. Pick the date and a reason.')).toBeVisible()

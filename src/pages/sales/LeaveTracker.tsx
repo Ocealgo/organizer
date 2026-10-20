@@ -8,6 +8,9 @@ import { useAuth } from '../../context/AuthContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr, localMonthStr } from '../../utils/date'
 import DateInput from '../../components/DateInput'
+import DayPicker, { dayOffLabel, HolidayNote } from '../../components/DayPicker'
+import AttendanceRegister from '../../attendance/AttendanceRegister'
+import { FilterBox, ScrollList } from '../../components/FilterBox'
 import {
   PageHeader, TabBar, StatGrid, StatCard, Section, EmptyState,
   ChipGroup, GhostButton, PrimaryButton, inputStyle,
@@ -15,7 +18,8 @@ import {
 
 interface Props { onBack: () => void }
 
-type LeaveTab = 'today' | 'month' | 'all' | 'holidays'
+type LeaveTab = 'register' | 'leave' | 'holidays'
+type LeaveWhen = 'day' | 'month' | 'all'
 
 const todayStr = () => localDateStr()
 const thisMonth = () => localMonthStr()
@@ -55,8 +59,12 @@ export default function LeaveTracker({ onBack }: Props) {
 
   const [leaveRecords, setLeaveRecords] = useState<LeaveRecord[]>([])
   const [salesUsers, setSalesUsers] = useState<AppUser[]>([])
-  const [tab, setTab] = useState<LeaveTab>('today')
+  const [tab, setTab] = useState<LeaveTab>('register')
   const [selectedPerson, setSelectedPerson] = useState<string>('all')
+  // Each leave tab has its own "when": a day, a month, or everything.
+  const [when, setWhen] = useState<LeaveWhen>('day')
+  const [leaveDay, setLeaveDay] = useState(localDateStr())
+  const [leaveMonth, setLeaveMonth] = useState(localMonthStr())
   const [expandedAudit, setExpandedAudit] = useState<string | null>(null)
   const [holidays, setHolidays] = useState<Holiday[]>([])
   const [newHolidayName, setNewHolidayName] = useState('')
@@ -207,16 +215,29 @@ export default function LeaveTracker({ onBack }: Props) {
 
   const tabFiltered = leaveRecords.filter(l => {
     if (l.status === 'removed' || l.status === 'rejected') return false
-    if (tab === 'today') return l.date === today
-    if (tab === 'month') return l.date.startsWith(month)
+    if (when === 'day') return l.date === leaveDay
+    if (when === 'month') return l.date.startsWith(leaveMonth)
     return true
   })
 
   const displayed = selectedPerson === 'all' ? tabFiltered : tabFiltered.filter(l => l.uid === selectedPerson)
 
-  const todayCount = leaveRecords.filter(l => l.date === today && l.status === 'active').length
-  const monthCount = leaveRecords.filter(l => l.date.startsWith(month) && l.status === 'active').length
+  const active = leaveRecords.filter(l => l.status === 'active')
+  const dayCount = active.filter(l => l.date === leaveDay).length
+  const monthCount = active.filter(l => l.date.startsWith(leaveMonth)).length
+  const holidayMap = new Map(holidays.map(h => [h.date, h.name]))
+  const dayOff = dayOffLabel(leaveDay, holidayMap)
+  const monthName = new Date(leaveMonth + '-01T00:00:00').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
+  const monthEnd = (() => { const [y, m] = leaveMonth.split('-').map(Number); return localDateStr(new Date(y, m, 0)) })()
+  const stepMonth = (n: number) => {
+    const [y, m] = leaveMonth.split('-').map(Number)
+    const d = new Date(y, m - 1 + n, 1)
+    setLeaveMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+  const dayPending = [...pendingApproval, ...pendingUnmark].filter(l => l.date === leaveDay)
+  const dayWords = leaveDay === today ? 'today' : `on ${longDate(leaveDay)}`
   const totalPending = pendingApproval.length + pendingUnmark.length
+  const waitingFor = (uid: string) => pendingApproval.some(l => l.uid === uid) || pendingUnmark.some(l => l.uid === uid)
 
   // A pending request, with the two decisions available on it.
   const RequestRow = ({ leave, onYes, onNo, yes, no }: {
@@ -261,8 +282,8 @@ export default function LeaveTracker({ onBack }: Props) {
   return (
     <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 40 }}>
       <PageHeader
-        eyebrow="Attendance"
-        title="Leave"
+        eyebrow="Team"
+        title="Attendance"
         subtitle={totalPending > 0
           ? `${totalPending} request${totalPending > 1 ? 's' : ''} waiting on you`
           : 'Nothing is waiting for a decision'}
@@ -273,14 +294,14 @@ export default function LeaveTracker({ onBack }: Props) {
         value={tab}
         onChange={setTab}
         tabs={[
-          { id: 'today', label: 'Today' },
-          { id: 'month', label: 'This month' },
-          { id: 'all', label: 'All' },
+          { id: 'register', label: 'Register' },
+          { id: 'leave', label: 'Leave' },
           { id: 'holidays', label: 'Holidays' },
         ]}
       />
 
       <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 28 }}>
+
 
         {/* ── HOLIDAYS ── */}
         {tab === 'holidays' && (
@@ -308,6 +329,7 @@ export default function LeaveTracker({ onBack }: Props) {
               {holidays.length === 0 ? (
                 <EmptyState title="No holidays marked" body="Add the dates the team is off so leave is not counted against them." />
               ) : (
+                <ScrollList count={holidays.length} label="holidays">
                 <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
                   {holidays.map(h => (
                     <div key={h.id} style={{ display: 'flex', alignItems: 'baseline', gap: 16, borderTop: `0.5px solid ${t.border}`, padding: '14px 0' }}>
@@ -324,52 +346,126 @@ export default function LeaveTracker({ onBack }: Props) {
                     </div>
                   ))}
                 </div>
+                </ScrollList>
               )}
             </Section>
           </>
         )}
 
-        {tab !== 'holidays' && (
+        {/* ── REGISTER: the requests to decide, then the team's month, a letter a day ── */}
+        {tab === 'register' && (
           <>
-            <StatGrid>
-              <StatCard value={todayCount} label="On leave today" />
-              <StatCard value={monthCount} label="Days this month" />
-              <StatCard value={totalPending} label="Waiting on you"
-                context={totalPending > 0 ? 'Approve or reject below' : undefined} />
-            </StatGrid>
+            {totalPending > 0 && (
+              <div style={{ fontSize: 13, color: t.warn }}>
+                {totalPending} request{totalPending > 1 ? 's' : ''} waiting on you — approve or reject below
+              </div>
+            )}
 
             {pendingApproval.length > 0 && (
               <Section label={`Leave requests · ${pendingApproval.length}`}>
+                <ScrollList count={pendingApproval.length} label="requests">
                 <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
                   {pendingApproval.map(leave => (
                     <RequestRow key={leave.id} leave={leave} yes="Approve" no="Reject"
                       onYes={() => handleApproveLeave(leave)} onNo={() => handleRejectLeave(leave)} />
                   ))}
                 </div>
+                </ScrollList>
               </Section>
             )}
 
             {pendingUnmark.length > 0 && (
               <Section label={`Unmark requests · ${pendingUnmark.length}`}>
+                <ScrollList count={pendingUnmark.length} label="requests">
                 <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
                   {pendingUnmark.map(leave => (
                     <RequestRow key={leave.id} leave={leave} yes="Remove" no="Keep"
                       onYes={() => handleApproveUnmark(leave)} onNo={() => handleRejectUnmark(leave)} />
                   ))}
                 </div>
+                </ScrollList>
               </Section>
             )}
 
+            <FilterBox title="Register" note="The month you pick changes everything in this box." testId="register-box">
+              <AttendanceRegister reps={salesUsers} leaves={leaveRecords} holidays={holidays} />
+            </FilterBox>
+          </>
+        )}
+
+        {/* ── LEAVE: one list, a day (today by default), a month, or everything ── */}
+        {tab === 'leave' && (
+          <>
+            <FilterBox testId="leave-box"
+              title="Leave"
+              note="When and the person you pick change everything in this box.">
+            <div>
+              <div style={{ fontSize: 12, color: t.text3, marginBottom: 6 }}>When</div>
+              <ChipGroup value={when} onChange={setWhen}
+                options={[{ id: 'day', label: 'A day' }, { id: 'month', label: 'A month' }, { id: 'all', label: 'Everything' }]} />
+            </div>
+            {when === 'day' && (
+              <div style={{ maxWidth: 260 }}>
+                <DayPicker value={leaveDay} onChange={setLeaveDay} ariaLabel="Leave day" />
+              </div>
+            )}
+            {when === 'month' && (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <button className="oc-action" aria-label="Previous month" onClick={() => stepMonth(-1)}
+                    style={{ background: 'none', border: `0.5px solid ${t.border2}`, borderRadius: 6, padding: '4px 10px', color: t.text, cursor: 'pointer' }}>‹</button>
+                  <span style={{ fontSize: 15, fontWeight: 500, color: t.text, minWidth: 140 }}>{monthName}</span>
+                  <button className="oc-action" aria-label="Next month" onClick={() => stepMonth(1)}
+                    style={{ background: 'none', border: `0.5px solid ${t.border2}`, borderRadius: 6, padding: '4px 10px', color: t.text, cursor: 'pointer' }}>›</button>
+                </div>
+                <HolidayNote from={leaveMonth + '-01'} to={monthEnd} />
+              </div>
+            )}
+            {when === 'day' && dayOff ? (
+              <div data-testid="leave-day-off" style={{ fontSize: 14, color: t.off, lineHeight: 1.5 }}>
+                {dayOff} — a day off for everyone, so nobody is on leave {dayWords}.
+              </div>
+            ) : (
+              <StatGrid>
+                {when === 'day' && <StatCard value={dayCount} label={`On leave ${dayWords}`} />}
+                {when === 'month' && <StatCard value={monthCount} label={`Leave days in ${monthName}`} />}
+                {when === 'month' && <StatCard value={new Set(active.filter(l => l.date.startsWith(leaveMonth)).map(l => l.uid)).size} label="People who took leave" />}
+                {when === 'all' && <StatCard value={active.length} label="Leave days on record" />}
+                {when === 'all' && <StatCard value={new Set(active.map(l => l.uid)).size} label="People who took leave" />}
+              </StatGrid>
+            )}
+            {when === 'day' && (
+              // The day's to-do: requests for this day still waiting on a decision.
+              <Section label={`Waiting on you for this day · ${dayPending.length}`}>
+                {dayPending.length === 0 ? (
+                  <div data-testid="day-nothing-pending" style={{ fontSize: 13, color: t.text3 }}>
+                    Nothing to decide {dayWords}.
+                  </div>
+                ) : (
+                  <div data-testid="day-pending" style={{ borderBottom: `0.5px solid ${t.border}` }}>
+                    {dayPending.map(leave => leave.status === 'pending_approval'
+                      ? <RequestRow key={leave.id} leave={leave} yes="Approve" no="Reject"
+                          onYes={() => handleApproveLeave(leave)} onNo={() => handleRejectLeave(leave)} />
+                      : <RequestRow key={leave.id} leave={leave} yes="Remove" no="Keep"
+                          onYes={() => handleApproveUnmark(leave)} onNo={() => handleRejectUnmark(leave)} />)}
+                  </div>
+                )}
+              </Section>
+            )}
+            {when !== 'day' && (
             <Section label="Team">
               {salesUsers.length === 0 ? (
                 <EmptyState title="No sales staff yet" body="Approve a sales account and their leave will be tracked here." />
               ) : (
+                <ScrollList count={salesUsers.length} label="people">
                 <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
                   {salesUsers.map(u => {
                     const total = leaveRecords.filter(l => l.uid === u.uid && l.status === 'active').length
                     const monthLeaves = leaveRecords.filter(l => l.uid === u.uid && l.date.startsWith(month) && l.status === 'active').length
-                    const onLeaveToday = leaveRecords.some(l => l.uid === u.uid && l.date === today && l.status === 'active')
-                    const waiting = pendingApproval.some(l => l.uid === u.uid) || pendingUnmark.some(l => l.uid === u.uid)
+                    const inMonth = active.filter(l => l.uid === u.uid && l.date.startsWith(leaveMonth)).length
+                    const status = waitingFor(u.uid) ? 'Request waiting'
+                      : when === 'month' ? `${inMonth} in ${monthName.split(' ')[0]}`
+                        : `${total} in total`
                     return (
                       <div key={u.uid} style={{ display: 'flex', alignItems: 'baseline', gap: 16, borderTop: `0.5px solid ${t.border}`, padding: '14px 0' }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -379,15 +475,17 @@ export default function LeaveTracker({ onBack }: Props) {
                           </div>
                         </div>
                         <div style={{ fontSize: 14, fontWeight: 400, whiteSpace: 'nowrap',
-                                      color: waiting ? t.warn : t.text2 }}>
-                          {waiting ? 'Request waiting' : onLeaveToday ? 'On leave today' : 'Working'}
+                                      color: waitingFor(u.uid) ? t.warn : t.text2 }}>
+                          {status}
                         </div>
                       </div>
                     )
                   })}
                 </div>
+                </ScrollList>
               )}
             </Section>
+            )}
 
             <Section label="Records">
               {salesUsers.length > 0 && (
@@ -403,13 +501,14 @@ export default function LeaveTracker({ onBack }: Props) {
               {displayed.length === 0 ? (
                 <EmptyState
                   title="No leave here"
-                  body={tab === 'today'
-                    ? 'Nobody is marked off today.'
-                    : tab === 'month'
-                      ? 'No leave has been taken this month.'
+                  body={when === 'day'
+                    ? dayOff ? `${dayOff} — nobody needed leave.` : `Nobody is marked off ${dayWords}.`
+                    : when === 'month'
+                      ? `No leave was taken in ${monthName}.`
                       : 'No leave has been recorded yet.'}
                 />
               ) : (
+                <ScrollList count={displayed.length} label="records">
                 <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
                   {displayed.slice().sort((a, b) => b.markedAt - a.markedAt).map(leave => (
                     <div key={leave.id} style={{ borderTop: `0.5px solid ${t.border}`, padding: '14px 0' }}>
@@ -448,8 +547,10 @@ export default function LeaveTracker({ onBack }: Props) {
                     </div>
                   ))}
                 </div>
+                </ScrollList>
               )}
             </Section>
+            </FilterBox>
           </>
         )}
       </div>

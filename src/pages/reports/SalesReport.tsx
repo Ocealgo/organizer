@@ -11,7 +11,9 @@ import { isProductive } from './salesInsights'
 import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
+import DayPicker, { HolidayNote } from '../../components/DayPicker'
 import WeekPicker from '../../components/WeekPicker'
+import { FilterBox } from '../../components/FilterBox'
 import { PageHeader, PrimaryButton, Eyebrow, EmptyState } from '../../components/ui'
 import { localDateStr, localMonthStr, isSunday } from '../../utils/date'
 
@@ -487,8 +489,10 @@ export default function SalesReport({ onBack }: Props) {
 
       <div className="oc-print-plain" style={{ padding: '14px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-        {/* Range picker */}
-        <div className="oc-no-print" style={{ background: t.card, borderRadius: 14, padding: 14, border: `1px solid ${t.border}`, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <FilterBox title="Sales report" testId="sales-box"
+          note="The dates and person you pick change everything in this box — the Excel too.">
+        {/* Range picker — inside the box with what it changes. */}
+        <div className="oc-no-print" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ display: 'flex', gap: 6 }}>
             {(['day', 'week', 'month', 'custom'] as RangeMode[]).map(m => (
               <button key={m} onClick={() => setMode(m)} style={chip(mode === m)}>
@@ -497,7 +501,7 @@ export default function SalesReport({ onBack }: Props) {
             ))}
           </div>
 
-          {mode === 'day' && <DateInput type="date" value={day} onChange={setDay} />}
+          {mode === 'day' && <DayPicker value={day} onChange={setDay} />}
           {mode === 'week' && (
             <div>
               <div style={{ fontSize: 11, color: t.text3, marginBottom: 4 }}>Any day in the week</div>
@@ -505,15 +509,16 @@ export default function SalesReport({ onBack }: Props) {
             </div>
           )}
           {mode === 'month' && <DateInput type="month" value={month} onChange={setMonth} />}
+          {(mode === 'month' || mode === 'custom') && <HolidayNote from={from} to={to} />}
           {mode === 'custom' && (
             <div style={{ display: 'flex', gap: 8 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 11, color: t.text3, marginBottom: 4 }}>From</div>
-                <DateInput type="date" value={customFrom} onChange={setCustomFrom} />
+                <DayPicker value={customFrom} onChange={setCustomFrom} />
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 11, color: t.text3, marginBottom: 4 }}>To</div>
-                <DateInput type="date" value={customTo} onChange={setCustomTo} />
+                <DayPicker value={customTo} onChange={setCustomTo} />
               </div>
             </div>
           )}
@@ -572,7 +577,9 @@ export default function SalesReport({ onBack }: Props) {
                   body="Approve someone into an offline sales role and their numbers will appear here."
                 />
               ) : (
-                <div style={{ overflowX: 'auto', borderBottom: `0.5px solid ${t.border}` }}>
+                // Metrics run down the side: past ten rows the table scrolls in
+                // its own box rather than pushing the page out.
+                <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 620, borderBottom: `0.5px solid ${t.border}` }}>
                   <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 120 + columns.length * 96 }}>
                     <thead>
                       <tr>
@@ -639,6 +646,7 @@ export default function SalesReport({ onBack }: Props) {
             </div>
           </>
         )}
+        </FilterBox>
       </div>
     </div>
   )

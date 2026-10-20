@@ -10,6 +10,7 @@ import {
   PageHeader, TabBar, EmptyState, Field, ChipGroup, Note,
   GhostButton, PrimaryButton, inputStyle,
 } from '../../components/ui'
+import { ScrollList } from '../../components/FilterBox'
 
 interface Props { onBack: () => void }
 
@@ -148,6 +149,7 @@ export default function ProductManager({ onBack }: Props) {
             />
           </div>
         ) : (
+          <ScrollList count={products.length} label="products">
           <div className="oc-list-flush" style={{ borderBottom: `0.5px solid ${t.border}` }}>
             {products.map(p => (
               <div key={p.id}
@@ -177,6 +179,7 @@ export default function ProductManager({ onBack }: Props) {
               </div>
             ))}
           </div>
+          </ScrollList>
         )
       )}
 

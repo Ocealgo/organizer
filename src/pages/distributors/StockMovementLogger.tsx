@@ -13,6 +13,7 @@ import {
   PageHeader, TabBar, Section, EmptyState, Field, ChipGroup,
   PrimaryButton, inputStyle,
 } from '../../components/ui'
+import { FilterBox, ScrollList } from '../../components/FilterBox'
 
 interface Props { onBack: () => void; parties: Party[] }
 
@@ -195,7 +196,8 @@ export default function StockMovementLogger({ onBack, parties }: Props) {
         )}
 
         {tab === 'history' && (
-          <>
+          <FilterBox title="History" testId="movements-box"
+            note="The month you pick changes the list in this box.">
             <Section label="Month">
               <div style={{ maxWidth: 220 }}>
                 <DateInput type="month" value={selectedMonth} onChange={v => setSelectedMonth(v)} />
@@ -206,6 +208,7 @@ export default function StockMovementLogger({ onBack, parties }: Props) {
               <EmptyState title="No movements this month"
                 body="Pick another month, or log a movement to start the record." />
             ) : (
+              <ScrollList count={filteredMovements.length} label="movements">
               <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
                 {filteredMovements.map(m => (
                   <div key={m.id} style={{ borderTop: `0.5px solid ${t.border}`, padding: '16px 0' }}>
@@ -232,8 +235,9 @@ export default function StockMovementLogger({ onBack, parties }: Props) {
                   </div>
                 ))}
               </div>
+              </ScrollList>
             )}
-          </>
+          </FilterBox>
         )}
       </div>
     </div>

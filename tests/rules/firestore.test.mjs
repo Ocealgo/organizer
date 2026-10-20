@@ -1156,6 +1156,32 @@ describe('field app — duty sessions', () => {
     await seed((db) => setDoc(doc(db, 'duty_sessions', 'd2'), duty(U.rep2)))
     await assertSucceeds(getDoc(doc(asUser(U.mgr), 'duty_sessions', 'd2')))
   })
+
+  // The attendance register is a duty day per cell; whoever approves leave
+  // has to see the days it is about, even without the reports.
+  it('a manager with only view_leave CAN read any session', async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, 'duty_sessions', 'd2'), duty(U.rep2))
+      await updateDoc(doc(db, 'users', U.mgr), { permissions: { view_leave: true } })
+    })
+    await assertSucceeds(getDoc(doc(asUser(U.mgr), 'duty_sessions', 'd2')))
+  })
+
+  it('a rep CAN ask for their own plan on a day nobody assigned one', async () => {
+    await assertSucceeds(getDoc(doc(asUser(U.rep), 'work_plans', `${U.rep}_2026-08-01`)))
+  })
+
+  it("a rep CANNOT ask after another rep's missing plan", async () => {
+    await assertFails(getDoc(doc(asUser(U.rep), 'work_plans', `${U.rep2}_2026-08-01`)))
+  })
+
+  it("a manager with neither view_leave nor view_reports CANNOT read another rep's session", async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, 'duty_sessions', 'd2'), duty(U.rep2))
+      await updateDoc(doc(db, 'users', U.mgr), { permissions: {} })
+    })
+    await assertFails(getDoc(doc(asUser(U.mgr), 'duty_sessions', 'd2')))
+  })
 })
 
 describe('field app — location trace', () => {
