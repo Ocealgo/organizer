@@ -6,6 +6,7 @@ import type { AppUser, DutySession, Holiday, LeaveRecord } from '../types'
 import { useTheme } from '../context/ThemeContext'
 import { localDateStr, localMonthStr } from '../utils/date'
 import { GhostButton } from '../components/ui'
+import { HolidayNote } from '../components/DayPicker'
 import AttendanceCalendar from './AttendanceCalendar'
 import { Day, MARK_LETTER, MARK_LABEL, datesOfMonth, describe, monthOf, summaryOf } from './attendance'
 
@@ -86,6 +87,8 @@ export default function AttendanceRegister({ reps, leaves, holidays }: Props) {
         ['Month', monthName],
         ['Generated', new Date().toLocaleString('en-IN')],
         ['Key', 'P present · ½ half day · A absent · L leave · H holiday · – no record'],
+        ['Holidays', holidays.filter(h => h.date.startsWith(month)).sort((a, b) => a.date.localeCompare(b.date))
+          .map(h => `${h.name} (${Number(h.date.slice(8))})`).join(', ') || 'None'],
         [], head, ...body,
       ])
       const wb = XLSX.utils.book_new()
@@ -137,6 +140,9 @@ export default function AttendanceRegister({ reps, leaves, holidays }: Props) {
         </GhostButton>
       </div>
 
+      {/* The month's holidays by name — the H in a column says which day, this says what. */}
+      <HolidayNote from={dates[0]} to={dates[dates.length - 1]} />
+
       {todayLine && (
         <div data-testid="attendance-today" style={{ fontSize: 13, color: t.text }}>
           Today: <b>{todayLine.in}</b> in · <b>{todayLine.notYet}</b> not started yet
@@ -160,7 +166,8 @@ export default function AttendanceRegister({ reps, leaves, holidays }: Props) {
                   const sun = new Date(d + 'T00:00:00').getDay() === 0
                   const hol = holidays.some(h => h.date === d)
                   return (
-                    <th key={d} style={{ ...th, minWidth: 26, color: sun || hol ? t.off : d === today ? t.text : t.text3,
+                    <th key={d} title={hol ? holidays.find(h => h.date === d)?.name : sun ? 'Sunday' : undefined}
+                      style={{ ...th, minWidth: 26, color: sun || hol ? t.off : d === today ? t.text : t.text3,
                                          fontWeight: d === today ? 600 : 400 }}>
                       {Number(d.slice(8))}
                     </th>

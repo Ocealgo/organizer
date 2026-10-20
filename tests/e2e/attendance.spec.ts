@@ -1,6 +1,6 @@
 import { test, expect } from './fixtures/app'
 import {
-  closedDay, autoMarkedLeave, approvedLeave, noOneOnDuty, noLeaveRecorded, todayLocal,
+  closedDay, autoMarkedLeave, approvedLeave, noOneOnDuty, noLeaveRecorded, todayLocal, holiday,
 } from './fixtures/seed'
 import { testDate } from './fixtures/clock'
 
@@ -84,4 +84,50 @@ test.describe('an admin reading the team', () => {
     ])
     expect(file.suggestedFilename()).toBe(`ocealgo-attendance_${todayLocal().slice(0, 7)}.xlsx`)
   })
+})
+
+/**
+ * A holiday declared after the sweep ran: the automatic absence it wrote does
+ * not stand against the holiday, on either side's view.
+ */
+test.describe('a holiday declared late', () => {
+  test('overrides an automatic absence already on the day', async ({ page, loginAs }) => {
+    const day = anEarlierWorkday()
+    test.skip(!day, 'needs an earlier working day in this month')
+    await autoMarkedLeave('rep', day!, 'full_day')
+    await holiday(day!, 'Declared late')
+
+    await loginAs('rep')
+    await page.getByRole('button', { name: /My attendance/ }).click()
+    const cell = page.getByRole('gridcell', { name: `${day}: Holiday` })
+    await cell.click()
+    await expect(page.getByTestId('attendance-detail')).toContainText('it does not count')
+    await expect(page.getByTestId('attendance-summary')).not.toContainText('absent')
+  })
+
+  test('the register shows it as a holiday, and names it', async ({ page, loginAs }) => {
+    const day = anEarlierWorkday()
+    test.skip(!day, 'needs an earlier working day in this month')
+    await autoMarkedLeave('rep', day!, 'full_day')
+    await holiday(day!, 'Declared late')
+
+    await loginAs('admin')
+    await page.getByRole('button', { name: /^Attendance/ }).first().click()
+    await expect(page.getByTestId('register-row-e2e_rep').locator('td[data-mark="holiday"]')).toHaveCount(1)
+    await expect(page.getByTestId('register-row-e2e_rep').locator('td[data-mark="absent"]')).toHaveCount(0)
+    await expect(page.getByTestId('holiday-note')).toContainText('Declared late')
+  })
+})
+
+test('leave cannot be asked for on a holiday', async ({ page, loginAs }) => {
+  const d = testDate(); d.setDate(d.getDate() + 3)
+  while (d.getDay() === 0) d.setDate(d.getDate() + 1)
+  const ahead = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  await holiday(ahead, 'Festival')
+
+  await loginAs('rep')
+  await page.getByRole('button', { name: /My attendance/ }).click()
+  await page.getByRole('button', { name: 'Full day', exact: true }).click()
+  await page.locator('input[type=date]').last().fill(ahead)
+  await expect(page.getByText('That day is a holiday — Festival. No leave is needed.')).toBeVisible()
 })

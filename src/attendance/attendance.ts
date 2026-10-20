@@ -80,12 +80,15 @@ export function monthOf(
       if (leave && standing(leave) && leave.leaveType === 'half_day') return { ...base, mark: 'half' as Mark }
       return { ...base, mark: (session.autoClosed ? 'auto_closed' : 'present') as Mark }
     }
+    // A declared holiday is a day off for everyone, whatever else is on it. An
+    // automatic absence written before the holiday was declared does not stand
+    // against it, and leave taken on a holiday was never needed.
+    if (base.holiday) return { ...base, mark: 'holiday' as Mark }
     if (leave && standing(leave)) {
       if (leave.leaveType === 'half_day') return { ...base, mark: 'half' as Mark }
       return { ...base, mark: (automatic ? 'absent' : 'leave') as Mark }
     }
     if (leave?.status === 'pending_approval') return { ...base, mark: 'requested' as Mark }
-    if (base.holiday) return { ...base, mark: 'holiday' as Mark }
     if (sunday) return { ...base, mark: 'off' as Mark }
     if (date > today) return { ...base, mark: 'future' as Mark }
     if (date === today) return { ...base, mark: 'not_yet' as Mark }
@@ -143,7 +146,10 @@ export function describe(d: Day): string {
         + (d.appealPending ? ' · appeal with your manager' : '')
     case 'leave': return `Leave, approved${d.leave?.reason ? ` · ${d.leave.reason}` : ''}`
     case 'requested': return 'Leave requested, waiting for approval'
-    case 'holiday': return d.holiday ?? 'Holiday'
+    case 'holiday':
+      return `Holiday — ${d.holiday ?? ''}`.replace(/ — $/, '')
+        + (d.leave?.autoMarked ? ' · an automatic absence was recorded before the holiday was declared; it does not count'
+          : d.leave && d.leave.status !== 'removed' && d.leave.status !== 'rejected' ? ' · leave on it is not needed' : '')
     case 'off': return 'Sunday'
     case 'not_yet': return 'Not started yet today'
     case 'none': return 'No record for this day'

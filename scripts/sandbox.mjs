@@ -855,6 +855,20 @@ async function managerWeek() {
  */
 async function autoClosedDay() {
   const db = getFirestore()
+  // A holiday declared after the fact, on a day the sweep had already marked
+  // Arjun absent — so attendance can be seen to put the holiday first.
+  const month = todayLocal().slice(0, 7)
+  const absences = await db.collection('leave_records').where('uid', '==', ARJUN.uid).get()
+  const late = absences.docs.map(d => d.data())
+    .filter(l => l.autoMarked && l.leaveType === 'full_day' && l.date.startsWith(month))
+    // The earliest one, so it never lands on the day Ravi's appeal is about.
+    .sort((x, y) => x.date.localeCompare(y.date))[0]
+  if (late) {
+    await db.doc(`holidays/${late.date}`).set({
+      date: late.date, name: 'Hartal (declared late)',
+      createdBy: USERS.admin.uid, createdByName: USERS.admin.name, createdAt: Date.now(),
+    })
+  }
   // A leave Arjun has asked for next week, not yet approved.
   let ahead = 7
   while (isDayOff(dayAhead(ahead))) ahead++

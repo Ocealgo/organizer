@@ -154,6 +154,7 @@ export default function LeaveHistory({ leaveRecords, onBack }: Props) {
   }
 
   const sunday = leaveDate >= today && isSunday(leaveDate)
+  const holidayName = holidays.find(h => h.date === leaveDate)?.name
   const past = leaveDate < today
   const duplicate = leaveRecords.some(l =>
     l.date === leaveDate && l.status !== 'removed' && l.status !== 'rejected')
@@ -161,6 +162,8 @@ export default function LeaveHistory({ leaveRecords, onBack }: Props) {
     ? 'Leave cannot be applied for a date that has passed.'
     : sunday
       ? 'Sunday is already a day off.'
+      : holidayName
+        ? `That day is a holiday — ${holidayName}. No leave is needed.`
       : duplicate
         ? 'You already have leave recorded for this date.'
         : null
