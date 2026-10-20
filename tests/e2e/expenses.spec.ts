@@ -106,4 +106,25 @@ test.describe('nil returns', () => {
     // Nothing is being paid, so the money warning must not be shown.
     await expect(adminPage.getByText(/money has physically reached/)).toHaveCount(0)
   })
+
+  test('a submitted week is locked; the rep asks to reopen it and an admin does', async ({ page, loginAs, asAlso }) => {
+    await loginAs('rep2')
+    await openExpenses(page)
+    await clickStable(page.getByRole('button', { name: 'Nothing to claim this week' }))
+    await page.getByRole('button', { name: 'Declare nil' }).click()
+    await expect(page.getByText(/It is locked now/)).toBeVisible()
+
+    await page.getByLabel('Why reopen').fill('Missed a bus fare')
+    await page.getByRole('button', { name: 'Ask your manager to reopen it' }).click()
+    await expect(page.getByText(/You asked to reopen it: Missed a bus fare/)).toBeVisible()
+
+    const adminPage = await asAlso('admin')
+    await openAdminExpenses(adminPage)
+    await expect(adminPage.getByText(/asks to reopen/).first()).toBeVisible()
+    await clickStable(adminPage.getByRole('button', { name: /Priya Rep/ }))
+    await adminPage.getByRole('button', { name: 'Reopen for editing' }).click()
+    await adminPage.getByRole('button', { name: 'Reopen', exact: true }).click()
+
+    await expect(page.getByText(/This week was sent back: Reopened at your request/)).toBeVisible()
+  })
 })

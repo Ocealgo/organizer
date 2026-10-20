@@ -4,6 +4,8 @@ import {
   addDoc,
   updateDoc,
   doc,
+  writeBatch,
+  deleteField,
 } from "firebase/firestore";
 import { onSnapshot } from "../../data/live";
 import { db } from "../../firebase";
@@ -68,7 +70,7 @@ const CREDIT_PAGE_SIZE = 15
 export default function CreditBook({ onBack, initialPartyId, focusPaymentId, salesRepOnly }: Props) {
   const { appUser } = useAuth();
   const { t } = useTheme();
-  const { modal, showConfirm } = useConfirm();
+  const { modal, showConfirm, showAlert } = useConfirm();
 
   const [parties, setParties] = useState<Party[]>([]);
   const [allocations, setAllocations] = useState<UnifiedAllocation[]>([]);
@@ -89,7 +91,8 @@ export default function CreditBook({ onBack, initialPartyId, focusPaymentId, sal
   const [search, setSearch] = useState('');
 
   // Payment edit state
-  const [payEdit, setPayEdit] = useState<{ id: string; amount: string; paymentMethod: PaymentMethod; date: string; notes: string } | null>(null);
+  // `mode`: an approver editing it, or the collector asking for a change or its removal.
+  const [payEdit, setPayEdit] = useState<{ id: string; amount: string; paymentMethod: PaymentMethod; date: string; notes: string; mode: "edit" | "request" | "remove"; reason: string } | null>(null);
   const [payEditSaving, setPayEditSaving] = useState(false);
 
   // Collapsible sections — auto-collapse allocs when deep-linking to a payment
@@ -229,59 +232,123 @@ export default function CreditBook({ onBack, initialPartyId, focusPaymentId, sal
     });
   };
 
+  /**
+   * Rewrite a payment against the shop's bills: take its old amount back off
+   * the bills it paid, then (unless it is being cancelled) lay the new amount
+   * on the unpaid ones, oldest first. One batch, so a failure changes nothing.
+   *
+   * Worked on a copy of the bills, so the second step sees what the first did.
+   * Reading the screen's copy instead counted the old amount twice: undo 500
+   * and re-apply 600 and a ₹1000 bill came out fully paid, with 100 more taken
+   * off the next one.
+   */
+  const rewritePayment = async (
+    txn: PaymentTransaction,
+    next: { amount: number; paymentMethod: PaymentMethod; date: string; notes: string } | null,
+  ) => {
+    if (!appUser) return;
+    const work = new Map<string, { paid: number; status: string; total: number; due?: string; createdAt: number; eligible: boolean; was: { paid: number; status: string } }>();
+    const track = (a: UnifiedAllocation) => {
+      if (!work.has(a.id!)) {
+        const paid = (a as any).paidAmount || 0;
+        work.set(a.id!, {
+          paid, status: a.status, total: a.totalAmount, due: (a as any).creditDueDate,
+          createdAt: a.createdAt || 0,
+          eligible: a.partyId === txn.partyId && a.paymentType === "credit" && a.fromType !== "distributor",
+          was: { paid, status: a.status },
+        });
+      }
+      return work.get(a.id!)!;
+    };
+    allocations.filter((a) => a.partyId === txn.partyId).forEach(track);
+
+    for (const { allocId, amount: applied } of txn.appliedTo || []) {
+      const alloc = allocations.find((a) => a.id === allocId);
+      if (!alloc) continue;
+      const w = track(alloc);
+      w.paid = Math.max(0, w.paid - applied);
+      if (w.status === "paid") w.status = w.due && w.due < today ? "overdue" : "sent";
+    }
+
+    const newAppliedTo: { allocId: string; amount: number }[] = [];
+    if (next) {
+      let remaining = next.amount;
+      const open = [...work.entries()]
+        .filter(([, w]) => w.eligible && (w.status === "sent" || w.status === "overdue"))
+        .sort(([, x], [, y]) => x.createdAt - y.createdAt);
+      for (const [id, w] of open) {
+        if (remaining <= 0) break;
+        const owed = w.total - w.paid;
+        if (owed <= 0) continue;
+        const toApply = Math.min(remaining, owed);
+        w.paid += toApply;
+        if (w.paid >= w.total) w.status = "paid";
+        newAppliedTo.push({ allocId: id, amount: toApply });
+        remaining -= toApply;
+      }
+    }
+
+    const batch = writeBatch(db);
+    for (const [id, w] of work) {
+      if (w.paid === w.was.paid && w.status === w.was.status) continue;
+      batch.update(doc(db, "allocations_v2", id), {
+        paidAmount: w.paid,
+        ...(w.status !== w.was.status ? { status: w.status } : {}),
+        ...(w.status === "paid" && w.was.status !== "paid" ? { paidAt: Date.now() } : {}),
+      });
+    }
+    batch.update(doc(db, "payment_transactions", txn.id!), {
+      ...(next
+        ? { amount: next.amount, paymentMethod: next.paymentMethod, date: next.date, notes: next.notes }
+        : { status: "rejected" }),
+      appliedTo: newAppliedTo,
+      ...(txn.changeRequest ? { changeRequest: deleteField() } : {}),
+      updatedAt: Date.now(),
+      updatedBy: appUser.uid,
+      updatedByName: appUser.name,
+    });
+    await batch.commit();
+  };
+
+  const failed = (e: any) => showAlert("Could not save that",
+    e?.code === "permission-denied" ? "You are not allowed to change this payment." : e?.message || "Something went wrong.");
+
+  /** May this person change this payment themselves? Not one they collected, unless they are an admin. */
+  const canDecide = (p: PaymentTransaction) => isAdmin
+    && !(p.collectedBy === appUser?.uid && appUser?.role !== "admin" && appUser?.role !== "super_admin");
+  const decider = appUser?.role === "sales_manager" ? "an admin" : "your manager";
+
   const handleSavePayEdit = async () => {
     if (!payEdit || !appUser) return;
     const txn = payments.find((p) => p.id === payEdit.id);
     if (!txn) return;
     const newAmount = parseFloat(payEdit.amount) || 0;
-    if (newAmount <= 0) return;
+    if (payEdit.mode !== "remove" && newAmount <= 0) return;
+    if (payEdit.mode !== "edit" && !payEdit.reason.trim()) {
+      await showAlert("Reason needed", "Say what is wrong with it, so they know why.");
+      return;
+    }
     setPayEditSaving(true);
     try {
-      // Reverse old appliedTo
-      const oldAppliedTo = (txn as any).appliedTo as { allocId: string; amount: number }[] | undefined;
-      if (oldAppliedTo) {
-        for (const { allocId, amount: applied } of oldAppliedTo) {
-          const alloc = allocations.find((a) => a.id === allocId);
-          if (!alloc) continue;
-          const newPaid = Math.max(0, ((alloc as any).paidAmount || 0) - applied);
-          const updates: any = { paidAmount: newPaid };
-          if (alloc.status === "paid") {
-            const dueDate = (alloc as any).creditDueDate;
-            updates.status = dueDate && dueDate < today ? "overdue" : "sent";
-          }
-          await updateDoc(doc(db, "allocations_v2", allocId), updates);
-        }
+      if (payEdit.mode === "edit") {
+        await rewritePayment(txn, { amount: newAmount, paymentMethod: payEdit.paymentMethod, date: payEdit.date, notes: payEdit.notes });
+      } else {
+        // A request, not a change: someone who signs off for them makes it.
+        await updateDoc(doc(db, "payment_transactions", txn.id!), {
+          changeRequest: payEdit.mode === "remove"
+            ? { kind: "remove", reason: payEdit.reason.trim(), at: Date.now(), byName: appUser.name }
+            : { kind: "edit", amount: newAmount, paymentMethod: payEdit.paymentMethod, date: payEdit.date,
+                notes: payEdit.notes, reason: payEdit.reason.trim(), at: Date.now(), byName: appUser.name },
+        });
+        await addDoc(collection(db, "alerts"), {
+          type: "payment_change",
+          message: `${appUser.name} asks to ${payEdit.mode === "remove" ? "remove" : "change"} the ₹${txn.amount.toLocaleString("en-IN")} payment from ${txn.partyName}: ${payEdit.reason.trim()}`,
+          relatedId: txn.id!, read: false, toRole: "admin_group", createdAt: Date.now(),
+        });
       }
-      // Re-apply new amount FIFO to active credit allocs
-      const freshAllocs = allocations
-        .filter((a) => a.partyId === txn.partyId && a.paymentType === "credit" && (a.status === "sent" || a.status === "overdue") && a.fromType !== "distributor")
-        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-      const newAppliedTo: { allocId: string; amount: number }[] = [];
-      let remaining = newAmount;
-      for (const alloc of freshAllocs) {
-        if (remaining <= 0) break;
-        const currentPaid = (alloc as any).paidAmount || 0;
-        const owed = alloc.totalAmount - currentPaid;
-        if (owed <= 0) continue;
-        const toApply = Math.min(remaining, owed);
-        const newPaid = currentPaid + toApply;
-        const updates: any = { paidAmount: newPaid };
-        if (newPaid >= alloc.totalAmount) { updates.status = "paid"; updates.paidAt = Date.now(); }
-        await updateDoc(doc(db, "allocations_v2", alloc.id!), updates);
-        newAppliedTo.push({ allocId: alloc.id!, amount: toApply });
-        remaining -= toApply;
-      }
-      await updateDoc(doc(db, "payment_transactions", payEdit.id), {
-        amount: newAmount,
-        paymentMethod: payEdit.paymentMethod,
-        date: payEdit.date,
-        notes: payEdit.notes,
-        appliedTo: newAppliedTo,
-        updatedAt: Date.now(),
-        updatedBy: appUser.uid,
-        updatedByName: appUser.name,
-      });
       setPayEdit(null);
+    } catch (e) {
+      await failed(e);
     } finally {
       setPayEditSaving(false);
     }
@@ -294,29 +361,31 @@ export default function CreditBook({ onBack, initialPartyId, focusPaymentId, sal
       "Cancel it",
     );
     if (!ok) return;
+    try { await rewritePayment(p, null); } catch (e) { await failed(e); }
+  };
 
-    // Reverse paidAmount on each alloc this payment touched
-    const appliedTo = (p as any).appliedTo as
-      | { allocId: string; amount: number }[]
-      | undefined;
-    if (appliedTo && appliedTo.length > 0) {
-      for (const { allocId, amount: applied } of appliedTo) {
-        const alloc = allocations.find((a) => a.id === allocId);
-        if (!alloc) continue;
-        const currentPaid = (alloc as any).paidAmount || 0;
-        const newPaid = Math.max(0, currentPaid - applied);
-        const updates: any = { paidAmount: newPaid };
-        if (alloc.status === "paid") {
-          const dueDate = (alloc as any).creditDueDate;
-          updates.status = dueDate && dueDate < today ? "overdue" : "sent";
-        }
-        await updateDoc(doc(db, "allocations_v2", allocId), updates);
-      }
-    }
-
-    await updateDoc(doc(db, "payment_transactions", p.id!), {
-      status: "rejected",
-    });
+  /** Approve or refuse what the collector asked for. */
+  const handleDecideRequest = async (p: PaymentTransaction, yes: boolean) => {
+    const r = p.changeRequest;
+    if (!r || !appUser) return;
+    const what = r.kind === "remove"
+      ? `remove the ₹${p.amount.toLocaleString("en-IN")} payment`
+      : `change it to ₹${(r.amount ?? p.amount).toLocaleString("en-IN")}`;
+    if (!await showConfirm(yes ? "Approve this change?" : "Refuse this change?",
+      `${r.byName} asked to ${what}: ${r.reason}`, yes ? "Approve" : "Refuse")) return;
+    try {
+      if (!yes) await updateDoc(doc(db, "payment_transactions", p.id!), { changeRequest: deleteField() });
+      else if (r.kind === "remove") await rewritePayment(p, null);
+      else await rewritePayment(p, {
+        amount: r.amount ?? p.amount, paymentMethod: r.paymentMethod ?? p.paymentMethod,
+        date: r.date ?? p.date, notes: r.notes ?? p.notes ?? "",
+      });
+      if (p.collectedBy) await addDoc(collection(db, "alerts"), {
+        type: "payment_change",
+        message: `${appUser.name} ${yes ? "approved" : "refused"} your request to ${what} from ${p.partyName}.`,
+        relatedId: p.id!, read: false, toUid: p.collectedBy, createdAt: Date.now(),
+      });
+    } catch (e) { await failed(e); }
   };
 
   const handleMarkAllocPaid = async (a: UnifiedAllocation) => {
@@ -693,7 +762,12 @@ export default function CreditBook({ onBack, initialPartyId, focusPaymentId, sal
                     >
                       {isEditing && payEdit ? (
                         <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 460 }}>
-                          <div style={{ fontSize: 15, fontWeight: 500, color: t.text }}>Edit this payment</div>
+                          <div style={{ fontSize: 15, fontWeight: 500, color: t.text }}>
+                            {payEdit.mode === "edit" ? "Edit this payment"
+                              : payEdit.mode === "remove" ? `Ask ${decider} to remove this payment`
+                              : `Ask ${decider} to change this payment`}
+                          </div>
+                          {payEdit.mode !== "remove" && (<>
 
                           <Field label="Amount">
                             <input
@@ -731,16 +805,32 @@ export default function CreditBook({ onBack, initialPartyId, focusPaymentId, sal
                             />
                           </Field>
 
+                          </>)}
+                          {payEdit.mode !== "edit" && (
+                            <Field label="Why">
+                              <input
+                                type="text"
+                                aria-label="Why"
+                                value={payEdit.reason}
+                                onChange={(e) => setPayEdit((prev) => prev ? { ...prev, reason: e.target.value } : prev)}
+                                placeholder={payEdit.mode === "remove" ? "Entered twice" : "Typed 500, it was 600"}
+                                style={inputStyle(t)}
+                              />
+                            </Field>
+                          )}
+
                           <Note>
-                            Changing the amount reapplies it across their unpaid credit, oldest first.
+                            {payEdit.mode === "edit"
+                              ? "Changing the amount reapplies it across their unpaid credit, oldest first."
+                              : `Nothing changes until ${decider} approves it.`}
                           </Note>
 
                           <div style={{ display: "flex", gap: 10 }}>
                             <PrimaryButton
                               onClick={handleSavePayEdit}
-                              disabled={payEditSaving || !payEdit.amount || parseFloat(payEdit.amount) <= 0}
+                              disabled={payEditSaving || (payEdit.mode !== "remove" && (!payEdit.amount || parseFloat(payEdit.amount) <= 0))}
                             >
-                              {payEditSaving ? "Saving" : "Save changes"}
+                              {payEditSaving ? "Saving" : payEdit.mode === "edit" ? "Save changes" : "Send request"}
                             </PrimaryButton>
                             <GhostButton onClick={() => setPayEdit(null)}>Cancel</GhostButton>
                           </div>
@@ -777,7 +867,28 @@ export default function CreditBook({ onBack, initialPartyId, focusPaymentId, sal
                             </div>
                           </div>
 
-                          {isAdmin && !cancelled && !confirmed && (
+                          {p.changeRequest && !cancelled && (
+                            <div data-testid="payment-change-request" style={{ marginTop: 12 }}>
+                              <Note tone="warn">
+                                {p.changeRequest.byName} asks to{" "}
+                                {p.changeRequest.kind === "remove"
+                                  ? "remove this payment"
+                                  : `change it to ₹${(p.changeRequest.amount ?? p.amount).toLocaleString("en-IN")}`
+                                    + (p.changeRequest.paymentMethod && p.changeRequest.paymentMethod !== p.paymentMethod ? `, ${p.changeRequest.paymentMethod}` : "")
+                                    + (p.changeRequest.date && p.changeRequest.date !== p.date ? `, dated ${p.changeRequest.date}` : "")}
+                                : {p.changeRequest.reason}
+                                {!canDecide(p) && ` — waiting on ${decider}.`}
+                              </Note>
+                              {canDecide(p) && (
+                                <div style={{ display: "flex", gap: 14, marginTop: 10 }}>
+                                  {action("Approve change", () => handleDecideRequest(p, true))}
+                                  {action("Refuse", () => handleDecideRequest(p, false))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {canDecide(p) && !cancelled && !confirmed && (
                             <div style={{ marginTop: 12 }}>
                               <Note tone="warn">
                                 Confirm only once the amount is in the company account. It cannot be undone.
@@ -786,20 +897,24 @@ export default function CreditBook({ onBack, initialPartyId, focusPaymentId, sal
                                 {action("Confirm receipt", () => handleConfirmPayment(p))}
                                 {action("Edit", () => setPayEdit({
                                   id: p.id!, amount: String(p.amount), paymentMethod: p.paymentMethod,
-                                  date: p.date, notes: p.notes || "",
+                                  date: p.date, notes: p.notes || "", mode: "edit", reason: "",
                                 }))}
                                 {action("Cancel", () => handleCancelPayment(p))}
                               </div>
                             </div>
                           )}
 
-                          {!isAdmin && p.collectedBy === appUser?.uid && p.status === "pending_approval" && (
+                          {/* The collector asks; someone who signs off for them decides. */}
+                          {!canDecide(p) && p.collectedBy === appUser?.uid && p.status === "pending_approval" && !p.changeRequest && (
                             <div style={{ display: "flex", gap: 14, marginTop: 12 }}>
-                              {action("Edit", () => setPayEdit({
+                              {action("Ask to change", () => setPayEdit({
                                 id: p.id!, amount: String(p.amount), paymentMethod: p.paymentMethod,
-                                date: p.date, notes: p.notes || "",
+                                date: p.date, notes: p.notes || "", mode: "request", reason: "",
                               }))}
-                              {action("Delete", () => handleCancelPayment(p))}
+                              {action("Ask to remove", () => setPayEdit({
+                                id: p.id!, amount: String(p.amount), paymentMethod: p.paymentMethod,
+                                date: p.date, notes: p.notes || "", mode: "remove", reason: "",
+                              }))}
                             </div>
                           )}
                         </>

@@ -693,3 +693,27 @@ export async function pendingLeave(who: UserKey, date: string): Promise<string> 
 export async function leaveStatus(id: string): Promise<string | undefined> {
   return (await getFirestore(admin()).doc(`leave_records/${id}`).get()).data()?.status
 }
+
+/**
+ * A credit bill and a payment already laid on it, for the credit book's edits.
+ * The payment is a rep's collection, still awaiting confirmation.
+ */
+export async function creditBillPaid(bill: number, paid: number): Promise<{ allocId: string; txnId: string }> {
+  const db = getFirestore(admin())
+  const allocId = await companyAllocation({
+    status: 'sent', totalAmount: bill, paidAmount: paid, plannedDate: tomorrow(), creditDueDate: tomorrow(),
+  })
+  const txn = await db.collection('payment_transactions').add({
+    partyId: 'party_dist', partyName: 'Rajan Distributors', partyType: 'distributor',
+    amount: paid, paymentMethod: 'cash', collectionType: 'collected_by_salesperson',
+    collectedBy: USERS.rep.uid, collectedByName: USERS.rep.name,
+    status: 'pending_approval', date: todayLocal(), createdAt: testNow(),
+    appliedTo: [{ allocId, amount: paid }],
+  })
+  return { allocId, txnId: txn.id }
+}
+
+/** One document's field as stored, for checking what a screen wrote. */
+export async function storedField(path: string, field: string): Promise<unknown> {
+  return (await getFirestore(admin()).doc(path).get()).data()?.[field]
+}
