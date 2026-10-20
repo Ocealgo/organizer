@@ -18,7 +18,8 @@ import {
 
 interface Props { onBack: () => void }
 
-type LeaveTab = 'register' | 'today' | 'month' | 'all' | 'holidays'
+type LeaveTab = 'register' | 'leave' | 'holidays'
+type LeaveWhen = 'day' | 'month' | 'all'
 
 const todayStr = () => localDateStr()
 const thisMonth = () => localMonthStr()
@@ -61,6 +62,7 @@ export default function LeaveTracker({ onBack }: Props) {
   const [tab, setTab] = useState<LeaveTab>('register')
   const [selectedPerson, setSelectedPerson] = useState<string>('all')
   // Each leave tab has its own "when": a day, a month, or everything.
+  const [when, setWhen] = useState<LeaveWhen>('day')
   const [leaveDay, setLeaveDay] = useState(localDateStr())
   const [leaveMonth, setLeaveMonth] = useState(localMonthStr())
   const [expandedAudit, setExpandedAudit] = useState<string | null>(null)
@@ -213,8 +215,8 @@ export default function LeaveTracker({ onBack }: Props) {
 
   const tabFiltered = leaveRecords.filter(l => {
     if (l.status === 'removed' || l.status === 'rejected') return false
-    if (tab === 'today') return l.date === leaveDay
-    if (tab === 'month') return l.date.startsWith(leaveMonth)
+    if (when === 'day') return l.date === leaveDay
+    if (when === 'month') return l.date.startsWith(leaveMonth)
     return true
   })
 
@@ -292,21 +294,13 @@ export default function LeaveTracker({ onBack }: Props) {
         onChange={setTab}
         tabs={[
           { id: 'register', label: 'Register' },
-          { id: 'today', label: 'Leave on a day' },
-          { id: 'month', label: 'Leave in a month' },
-          { id: 'all', label: 'All leave' },
+          { id: 'leave', label: 'Leave' },
           { id: 'holidays', label: 'Holidays' },
         ]}
       />
 
       <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 28 }}>
 
-        {/* ── REGISTER: the team's month, a letter a day ── */}
-        {tab === 'register' && (
-          <FilterBox title="Register" note="The month you pick changes everything in this box." testId="register-box">
-            <AttendanceRegister reps={salesUsers} leaves={leaveRecords} holidays={holidays} />
-          </FilterBox>
-        )}
 
         {/* ── HOLIDAYS ── */}
         {tab === 'holidays' && (
@@ -357,7 +351,8 @@ export default function LeaveTracker({ onBack }: Props) {
           </>
         )}
 
-        {tab !== 'holidays' && (
+        {/* ── REGISTER: the requests to decide, then the team's month, a letter a day ── */}
+        {tab === 'register' && (
           <>
             {totalPending > 0 && (
               <div style={{ fontSize: 13, color: t.warn }}>
@@ -391,17 +386,29 @@ export default function LeaveTracker({ onBack }: Props) {
               </Section>
             )}
 
-            {tab !== 'register' && (<>
+            <FilterBox title="Register" note="The month you pick changes everything in this box." testId="register-box">
+              <AttendanceRegister reps={salesUsers} leaves={leaveRecords} holidays={holidays} />
+            </FilterBox>
+          </>
+        )}
+
+        {/* ── LEAVE: one list, a day (today by default), a month, or everything ── */}
+        {tab === 'leave' && (
+          <>
             <FilterBox testId="leave-box"
-              title={tab === 'today' ? 'Leave on a day' : tab === 'month' ? 'Leave in a month' : 'All leave'}
-              note={tab === 'all' ? 'Every leave on record. The person you pick narrows the records.'
-                : `The ${tab === 'today' ? 'day' : 'month'} and person you pick change everything in this box.`}>
-            {tab === 'today' && (
+              title="Leave"
+              note="When and the person you pick change everything in this box.">
+            <div>
+              <div style={{ fontSize: 12, color: t.text3, marginBottom: 6 }}>When</div>
+              <ChipGroup value={when} onChange={setWhen}
+                options={[{ id: 'day', label: 'A day' }, { id: 'month', label: 'A month' }, { id: 'all', label: 'Everything' }]} />
+            </div>
+            {when === 'day' && (
               <div style={{ maxWidth: 260 }}>
                 <DayPicker value={leaveDay} onChange={setLeaveDay} ariaLabel="Leave day" />
               </div>
             )}
-            {tab === 'month' && (
+            {when === 'month' && (
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <button className="oc-action" aria-label="Previous month" onClick={() => stepMonth(-1)}
@@ -413,17 +420,17 @@ export default function LeaveTracker({ onBack }: Props) {
                 <HolidayNote from={leaveMonth + '-01'} to={monthEnd} />
               </div>
             )}
-            {tab === 'today' && dayOff ? (
+            {when === 'day' && dayOff ? (
               <div data-testid="leave-day-off" style={{ fontSize: 14, color: t.off, lineHeight: 1.5 }}>
                 {dayOff} — a day off for everyone, so nobody is on leave {dayWords}.
               </div>
             ) : (
               <StatGrid>
-                {tab === 'today' && <StatCard value={dayCount} label={`On leave ${dayWords}`} />}
-                {tab === 'month' && <StatCard value={monthCount} label={`Leave days in ${monthName}`} />}
-                {tab === 'month' && <StatCard value={new Set(active.filter(l => l.date.startsWith(leaveMonth)).map(l => l.uid)).size} label="People who took leave" />}
-                {tab === 'all' && <StatCard value={active.length} label="Leave days on record" />}
-                {tab === 'all' && <StatCard value={new Set(active.map(l => l.uid)).size} label="People who took leave" />}
+                {when === 'day' && <StatCard value={dayCount} label={`On leave ${dayWords}`} />}
+                {when === 'month' && <StatCard value={monthCount} label={`Leave days in ${monthName}`} />}
+                {when === 'month' && <StatCard value={new Set(active.filter(l => l.date.startsWith(leaveMonth)).map(l => l.uid)).size} label="People who took leave" />}
+                {when === 'all' && <StatCard value={active.length} label="Leave days on record" />}
+                {when === 'all' && <StatCard value={new Set(active.map(l => l.uid)).size} label="People who took leave" />}
               </StatGrid>
             )}
             <Section label="Team">
@@ -438,9 +445,9 @@ export default function LeaveTracker({ onBack }: Props) {
                     const onDay = active.find(l => l.uid === u.uid && l.date === leaveDay)
                     const inMonth = active.filter(l => l.uid === u.uid && l.date.startsWith(leaveMonth)).length
                     const status = waitingFor(u.uid) ? 'Request waiting'
-                      : tab === 'today'
+                      : when === 'day'
                         ? dayOff ? 'Day off' : onDay ? (onDay.leaveType === 'half_day' ? 'Half day leave' : 'On leave') : 'Working'
-                        : tab === 'month' ? `${inMonth} in ${monthName.split(' ')[0]}`
+                        : when === 'month' ? `${inMonth} in ${monthName.split(' ')[0]}`
                         : `${total} in total`
                     return (
                       <div key={u.uid} style={{ display: 'flex', alignItems: 'baseline', gap: 16, borderTop: `0.5px solid ${t.border}`, padding: '14px 0' }}>
@@ -451,7 +458,7 @@ export default function LeaveTracker({ onBack }: Props) {
                           </div>
                         </div>
                         <div style={{ fontSize: 14, fontWeight: 400, whiteSpace: 'nowrap',
-                                      color: waitingFor(u.uid) ? t.warn : tab === 'today' && dayOff ? t.off : t.text2 }}>
+                                      color: waitingFor(u.uid) ? t.warn : when === 'day' && dayOff ? t.off : t.text2 }}>
                           {status}
                         </div>
                       </div>
@@ -476,9 +483,9 @@ export default function LeaveTracker({ onBack }: Props) {
               {displayed.length === 0 ? (
                 <EmptyState
                   title="No leave here"
-                  body={tab === 'today'
+                  body={when === 'day'
                     ? dayOff ? `${dayOff} — nobody needed leave.` : `Nobody is marked off ${dayWords}.`
-                    : tab === 'month'
+                    : when === 'month'
                       ? `No leave was taken in ${monthName}.`
                       : 'No leave has been recorded yet.'}
                 />
@@ -526,7 +533,6 @@ export default function LeaveTracker({ onBack }: Props) {
               )}
             </Section>
             </FilterBox>
-            </>)}
           </>
         )}
       </div>

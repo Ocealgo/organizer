@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { test, expect } from './fixtures/app'
 import {
-  closedDay, autoMarkedLeave, approvedLeave, noOneOnDuty, noLeaveRecorded, todayLocal, holiday,
+  closedDay, autoMarkedLeave, approvedLeave, noOneOnDuty, noLeaveRecorded, todayLocal, holiday, pendingLeave,
 } from './fixtures/seed'
 import { testDate } from './fixtures/clock'
 
@@ -150,33 +150,42 @@ test('a holiday worked is shown as a day off that was worked', async ({ page, lo
   await expect(page.getByTestId('attendance-summary')).toContainText('1 worked on a day off')
 })
 
-test.describe('the leave tabs', () => {
-  test('each answers its own question: a day, a month, everything', async ({ page, loginAs }) => {
+test.describe('the leave tab', () => {
+  test('one list with a When filter: today first, then a month, then everything', async ({ page, loginAs }) => {
     await approvedLeave('rep2', todayLocal(), 'full_day')
     await loginAs('admin')
     await page.getByRole('button', { name: /^Attendance/ }).first().click()
 
-    await page.getByRole('button', { name: 'Leave on a day', exact: true }).click()
+    await page.getByRole('button', { name: 'Leave', exact: true }).click()
     const box = page.getByTestId('leave-box')
-    await expect(box).toContainText('Leave on a day')
     await expect(box).toContainText('On leave today')
     await expect(box.getByLabel('Leave day')).toBeVisible()
+    await expect(box).toContainText('Priya')
 
-    await page.getByRole('button', { name: 'Leave in a month', exact: true }).click()
+    await box.getByRole('button', { name: 'A month', exact: true }).click()
     await expect(box).toContainText('Leave days in')
     await expect(box.getByRole('button', { name: 'Previous month' })).toBeVisible()
 
-    await page.getByRole('button', { name: 'All leave', exact: true }).click()
+    await box.getByRole('button', { name: 'Everything', exact: true }).click()
     await expect(box).toContainText('Leave days on record')
   })
 
-  test('a holiday picked is named, on the day tab and in the register', async ({ page, loginAs }) => {
+  test('a holiday picked is named, on the leave tab and in the register', async ({ page, loginAs }) => {
     await holiday(todayLocal(), 'Test Holiday')
     await loginAs('admin')
     await page.getByRole('button', { name: /^Attendance/ }).first().click()
     await expect(page.getByTestId('attendance-today')).toContainText('Holiday — Test Holiday')
 
-    await page.getByRole('button', { name: 'Leave on a day', exact: true }).click()
+    await page.getByRole('button', { name: 'Leave', exact: true }).click()
     await expect(page.getByTestId('leave-day-off')).toContainText('Holiday — Test Holiday')
+  })
+
+  test('requests to decide are on the register only', async ({ page, loginAs }) => {
+    await pendingLeave('rep2', todayLocal())
+    await loginAs('admin')
+    await page.getByRole('button', { name: /^Attendance/ }).first().click()
+    await expect(page.getByText(/^Leave requests · 1/)).toBeVisible()
+    await page.getByRole('button', { name: 'Leave', exact: true }).click()
+    await expect(page.getByText(/^Leave requests ·/)).toHaveCount(0)
   })
 })
