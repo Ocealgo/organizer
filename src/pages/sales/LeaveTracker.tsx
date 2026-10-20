@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { collection, updateDoc, doc, addDoc, deleteDoc, query, orderBy } from 'firebase/firestore'
+import { collection, updateDoc, doc, addDoc, deleteDoc, query, orderBy, where, getDocs, writeBatch } from 'firebase/firestore'
 import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import { LeaveRecord, AppUser, Holiday } from '../../types'
@@ -38,6 +38,7 @@ const ACTION_LABEL: Record<string, string> = {
   unmark_requested: 'Unmark requested',
   unmark_approved: 'Unmark approved',
   unmark_rejected: 'Unmark rejected',
+  holiday_declared: 'Cancelled — the day was declared a holiday',
 }
 
 const longDate = (d: string) =>
@@ -89,8 +90,19 @@ export default function LeaveTracker({ onBack }: Props) {
   const today = todayStr()
   const month = thisMonth()
 
-  const pendingApproval = leaveRecords.filter(l => l.status === 'pending_approval')
-  const pendingUnmark = leaveRecords.filter(l => l.status === 'unmark_requested')
+  /**
+   * A holiday means nobody works, so an automatic absence on one is void. The
+   * sweep skips holidays, but one declared after 10:00 finds the absences
+   * already written; adding the holiday cancels them, and until it has (or for
+   * one written before that existed) they are simply not shown.
+   */
+  const holidayMap = new Map(holidays.map(h => [h.date, h.name]))
+  const voidOnDayOff = (l: LeaveRecord) => l.autoMarked === true
+    && (holidayMap.has(l.date) || new Date(l.date + 'T00:00:00').getDay() === 0)
+  const shown = leaveRecords.filter(l => !voidOnDayOff(l))
+
+  const pendingApproval = shown.filter(l => l.status === 'pending_approval')
+  const pendingUnmark = shown.filter(l => l.status === 'unmark_requested')
 
   const handleApproveLeave = async (leave: LeaveRecord) => {
     const confirmed = await showConfirm(
@@ -202,6 +214,20 @@ export default function LeaveTracker({ onBack }: Props) {
         name: newHolidayName.trim(), date: newHolidayDate,
         createdBy: appUser?.uid ?? '', createdByName: appUser?.name ?? 'Somebody', createdAt: Date.now(),
       })
+      // Automatic absences already written for the day are cancelled: a
+      // holiday means no work, so there was nothing to be absent from.
+      const autos = (await getDocs(query(collection(db, 'leave_records'), where('date', '==', newHolidayDate))))
+        .docs.filter(d => d.data().autoMarked === true && ['active', 'unmark_requested'].includes(d.data().status))
+      if (autos.length) {
+        const batch = writeBatch(db)
+        for (const d of autos) batch.update(d.ref, {
+          status: 'removed',
+          auditLog: [...(d.data().auditLog || []), {
+            action: 'holiday_declared', by: appUser?.uid ?? '', byName: appUser?.name ?? 'Somebody', at: Date.now(),
+          }],
+        })
+        await batch.commit()
+      }
       setNewHolidayName('')
       setNewHolidayDate(localDateStr())
     } finally { setAddingHoliday(false) }
@@ -213,7 +239,7 @@ export default function LeaveTracker({ onBack }: Props) {
     await deleteDoc(doc(db, 'holidays', h.id!))
   }
 
-  const tabFiltered = leaveRecords.filter(l => {
+  const tabFiltered = shown.filter(l => {
     if (l.status === 'removed' || l.status === 'rejected') return false
     if (when === 'day') return l.date === leaveDay
     if (when === 'month') return l.date.startsWith(leaveMonth)
@@ -222,10 +248,9 @@ export default function LeaveTracker({ onBack }: Props) {
 
   const displayed = selectedPerson === 'all' ? tabFiltered : tabFiltered.filter(l => l.uid === selectedPerson)
 
-  const active = leaveRecords.filter(l => l.status === 'active')
+  const active = shown.filter(l => l.status === 'active')
   const dayCount = active.filter(l => l.date === leaveDay).length
   const monthCount = active.filter(l => l.date.startsWith(leaveMonth)).length
-  const holidayMap = new Map(holidays.map(h => [h.date, h.name]))
   const dayOff = dayOffLabel(leaveDay, holidayMap)
   const monthName = new Date(leaveMonth + '-01T00:00:00').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
   const monthEnd = (() => { const [y, m] = leaveMonth.split('-').map(Number); return localDateStr(new Date(y, m, 0)) })()

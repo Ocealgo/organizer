@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { test, expect } from './fixtures/app'
 import {
-  closedDay, autoMarkedLeave, approvedLeave, noOneOnDuty, noLeaveRecorded, todayLocal, holiday, pendingLeave,
+  closedDay, autoMarkedLeave, approvedLeave, noOneOnDuty, noLeaveRecorded, todayLocal, holiday, pendingLeave, leaveStatus,
 } from './fixtures/seed'
 import { testDate } from './fixtures/clock'
 
@@ -107,7 +107,9 @@ test.describe('a holiday declared late', () => {
     await page.getByRole('button', { name: /My attendance/ }).click()
     const cell = page.getByRole('gridcell', { name: `${day}: Holiday` })
     await cell.click()
-    await expect(page.getByTestId('attendance-detail')).toContainText('it does not count')
+    // A holiday means no work: the absence written before it is not even mentioned.
+    await expect(page.getByTestId('attendance-detail')).toContainText('Holiday — Declared late')
+    await expect(page.getByTestId('attendance-detail')).not.toContainText('absence')
     await expect(page.getByTestId('attendance-summary')).not.toContainText('absent')
   })
 
@@ -192,5 +194,30 @@ test.describe('the leave tab', () => {
     await expect(page.getByText(/^Leave requests ·/)).toHaveCount(0)
     await expect(page.getByTestId('day-pending')).toContainText('Priya')
     await expect(page.getByTestId('day-pending').getByRole('button', { name: 'Approve' })).toBeVisible()
+  })
+})
+
+test.describe('a holiday means no work', () => {
+  test('an automatic absence on a holiday is not shown', async ({ page, loginAs }) => {
+    await autoMarkedLeave('rep', todayLocal(), 'half_day')
+    await holiday(todayLocal(), 'Test Holiday')
+    await loginAs('admin')
+    await page.getByRole('button', { name: /^Attendance/ }).first().click()
+    await page.getByRole('button', { name: 'Leave', exact: true }).click()
+    const box = page.getByTestId('leave-box')
+    await expect(box.getByText('No leave here')).toBeVisible()
+    await box.getByRole('button', { name: 'Everything', exact: true }).click()
+    await expect(box.getByText('No leave here')).toBeVisible()
+  })
+
+  test('declaring a holiday cancels the automatic absences already on it', async ({ page, loginAs }) => {
+    const id = await autoMarkedLeave('rep', todayLocal(), 'half_day')
+    await loginAs('admin')
+    await page.getByRole('button', { name: /^Attendance/ }).first().click()
+    await page.getByRole('button', { name: 'Holidays', exact: true }).click()
+    await page.getByPlaceholder('Onam, Eid, Christmas').fill('Declared now')
+    await page.getByRole('button', { name: 'Add', exact: true }).click()
+    await expect(page.getByText('Declared now')).toBeVisible()
+    await expect.poll(() => leaveStatus(id)).toBe('removed')
   })
 })
