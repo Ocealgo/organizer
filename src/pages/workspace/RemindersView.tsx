@@ -8,6 +8,7 @@ import { useTheme } from '../../context/ThemeContext'
 import DateInput from '../../components/DateInput'
 import { localDateStr } from '../../utils/date'
 import { Eyebrow, EmptyState, GhostButton, PrimaryButton, inputStyle } from '../../components/ui'
+import { ScrollList } from '../../components/FilterBox'
 
 const CATEGORIES: WorkspaceCategory[] = ['Finance', 'Operations', 'Sales', 'Marketing', 'General']
 
@@ -182,11 +183,13 @@ export default function RemindersView() {
           <div style={{ marginBottom: 10, color: t.warn }}>
             <Eyebrow>{overdue.length} overdue</Eyebrow>
           </div>
+          <ScrollList count={overdue.length} label="reminders">
           <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
             {overdue.map(r => (
               <ReminderRow key={r.id} reminder={r} onToggle={() => toggleDone(r)} showDate overdue />
             ))}
           </div>
+          </ScrollList>
         </div>
       )}
 
@@ -279,17 +282,21 @@ export default function RemindersView() {
           {upcoming.length > 0 && (
             <div>
               <div style={{ marginBottom: 10 }}><Eyebrow>Coming up ({upcoming.length})</Eyebrow></div>
+              <ScrollList count={upcoming.length} label="reminders">
               <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
                 {upcoming.map(r => <ReminderRow key={r.id} reminder={r} onToggle={() => toggleDone(r)} showDate />)}
               </div>
+              </ScrollList>
             </div>
           )}
           {done.length > 0 && (
             <div>
               <div style={{ marginBottom: 10 }}><Eyebrow>Done ({done.length})</Eyebrow></div>
+              <ScrollList count={done.length} label="reminders">
               <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
                 {done.map(r => <ReminderRow key={r.id} reminder={r} onToggle={() => toggleDone(r)} showDate />)}
               </div>
+              </ScrollList>
             </div>
           )}
           {reminders.length === 0 && (

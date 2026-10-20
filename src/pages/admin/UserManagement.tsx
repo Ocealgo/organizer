@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import { PageHeader, TabBar, EmptyState, GhostButton, Eyebrow } from '../../components/ui'
+import { ScrollList } from '../../components/FilterBox'
 import {
   ROLE_LABELS_PLAIN, ASSIGNABLE_ROLES, MANAGER_ASSIGNABLE_ROLES,
   PERMISSION_GROUPS, DEFAULT_SALES_MANAGER_PERMISSIONS,
@@ -298,12 +299,14 @@ export default function UserManagement({ onBack }: Props) {
             <EmptyState title="Nobody is waiting"
               body="New signups appear here for you to approve or turn down." />
           ) : (
+            <ScrollList count={pending.length} label="signups" height={720}>
             <div className="oc-list-flush" style={{ borderBottom: `0.5px solid ${t.border}` }}>
               {pending.map(u => (
                 <PendingCard key={u.uid} user={u} updating={updating} roles={assignableRoles}
                   onApprove={approveUser} onReject={rejectUser} />
               ))}
             </div>
+            </ScrollList>
           )
         )}
 
@@ -312,6 +315,7 @@ export default function UserManagement({ onBack }: Props) {
             <EmptyState title="No active accounts yet"
               body="Once you approve a signup, the account shows up here." />
           ) : (
+            <ScrollList count={active.length} label="accounts" height={720}>
             <div className="oc-list-flush" style={{ borderBottom: `0.5px solid ${t.border}` }}>
               {active.map(u => (
                 <UserCard key={u.uid} user={u} updating={updating}
@@ -325,6 +329,7 @@ export default function UserManagement({ onBack }: Props) {
                   onApplyNewDefaults={applyNewDefaults} />
               ))}
             </div>
+            </ScrollList>
           )
         )}
 
@@ -333,6 +338,7 @@ export default function UserManagement({ onBack }: Props) {
             <EmptyState title="Nobody has been deactivated"
               body="Accounts you switch off are kept here so you can bring them back." />
           ) : (
+            <ScrollList count={deactivated.length} label="accounts" height={720}>
             <div className="oc-list-flush" style={{ borderBottom: `0.5px solid ${t.border}` }}>
               {deactivated.map(u => (
                 <DeactivatedCard key={u.uid} user={u} updating={updating}
@@ -344,6 +350,7 @@ export default function UserManagement({ onBack }: Props) {
                   onReactivate={reactivateUser} />
               ))}
             </div>
+            </ScrollList>
           )
         )}
       </div>

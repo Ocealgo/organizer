@@ -30,6 +30,7 @@ import {
   PageHeader, TabBar, StatGrid, StatCard, Section, EmptyState,
   Field, ChipGroup, Note, GhostButton, PrimaryButton, inputStyle,
 } from '../../components/ui'
+import { FilterBox, ScrollList } from '../../components/FilterBox'
 
 interface Props { onBack: () => void; onViewVisitLog?: (userName: string, date: string) => void; onLogVisit?: (date: string) => void; defaultToDay?: boolean }
 
@@ -1374,6 +1375,8 @@ This cannot be undone.`,
                 context="Waiting on a rep to fix" />
             </StatGrid>
 
+            <FilterBox title="Expense reports" testId="expenses-box"
+              note="The status you pick changes the list in this box.">
             <Section label="Filter">
               <ChipGroup
                 value={statusFilter}
@@ -1395,6 +1398,7 @@ This cannot be undone.`,
                   : 'No report matches that filter.'}
               />
             ) : (
+              <ScrollList count={filtered.length} label="reports" height={760}>
               <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
                 {filtered.map(r => {
                   const rEntries = entries.filter(e => e.reportId === r.id)
@@ -1641,7 +1645,9 @@ This cannot be undone.`,
                   )
                 })}
               </div>
+              </ScrollList>
             )}
+            </FilterBox>
           </>
         )}
       </div>

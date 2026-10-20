@@ -13,6 +13,7 @@ import {
   PageHeader, TabBar, Section, EmptyState, Field, ChipGroup, Note,
   PrimaryButton, inputStyle,
 } from '../../components/ui'
+import { FilterBox, ScrollList } from '../../components/FilterBox'
 
 interface Props { onBack: () => void; parties: Party[] }
 
@@ -121,14 +122,23 @@ export default function MonthlyRequestManager({ onBack, parties }: Props) {
       />
 
       <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 28 }}>
-        <Section label="Month">
-          <div style={{ maxWidth: 220 }}>
-            <DateInput type="month" value={selectedMonth} onChange={v => setSelectedMonth(v)} />
-          </div>
-        </Section>
+        {tab === 'add' && (
+          <Section label="Month">
+            <div style={{ maxWidth: 220 }}>
+              <DateInput type="month" value={selectedMonth} onChange={v => setSelectedMonth(v)} />
+            </div>
+          </Section>
+        )}
 
         {tab === 'list' && (
-          filtered.length === 0 ? (
+          <FilterBox title="Requests" testId="requests-box"
+            note="The month you pick changes the list in this box.">
+          <Section label="Month">
+            <div style={{ maxWidth: 220 }}>
+              <DateInput type="month" value={selectedMonth} onChange={v => setSelectedMonth(v)} />
+            </div>
+          </Section>
+          {filtered.length === 0 ? (
             <EmptyState
               title={`No requests for ${monthLabel}`}
               body="Add what each distributor and retailer expects to need, so dispatch can be planned against it."
@@ -136,6 +146,7 @@ export default function MonthlyRequestManager({ onBack, parties }: Props) {
               onAction={() => setTab('add')}
             />
           ) : (
+            <ScrollList count={filtered.length} label="requests">
             <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
               {filtered.map(r => {
                 const pct = r.requestedPackets > 0 ? Math.round((r.fulfilledPackets / r.requestedPackets) * 100) : 0
@@ -172,7 +183,9 @@ export default function MonthlyRequestManager({ onBack, parties }: Props) {
                 )
               })}
             </div>
-          )
+            </ScrollList>
+          )}
+          </FilterBox>
         )}
 
         {tab === 'add' && (

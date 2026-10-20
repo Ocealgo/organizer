@@ -22,6 +22,7 @@ import {
   PageHeader, TabBar, Section, EmptyState, Field, ChipGroup, Note,
   GhostButton, PrimaryButton, inputStyle,
 } from '../../components/ui'
+import { FilterBox } from '../../components/FilterBox'
 
 interface Props { onBack: () => void }
 
@@ -382,7 +383,8 @@ export default function PartyManager({ onBack }: Props) {
 
         {/* LIST */}
         {tab === 'list' && (
-          <>
+          <FilterBox title="Network" testId="network-box"
+            note="The search and filters you pick change the list in this box.">
             <Section label="Find">
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <div style={{ maxWidth: 460 }}>
@@ -603,7 +605,7 @@ export default function PartyManager({ onBack }: Props) {
                 </div>
               )}
             </Section>
-          </>
+          </FilterBox>
         )}
 
         {/* ADD / EDIT */}

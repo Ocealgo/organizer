@@ -13,6 +13,7 @@ import {
   PageHeader, TabBar, StatGrid, StatCard, Section, EmptyState, Eyebrow,
   ChipGroup, GhostButton, PrimaryButton, inputStyle,
 } from '../../components/ui'
+import { FilterBox, ScrollList } from '../../components/FilterBox'
 
 interface Props { onBack: () => void }
 
@@ -216,6 +217,7 @@ export default function StockManager({ onBack }: Props) {
                     body="Add products in the Products screen before setting stock against them."
                   />
                 ) : (
+                  <ScrollList count={products.length} label="products">
                   <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
                     {products.map(p => {
                       const pStk = config.productStock?.[p.id!]
@@ -259,6 +261,7 @@ export default function StockManager({ onBack }: Props) {
                       )
                     })}
                   </div>
+                  </ScrollList>
                 )}
               </Section>
             )}
@@ -343,8 +346,9 @@ export default function StockManager({ onBack }: Props) {
               <StatCard value={monthOf.length} label="Dispatches" />
             </StatGrid>
 
-            <Section label="By distributor and retailer">
-              <div style={{ marginBottom: 16 }}>
+            <FilterBox title="By distributor and retailer" testId="stock-box"
+              note="The status you pick changes the list in this box.">
+              <div>
                 <ChipGroup
                   value={partyStatusFilter}
                   onChange={setPartyStatusFilter}
@@ -365,6 +369,7 @@ export default function StockManager({ onBack }: Props) {
                   return <EmptyState title="Nothing to show" body="No party in this filter had activity in the selected month." />
                 }
                 return (
+                  <ScrollList count={rows.length} label="parties">
                   <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
                     {rows.map(party => {
                       const pd = monthOf.filter(d => d.partyId === party.id)
@@ -411,9 +416,10 @@ export default function StockManager({ onBack }: Props) {
                       )
                     })}
                   </div>
+                  </ScrollList>
                 )
               })()}
-            </Section>
+            </FilterBox>
           </>
         )}
       </div>

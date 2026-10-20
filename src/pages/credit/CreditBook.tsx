@@ -34,6 +34,7 @@ import {
   PrimaryButton,
   inputStyle,
 } from "../../components/ui";
+import { FilterBox, ScrollList } from "../../components/FilterBox";
 
 interface Props {
   onBack: () => void;
@@ -913,6 +914,8 @@ export default function CreditBook({ onBack, initialPartyId, focusPaymentId, sal
           </Note>
         )}
 
+        <FilterBox title="Parties" testId="credit-box"
+          note="The search you type changes the list in this box.">
         {partiesWithCredit.length > 0 && (
           <Section label="Find">
             <div style={{ maxWidth: 460 }}>
@@ -943,6 +946,7 @@ export default function CreditBook({ onBack, initialPartyId, focusPaymentId, sal
             body="Try part of the party name, or the place they are in."
           />
         ) : (
+          <ScrollList count={pagedParties.length} label="parties">
           <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
             {pagedParties.map((party) => {
               const balance = outstandingBalance(party.id!);
@@ -996,6 +1000,7 @@ export default function CreditBook({ onBack, initialPartyId, focusPaymentId, sal
               );
             })}
           </div>
+          </ScrollList>
         )}
 
         {!isSearching && totalPages > 1 && (
@@ -1014,6 +1019,7 @@ export default function CreditBook({ onBack, initialPartyId, focusPaymentId, sal
             </GhostButton>
           </div>
         )}
+        </FilterBox>
       </div>
       {modal}
     </div>
