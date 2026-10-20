@@ -489,7 +489,7 @@ export default function LeaveTracker({ onBack }: Props) {
 
             <Section label="Records">
               {salesUsers.length > 0 && (
-                <div>
+                <div style={{ marginBottom: 16 }}>
                   <ChipGroup
                     value={selectedPerson}
                     onChange={setSelectedPerson}
