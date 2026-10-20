@@ -1303,6 +1303,10 @@ This cannot be undone.`,
 
   /** A filer's request for a submitted week back: reopen it (sent back for edits) or refuse. */
   const handleReopen = async (r: ExpenseReport, yes: boolean) => {
+    if (!can(appUser, 'clear_expenses')) {
+      await showAlert('Not allowed', 'Reopening a week needs the clear_expenses permission. An admin can reopen it, or grant you the permission in Settings.')
+      return
+    }
     if (!maySignOffFor(appUser, 'clear_expenses', { uid: r.userId, role: r.userRole })) {
       await showAlert('An admin has to handle this one',
         r.userId === appUser.uid
@@ -1679,6 +1683,13 @@ This cannot be undone.`,
                                   <Note tone="warn">
                                     {r.userName} asks to reopen this week: {r.reopenRequest.reason}
                                   </Note>
+                                  {!maySignOffFor(appUser, 'clear_expenses', { uid: r.userId, role: r.userRole }) ? (
+                                    <div style={{ fontSize: 13, color: t.text3 }}>
+                                      {can(appUser, 'clear_expenses')
+                                        ? `${r.userName} is at your own level, so an admin decides this.`
+                                        : 'Waiting on an admin — reopening needs the clear_expenses permission.'}
+                                    </div>
+                                  ) : (
                                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                                     <PrimaryButton onClick={() => handleReopen(r, true)} disabled={!!clearingId || !!rejectingId}>
                                       Reopen for editing
@@ -1687,6 +1698,7 @@ This cannot be undone.`,
                                       Refuse
                                     </GhostButton>
                                   </div>
+                                  )}
                                 </div>
                               )}
                               {r.nilReturn && reportTotal(r.id!) === 0 ? (
