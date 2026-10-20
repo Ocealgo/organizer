@@ -118,7 +118,10 @@ async function sandboxExtras() {
   })
 
   // Today, carrying the beat's own numbers the way the planner copies them.
-  await assignedDay('rep', todayLocal(), { visits: 12, orderValue: 50000 })
+  // Nobody is planned, out or finished on a day off. On a Sunday or a holiday
+  // today is left empty; the "Working day" switch reaches a worked day.
+  const todayOff = isDayOff(todayLocal())
+  if (!todayOff) await assignedDay('rep', todayLocal(), { visits: 12, orderValue: 50000 })
 
   /**
    * A month, divided across the days that can be worked.
@@ -143,8 +146,10 @@ async function sandboxExtras() {
   // division leaves it empty, so there would be nothing to look at. 23 and 14
   // against the 24-packet order below puts one product over and one under —
   // both states on one screen.
-  ravi.prod_wipes = { ...(ravi.prod_wipes ?? {}), [todayLocal()]: 23 }
-  ravi.prod_mini = { ...(ravi.prod_mini ?? {}), [todayLocal()]: 14 }
+  if (!todayOff) {
+    ravi.prod_wipes = { ...(ravi.prod_wipes ?? {}), [todayLocal()]: 23 }
+    ravi.prod_mini = { ...(ravi.prod_mini ?? {}), [todayLocal()]: 14 }
+  }
   const priya = divideByProductAcrossDays({ prod_wipes: 250, prod_mini: 350 }, workable)
 
   await db.doc(`sales_targets/${USERS.rep.uid}_${month}`).set({
@@ -189,23 +194,32 @@ async function sandboxExtras() {
   })
 
   // One order already placed, so both lines open on something other than zero
-  // and cancelling it is one tap from showing what that does.
-  await companyAllocation()
+  // and cancelling it is one tap from showing what that does. On a day off it
+  // is dated to the last working day — an order raised on a holiday would be
+  // somebody working it.
+  if (todayOff) {
+    let back = 1
+    while (isDayOff(dayBack(back))) back++
+    await companyAllocation({ createdAt: new Date(`${dayBack(back)}T12:00:00`).getTime() })
+  } else {
+    await companyAllocation()
+  }
 
   /**
    * Today, already worked and closed, for Ravi.
    *
    * The end-of-day expenses appear only once the day is over, so a world where
    * nobody has finished today is a world where that card cannot be looked at.
-   * Seeded whatever weekday it is — including a Sunday, which is the one
-   * exception to the rule the rest of this file keeps — because a sandbox
-   * exists to put screens in front of somebody, and waiting until Monday to
-   * see one is not that.
+   * Only on a working day, though: on a Sunday or a holiday nobody works, and
+   * a sandbox that put Ravi on the round anyway showed a holiday as worked.
+   * The "Working day" switch on the sandbox bar reaches his last worked day,
+   * which is left unclaimed for exactly this.
    *
    * 47 km: beyond 25, so the allowance opens on EX, and an odd number so the
    * fuel line shows paise rather than a round figure that hides the arithmetic.
    */
   const today = todayLocal()
+  if (todayOff) return
   await db.doc(`duty_sessions/sandbox_today_${USERS.rep.uid}`).set({
     uid: USERS.rep.uid, name: USERS.rep.name, date: today,
     routeId: 'route_demo', routeName: 'Beach Road',
