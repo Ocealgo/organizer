@@ -9,6 +9,7 @@ import { useConfirm } from '../../hooks/useConfirm'
 import { localDateStr, localMonthStr } from '../../utils/date'
 import DateInput from '../../components/DateInput'
 import AttendanceRegister from '../../attendance/AttendanceRegister'
+import { FilterBox, ScrollList } from '../../components/FilterBox'
 import {
   PageHeader, TabBar, StatGrid, StatCard, Section, EmptyState,
   ChipGroup, GhostButton, PrimaryButton, inputStyle,
@@ -286,7 +287,9 @@ export default function LeaveTracker({ onBack }: Props) {
 
         {/* ── REGISTER: the team's month, a letter a day ── */}
         {tab === 'register' && (
-          <AttendanceRegister reps={salesUsers} leaves={leaveRecords} holidays={holidays} />
+          <FilterBox title="Register" note="The month you pick changes everything in this box." testId="register-box">
+            <AttendanceRegister reps={salesUsers} leaves={leaveRecords} holidays={holidays} />
+          </FilterBox>
         )}
 
         {/* ── HOLIDAYS ── */}
@@ -315,6 +318,7 @@ export default function LeaveTracker({ onBack }: Props) {
               {holidays.length === 0 ? (
                 <EmptyState title="No holidays marked" body="Add the dates the team is off so leave is not counted against them." />
               ) : (
+                <ScrollList count={holidays.length} label="holidays">
                 <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
                   {holidays.map(h => (
                     <div key={h.id} style={{ display: 'flex', alignItems: 'baseline', gap: 16, borderTop: `0.5px solid ${t.border}`, padding: '14px 0' }}>
@@ -331,6 +335,7 @@ export default function LeaveTracker({ onBack }: Props) {
                     </div>
                   ))}
                 </div>
+                </ScrollList>
               )}
             </Section>
           </>
@@ -347,30 +352,36 @@ export default function LeaveTracker({ onBack }: Props) {
 
             {pendingApproval.length > 0 && (
               <Section label={`Leave requests · ${pendingApproval.length}`}>
+                <ScrollList count={pendingApproval.length} label="requests">
                 <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
                   {pendingApproval.map(leave => (
                     <RequestRow key={leave.id} leave={leave} yes="Approve" no="Reject"
                       onYes={() => handleApproveLeave(leave)} onNo={() => handleRejectLeave(leave)} />
                   ))}
                 </div>
+                </ScrollList>
               </Section>
             )}
 
             {pendingUnmark.length > 0 && (
               <Section label={`Unmark requests · ${pendingUnmark.length}`}>
+                <ScrollList count={pendingUnmark.length} label="requests">
                 <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
                   {pendingUnmark.map(leave => (
                     <RequestRow key={leave.id} leave={leave} yes="Remove" no="Keep"
                       onYes={() => handleApproveUnmark(leave)} onNo={() => handleRejectUnmark(leave)} />
                   ))}
                 </div>
+                </ScrollList>
               </Section>
             )}
 
+            {tab !== 'register' && (<>
             <Section label="Team">
               {salesUsers.length === 0 ? (
                 <EmptyState title="No sales staff yet" body="Approve a sales account and their leave will be tracked here." />
               ) : (
+                <ScrollList count={salesUsers.length} label="people">
                 <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
                   {salesUsers.map(u => {
                     const total = leaveRecords.filter(l => l.uid === u.uid && l.status === 'active').length
@@ -393,12 +404,14 @@ export default function LeaveTracker({ onBack }: Props) {
                     )
                   })}
                 </div>
+                </ScrollList>
               )}
             </Section>
 
-            <Section label="Records">
+            {/* The person filter in a box with the records it narrows. */}
+            <FilterBox title="Records" note="The person you pick changes the records in this box." testId="records-box">
               {salesUsers.length > 0 && (
-                <div style={{ marginBottom: 16 }}>
+                <div>
                   <ChipGroup
                     value={selectedPerson}
                     onChange={setSelectedPerson}
@@ -417,6 +430,7 @@ export default function LeaveTracker({ onBack }: Props) {
                       : 'No leave has been recorded yet.'}
                 />
               ) : (
+                <ScrollList count={displayed.length} label="records">
                 <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
                   {displayed.slice().sort((a, b) => b.markedAt - a.markedAt).map(leave => (
                     <div key={leave.id} style={{ borderTop: `0.5px solid ${t.border}`, padding: '14px 0' }}>
@@ -455,8 +469,10 @@ export default function LeaveTracker({ onBack }: Props) {
                     </div>
                   ))}
                 </div>
+                </ScrollList>
               )}
-            </Section>
+            </FilterBox>
+            </>)}
           </>
         )}
       </div>

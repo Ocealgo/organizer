@@ -14,6 +14,7 @@ import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
 import DayPicker, { HolidayNote } from '../../components/DayPicker'
 import WeekPicker from '../../components/WeekPicker'
+import { FilterBox, ScrollList } from '../../components/FilterBox'
 import {
   PageHeader, Section, Field, Note, EmptyState, Eyebrow,
   ChipGroup, GhostButton, PrimaryButton, inputStyle,
@@ -440,7 +441,8 @@ export default function ManagerLog({ onBack }: Props) {
 
         {/* ── AN ADMIN READING IT BACK ────────────────────────────────────── */}
         {isAdmin && (
-          <>
+          <FilterBox title="Entries" testId="managers-box"
+            note="The dates and manager you pick change everything in this box — the PDF too.">
             <div>
               <div style={{ marginBottom: 8 }}><Eyebrow>When</Eyebrow></div>
               <div className="oc-wrap" style={{ gap: 6, alignItems: 'center' }}>
@@ -511,7 +513,10 @@ export default function ManagerLog({ onBack }: Props) {
                 title="Nothing logged in this window"
                 body="Managers log meetings, days out with a rep and desk days. Approvals and dispatches are recorded elsewhere, against their name."
               />
-            ) : forAdmin.map(([date, rows]) => (
+            ) : (
+            <ScrollList count={forAdmin.reduce((n, [, r]) => n + r.length, 0)} label="entries" testId="managers-scroll">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 18, padding: '10px 0' }}>
+            {forAdmin.map(([date, rows]) => (
               <div key={date}>
                 <div style={{ marginBottom: 10 }}>
                   <Eyebrow>{longDay(date)}</Eyebrow>
@@ -548,7 +553,10 @@ export default function ManagerLog({ onBack }: Props) {
                 </div>
               </div>
             ))}
-          </>
+            </div>
+            </ScrollList>
+            )}
+          </FilterBox>
         )}
       </div>
     </div>

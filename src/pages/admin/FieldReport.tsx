@@ -13,6 +13,7 @@ import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
 import DayPicker, { HolidayNote } from '../../components/DayPicker'
 import WeekPicker from '../../components/WeekPicker'
+import { FilterBox, ScrollList } from '../../components/FilterBox'
 import { PageHeader, Eyebrow, StatGrid, StatCard, EmptyState } from '../../components/ui'
 import LazyRouteMap from '../../components/LazyRouteMap'
 import { RouteStop, stopLabel } from '../../components/RouteMap'
@@ -182,6 +183,8 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
 
       <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 26 }}>
 
+        <FilterBox title="Field activity" testId="field-box"
+          note="The dates and person you pick change everything in this box.">
         {/* Range */}
         <div>
           <div style={{ marginBottom: 8 }}><Eyebrow>When</Eyebrow></div>
@@ -239,6 +242,7 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
             body="Once an officer punches in, their day appears here with their meter readings and every outlet they visited."
           />
         ) : (
+          <ScrollList count={shown.length} label="days" testId="field-scroll">
           <div className="oc-list-flush" style={{ borderBottom: `0.5px solid ${t.border}` }}>
             {shown.map(s => {
               const vs = visitsFor(s.id)
@@ -546,7 +550,9 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
               )
             })}
           </div>
+          </ScrollList>
         )}
+        </FilterBox>
       </div>
     </div>
   )

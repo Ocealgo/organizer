@@ -15,6 +15,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import CustomSelect from '../../components/CustomSelect'
+import { FilterBox, ScrollList } from '../../components/FilterBox'
 import {
   PageHeader, TabBar, Eyebrow, EmptyState, Note, Field,
   GhostButton, PrimaryButton, inputStyle,
@@ -714,12 +715,14 @@ export default function Planner({ onBack }: Props) {
           ) : reps.length === 0 ? (
             <EmptyState title="No sales reps yet" body="Approve a sales officer and they will appear here." />
           ) : (
-            <>
+            <FilterBox title="Assign the week" testId="assign-box"
+              note="The person you pick changes the list in this box.">
               <Field label="Who">
                 <CustomSelect value={whoFilter} onChange={v => { setWhoFilter(v); setOpenRep(null) }}
                   options={repOptions} placeholder="Everybody" />
               </Field>
 
+              <ScrollList count={shownReps.length} label="reps" height={900}>
               {shownReps.map(rep => {
                 const planned = week.filter(d => planFor(rep.uid, d)).length
                 const workable = week.filter(d => !dayOff(d)).length
@@ -819,13 +822,15 @@ export default function Planner({ onBack }: Props) {
                   </div>
                 )
               })}
-            </>
+              </ScrollList>
+            </FilterBox>
           )
         )}
 
         {/* ── EVERYTHING ASSIGNED ───────────────────────────────────────── */}
         {tab === 'assigned' && (
-          <>
+          <FilterBox title="Everything assigned" testId="assigned-box"
+            note="The person and beat you pick change everything in this box.">
             <div className="oc-wrap" style={{ gap: 16 }}>
               <div style={{ flex: 1, minWidth: 200 }}>
                 <Field label="Who">
@@ -862,6 +867,7 @@ export default function Planner({ onBack }: Props) {
                     </span>
                   </div>
                   {!off && rows.length > 0 && (
+                    <ScrollList count={rows.length} label="assigned" height={480}>
                     <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
                       {rows.map(p => {
                         const leave = leaveOn(p.uid, p.date)
@@ -895,16 +901,18 @@ export default function Planner({ onBack }: Props) {
                         )
                       })}
                     </div>
+                    </ScrollList>
                   )}
                 </div>
               )
             })}
-          </>
+          </FilterBox>
         )}
 
         {/* ── TARGETS ───────────────────────────────────────────────────── */}
         {tab === 'targets' && (
-          <>
+          <FilterBox title="Targets" testId="targets-box"
+            note="The month and person you pick change everything in this box.">
             <div className="oc-wrap" style={{ alignItems: 'center', gap: 10 }}>
               <button className="oc-action" onClick={() => shiftTargetMonth(-1)}
                 aria-label="Previous month"
@@ -951,7 +959,8 @@ export default function Planner({ onBack }: Props) {
                 body="Approved sales officers appear here."
               />
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <ScrollList count={reps.filter(r => !targetWho || r.uid === targetWho).length} label="reps" height={1200}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '10px 0' }}>
                 {reps.filter(r => !targetWho || r.uid === targetWho).map(r => {
                   const existing = targets.find(x => x.uid === r.uid)
                   const ordered = packetsOrdered(allocations as any, r.uid, targetMonth)
@@ -1280,8 +1289,9 @@ export default function Planner({ onBack }: Props) {
                   )
                 })}
               </div>
+              </ScrollList>
             )}
-          </>
+          </FilterBox>
         )}
       </div>
     </div>

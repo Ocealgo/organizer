@@ -13,6 +13,7 @@ import DateInput from '../../components/DateInput'
 import DayPicker, { HolidayNote } from '../../components/DayPicker'
 import WeekPicker from '../../components/WeekPicker'
 import FieldReport from '../admin/FieldReport'
+import { FilterBox, ScrollList } from '../../components/FilterBox'
 import { PageHeader, Eyebrow, EmptyState, Note, TabBar, GhostButton } from '../../components/ui'
 import RankedBars from '../../components/RankedBars'
 import { localDateStr, localMonthStr, isSunday } from '../../utils/date'
@@ -698,6 +699,8 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
         {readError && <Note tone="warn">{readError}</Note>}
 
         {tab === 'eod' && (<>
+        <FilterBox title="End of day" testId="eod-box"
+          note="The dates, person, beat and outcome you pick change everything in this box.">
         {/* ── WHEN ──────────────────────────────────────────────────────── */}
         <div>
           <div style={{ marginBottom: 8 }}><Eyebrow>When</Eyebrow></div>
@@ -794,7 +797,10 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
               ? 'Nothing was logged in this window. Widen the dates, or show the days nothing happened on.'
               : 'No day in this window matches that. Try "Everything".'}
           />
-        ) : byDay.map(([date, rows]) => (
+        ) : (
+        <ScrollList count={cards.length} label="cards" height={900} testId="eod-scroll">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18, padding: '10px 0' }}>
+        {byDay.map(([date, rows]) => (
           <div key={date}>
             <div style={{ marginBottom: 10 }}>
               <Eyebrow>{longDay(date)}</Eyebrow>
@@ -948,6 +954,10 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
             </div>
           </div>
         ))}
+        </div>
+        </ScrollList>
+        )}
+        </FilterBox>
 
         <div style={{ fontSize: 12, color: t.text3, lineHeight: 1.6, maxWidth: 600 }}>
           Shops counted here are visits that were not abandoned. Packets are the orders the
@@ -958,6 +968,8 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
         </>)}
 
         {tab === 'report' && (<>
+        <FilterBox title="Report" testId="report-box"
+          note="The dates, product and beat you pick change everything in this box — the PDF too.">
         {/* ── FILTERS, one row of them ──────────────────────────────────── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
@@ -1063,6 +1075,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
               ))}
             </div>
           </div>
+          <ScrollList count={report.length} label="reps" height={520}>
           <RankedBars
             rows={report.map(r => ({
               id: r.uid,
@@ -1081,11 +1094,13 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
             showRank
             emptyText="Nothing ordered in this window yet."
           />
+          </ScrollList>
         </div>
 
         {/* ── THE TABLE: the same reps, in the graph's order ────────────── */}
         {report.length > 0 && (
-          <div className="oc-scroll-x" style={{ border: `0.5px solid ${t.border}`, borderRadius: 6 }}>
+          <div className="oc-scroll-x" style={{ border: `0.5px solid ${t.border}`, borderRadius: 6,
+                                                ...(report.length > 10 ? { maxHeight: 560, overflowY: 'auto' } : {}) }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 740 }}>
               <thead>
                 <tr>
@@ -1161,6 +1176,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
             </table>
           </div>
         )}
+        </FilterBox>
 
         <div style={{ fontSize: 12, color: t.text3, lineHeight: 1.6, maxWidth: 600 }}>
           The product filter narrows packets, value, targets and days met — the figures a
