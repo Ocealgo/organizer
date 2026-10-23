@@ -171,8 +171,19 @@ test('coverage can be read for one person', async ({ page, loginAs }) => {
   await expect(page.getByTestId('coverage-row-route_a')).toContainText('50%')
   await expect(page.getByTestId('coverage-row-all')).toContainText('All their beats')
 
-  // The box scrolls rather than growing without end.
-  expect(await box.evaluate(e => getComputedStyle(e).maxHeight)).toBe('380px')
+  // Two beats is one page: no pager.
+  await expect(box.locator('..').getByTestId('pager')).toHaveCount(0)
+})
+
+test('a long beat list is read ten at a time', async ({ page, loginAs }) => {
+  for (let i = 1; i <= 12; i++) await beat(`route_${String(i).padStart(2, '0')}`, `Beat ${String(i).padStart(2, '0')}`, ['party_shop'])
+  await loginAs('manager')
+  await openReports(page)
+  const pager = page.getByTestId('coverage-scroll').locator('..').getByTestId('pager')
+  await expect(pager).toContainText('1–10 of 12')
+  await pager.getByRole('button', { name: 'Next page' }).click()
+  await expect(pager).toContainText('11–12 of 12')
+  await expect(page.locator('[data-testid^="coverage-row-route_"]')).toHaveCount(2)
 })
 
 test('coverage below 85% only, worst first', async ({ page, loginAs }) => {

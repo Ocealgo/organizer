@@ -150,6 +150,7 @@ export function ThemeProvider({ children, userId }: { children: ReactNode; userI
     const root = document.documentElement.style
     root.setProperty('--oc-text', t.text)
     root.setProperty('--oc-text2', t.text2)
+    root.setProperty('--oc-text3', t.text3)
     root.setProperty('--oc-hover', t.hover)
     root.setProperty('--oc-accent', t.accent)
     root.setProperty('--oc-border', t.border)

@@ -3,7 +3,7 @@ import { collection, query, where } from 'firebase/firestore'
 import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
 import {
-  AppUser, DutySession, GeoPoint, LocationIssue, LOCATION_ISSUE_LABEL, OutletVisit,
+  AppUser, DutySession, GeoPoint, LocationIssue, LOCATION_ISSUE_LABEL, OutletVisit, LeaveRecord,
   RemoteContact, ORDER_CHANNEL_LABEL,
   OUTLET_TYPE_LABEL, ODOMETER_STATUS_LABEL, VISIT_OUTCOME_LABEL,
 } from '../../types'
@@ -13,13 +13,15 @@ import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
 import DayPicker, { HolidayNote } from '../../components/DayPicker'
 import WeekPicker from '../../components/WeekPicker'
-import { FilterBox, ScrollList } from '../../components/FilterBox'
+import { FilterBox } from '../../components/FilterBox'
+import { usePaged } from '../../components/Pager'
 import { PageHeader, Eyebrow, StatGrid, StatCard, EmptyState } from '../../components/ui'
 import LazyRouteMap from '../../components/LazyRouteMap'
 import { RouteStop, stopLabel } from '../../components/RouteMap'
 import { proximity } from '../../device/location'
 import { urlFor } from '../../device/photo'
 import { localDateStr, localMonthStr } from '../../utils/date'
+import { dayOf, statusOf, summaryOf } from '../../attendance/attendance'
 
 interface Props {
   onBack: () => void
@@ -107,6 +109,7 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
   const [sessions, setSessions] = useState<DutySession[]>([])
   const [visits, setVisits] = useState<OutletVisit[]>([])
   const [contacts, setContacts] = useState<RemoteContact[]>([])
+  const [leaves, setLeaves] = useState<LeaveRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [readError, setReadError] = useState<string | null>(null)
 
@@ -134,7 +137,8 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
     const u1 = byDate('duty_sessions', v => setSessions(v as DutySession[]))
     const u2 = byDate('outlet_visits', v => setVisits(v as OutletVisit[]))
     const u3 = byDate('remote_contacts', v => setContacts(v as RemoteContact[]))
-    return () => { u1(); u2(); u3() }
+    const u4 = byDate('leave_records', v => setLeaves(v as LeaveRecord[]))
+    return () => { u1(); u2(); u3(); u4() }
   }, [range.from, range.to])
 
   const shown = useMemo(() => {
@@ -160,6 +164,48 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
     const noMeter = relevant.filter(s => (s.odometerStatus ?? 'recorded') !== 'recorded').length
     return { days: relevant.length, visits: vs.length, km, stillOut, noMeter }
   }, [shown, visits, who])
+
+  /**
+   * Everybody's attendance in the window, including the people who never
+   * started a day — the sessions list below only knows about those who did.
+   * Read the way the attendance register reads it, so the two agree.
+   */
+  const attendance = useMemo(() => {
+    const today = localDateStr()
+    const reps = users
+      .filter(u => u.role === 'offline_sales' || u.role === 'online_sales')
+      .filter(u => who === 'all' || u.uid === who)
+      .sort((a, b) => a.name.localeCompare(b.name))
+    const dates: string[] = []
+    for (let d = range.from; d <= range.to && d <= today; d = addDays(d, 1)) dates.push(d)
+    return reps.map(u => {
+      const days = dates.map(d => dayOf(u.uid, d, today, sessions, leaves, holidayOn))
+      return { uid: u.uid, name: u.name, days, sum: summaryOf(days) }
+    })
+  }, [users, who, range.from, range.to, sessions, leaves, holidayOn])
+
+  /** One day across the team, in one line: who is in, who is not, and why. */
+  const dayLine = useMemo(() => {
+    if (mode !== 'day') return null
+    const marks = attendance.map(a => a.days[0]).filter(Boolean)
+    const n = (f: (d: typeof marks[number]) => boolean) => marks.filter(f).length
+    return {
+      in: n(d => d.mark === 'present' || d.mark === 'auto_closed'),
+      notYet: n(d => d.mark === 'not_yet'),
+      half: n(d => d.mark === 'half'),
+      leave: n(d => d.mark === 'leave'),
+      absent: n(d => d.mark === 'absent'),
+      appeal: n(d => d.appealPending),
+      off: marks.length > 0 && marks.every(d => d.dayOff),
+    }
+  }, [attendance, mode])
+
+  // Ten a page, for both lists.
+  const attPage = usePaged(attendance)
+  const dayPage = usePaged(shown)
+
+  const toneColor = (tone: string) =>
+    tone === 'good' ? t.good : tone === 'warn' ? t.warn : tone === 'off' ? t.off : t.text3
 
   const toggle = (id: string) =>
     setOpen(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -233,6 +279,47 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
             context={totals.noMeter > 0 ? `${totals.noMeter} days with no meter` : 'All from meter readings'} />
         </StatGrid>
 
+        {/* Attendance: everybody, not just who started a day. */}
+        {!loading && attendance.length > 0 && (
+          <div data-testid="field-attendance">
+            <div style={{ marginBottom: 8 }}><Eyebrow>Attendance</Eyebrow></div>
+            {dayLine && (
+              <div data-testid="field-attendance-line" style={{ fontSize: 13, color: dayLine.off ? t.off : t.text, marginBottom: 10 }}>
+                {dayLine.off ? 'A day off for everyone'
+                  : <>
+                      <b>{dayLine.in}</b> in
+                      {dayLine.notYet > 0 && <> · <b>{dayLine.notYet}</b> not started yet</>}
+                      {dayLine.half > 0 && <> · <b>{dayLine.half}</b> half day</>}
+                      {dayLine.leave > 0 && <> · <b>{dayLine.leave}</b> on leave</>}
+                      {dayLine.absent > 0 && <> · <b>{dayLine.absent}</b> absent</>}
+                      {dayLine.appeal > 0 && <span style={{ color: t.warn }}> · {dayLine.appeal} appeal waiting</span>}
+                    </>}
+              </div>
+            )}
+            <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+              {attPage.shown.map(a => {
+                const one = mode === 'day' ? a.days[0] : null
+                const st = one ? statusOf(one) : null
+                const rest = [a.sum.half && `${a.sum.half} half`, a.sum.leave && `${a.sum.leave} leave`,
+                              a.sum.absent && `${a.sum.absent} absent`,
+                              a.sum.appealsPending && `${a.sum.appealsPending} appeal waiting`].filter(Boolean).join(' · ')
+                return (
+                  <div key={a.uid} data-testid={`field-att-${a.uid}`}
+                    style={{ display: 'flex', alignItems: 'baseline', gap: 16, borderTop: `0.5px solid ${t.border}`, padding: '11px 4px' }}>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 500, color: t.text }}>{a.name}</span>
+                    <span style={{ fontSize: 13, textAlign: 'right',
+                                   color: st ? toneColor(st.tone) : a.sum.absent > 0 ? t.warn : t.text2 }}>
+                      {st ? (st.text || '—')
+                        : `Present ${a.sum.present} of ${a.sum.working} working days${rest ? ` · ${rest}` : ''}`}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+            {attPage.pager}
+          </div>
+        )}
+
         {/* Sessions */}
         {loading ? (
           <div style={{ fontSize: 14, color: t.text3 }}>Loading…</div>
@@ -242,9 +329,9 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
             body="Once an officer punches in, their day appears here with their meter readings and every outlet they visited."
           />
         ) : (
-          <ScrollList count={shown.length} label="days" testId="field-scroll">
-          <div className="oc-list-flush" style={{ borderBottom: `0.5px solid ${t.border}` }}>
-            {shown.map(s => {
+          <>
+          <div data-testid="field-scroll" className="oc-list-flush" style={{ borderBottom: `0.5px solid ${t.border}` }}>
+            {dayPage.shown.map(s => {
               const vs = visitsFor(s.id)
               const cs = contactsFor(s.id)
               // Derived, never stored. A day with contacts and no visits was
@@ -550,7 +637,8 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
               )
             })}
           </div>
-          </ScrollList>
+          {dayPage.pager}
+          </>
         )}
         </FilterBox>
       </div>

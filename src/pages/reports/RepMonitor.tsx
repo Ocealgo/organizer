@@ -5,15 +5,17 @@ import { db } from '../../firebase'
 import {
   AppUser, OutletVisit, DutySession, WorkPlan, SalesRoute, SalesTarget,
   UnifiedAllocation, OutletType, OUTLET_TYPE_LABEL, ExpenseEntry, Party, Product, Holiday,
-  dailyTargetFor, packetsOrderedOn, dateOfMs, routePlaces, productDailyTargets,
+  LeaveRecord, dailyTargetFor, packetsOrderedOn, dateOfMs, routePlaces, productDailyTargets,
 } from '../../types'
+import { dayOf, statusOf, summaryOf, Summary } from '../../attendance/attendance'
 import { useTheme } from '../../context/ThemeContext'
 import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
 import DayPicker, { HolidayNote } from '../../components/DayPicker'
 import WeekPicker from '../../components/WeekPicker'
 import FieldReport from '../admin/FieldReport'
-import { FilterBox, ScrollList } from '../../components/FilterBox'
+import { FilterBox } from '../../components/FilterBox'
+import { usePaged } from '../../components/Pager'
 import { PageHeader, Eyebrow, EmptyState, Note, TabBar, GhostButton } from '../../components/ui'
 import RankedBars from '../../components/RankedBars'
 import { localDateStr, localMonthStr, isSunday } from '../../utils/date'
@@ -65,6 +67,8 @@ export interface RepWeek {
   daysMet: number
   meterKm: number
   expenses: number
+  /** Attendance over the window, as the register reads it. */
+  att: Summary
 }
 
 /**
@@ -169,6 +173,8 @@ interface Eod {
   expense: { total: number; allowance: number; fuel: number; other: number } | null
   /** A fuel claim above what the meter said — the one worth a second look. */
   fuelAboveMeter: boolean
+  /** The day's attendance in words — absent, on leave, appeal waiting — for a card with no session. */
+  att: { text: string; tone: 'good' | 'warn' | 'off' | 'muted' }
 }
 
 export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
@@ -185,6 +191,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
   const [targets, setTargets] = useState<SalesTarget[]>([])
   const [allocations, setAllocations] = useState<UnifiedAllocation[]>([])
   const [expenses, setExpenses] = useState<ExpenseEntry[]>([])
+  const [leaves, setLeaves] = useState<LeaveRecord[]>([])
   const [parties, setParties] = useState<Party[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [readError, setReadError] = useState<string | null>(null)
@@ -286,7 +293,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
   useEffect(() => {
     if (tab === 'field') return
     setReadError(null)
-    setPending(6)
+    setPending(7)
     /** Wraps a listener so its first answer, good or bad, counts it as arrived. */
     const first = () => {
       let done = false
@@ -313,7 +320,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
     // months it touches rather than by its days.
     const months = [...new Set(eachDay(from, to).map(d => d.slice(0, 7)))].slice(0, 12)
 
-    const arrived = Array.from({ length: 6 }, first)
+    const arrived = Array.from({ length: 7 }, first)
     const unsubs = [
       onSnapshot(
         query(collection(db, 'outlet_visits'), where('date', '>=', from), where('date', '<=', to)),
@@ -346,6 +353,12 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
         query(collection(db, 'expense_entries'), where('date', '>=', from), where('date', '<=', to)),
         s => { arrived[5](); setExpenses(s.docs.map(d => ({ id: d.id, ...d.data() } as ExpenseEntry))) },
         fail('the expenses', arrived[5]),
+      ),
+      // Leave and automatic absences, so a rep who did not work says why.
+      onSnapshot(
+        query(collection(db, 'leave_records'), where('date', '>=', from), where('date', '<=', to)),
+        s => { arrived[6](); setLeaves(s.docs.map(d => ({ id: d.id, ...d.data() } as LeaveRecord))) },
+        fail('the leave', arrived[6]),
       ),
     ]
     return () => unsubs.forEach(u => u())
@@ -438,7 +451,11 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
          * weekday also only when no beat was assigned: a day somebody planned
          * and nobody showed up for is worth seeing.
          */
-        const quiet = !expected && !happened && (isSunday(date) || holidayOn.has(date) || !plan)
+        // Absent, on leave, asked for leave: a working day somebody missed is
+        // never quiet — the day's picture is who worked, and who did not and why.
+        const att = dayOf(r.uid, date, localDateStr(), sessions, leaves, holidayOn)
+        const missedDay = ['absent', 'half', 'leave', 'requested'].includes(att.mark)
+        const quiet = !expected && !happened && !missedDay && (isSunday(date) || holidayOn.has(date) || !plan)
         if (!showQuiet && quiet) continue
 
         if (outcome === 'met' && !(target !== null && packets >= target)) continue
@@ -461,19 +478,22 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
           target, packets, orders, present,
           day, startAt: session?.startAt, endAt: session?.endAt,
           meterKm, visitKm, expense, fuelAboveMeter,
+          att: statusOf(att),
         })
       }
     }
     // Newest day first, people alphabetical inside it.
     return out.sort((a, b) => b.date.localeCompare(a.date) || a.name.localeCompare(b.name))
   }, [from, to, reps, who, beat, outcome, showQuiet, visits, sessions, plans, routes,
-      targets, allocations, expenses, holidayOn])
+      targets, allocations, expenses, holidayOn, leaves])
 
+  // Ten cards a page; the page's cards are grouped by day.
+  const cardPage = usePaged(cards)
   const byDay = useMemo(() => {
     const m = new Map<string, Eod[]>()
-    cards.forEach(c => { if (!m.has(c.date)) m.set(c.date, []); m.get(c.date)!.push(c) })
+    cardPage.shown.forEach(c => { if (!m.has(c.date)) m.set(c.date, []); m.get(c.date)!.push(c) })
     return [...m.entries()]
-  }, [cards])
+  }, [cardPage.shown])
 
   /**
    * The report: one row per rep over the window, every figure from the same
@@ -515,6 +535,8 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
         && (!rProduct || a.productId === rProduct))
       const theirSessions = sessions.filter(se => se.uid === r.uid && inDays.has(se.date))
       const theirSpend = expenses.filter(e => e.userId === r.uid && inDays.has(e.date))
+      // Attendance over the whole window, beat or not: it is the person's.
+      const att = summaryOf(days.map(d => dayOf(r.uid, d, today, sessions, leaves, holidayOn)))
 
       // Targets and days met, a day at a time, for the product in question.
       let target = 0
@@ -570,6 +592,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
           n + ((se.odometerStatus ?? 'recorded') === 'recorded' && typeof se.claimedDistanceKm === 'number'
             ? se.claimedDistanceKm : 0), 0)),
         expenses: Math.round(theirSpend.reduce((n, e) => n + (e.amount || 0), 0) * 100) / 100,
+        att,
       }
     })
     // The table reads in the graph's order, so the two say the same thing in
@@ -577,7 +600,8 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
     .sort((a, b) => (rankValue(b) - rankValue(a))
       || a.name.localeCompare(b.name))
   }, [tab, repFrom, repTo, reps, plans, visits, allocations, sessions, expenses, targets,
-      parties, rProduct, rBeat, rank, holidayOn])
+      parties, rProduct, rBeat, rank, holidayOn, leaves])
+  const reportPage = usePaged(report)
 
   /**
    * The report as a PDF, with whatever filters are on screen — the file says
@@ -704,7 +728,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
         {/* ── WHEN ──────────────────────────────────────────────────────── */}
         <div>
           <div style={{ marginBottom: 8 }}><Eyebrow>When</Eyebrow></div>
-          <div className="oc-scroll-x" style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
             {(['day', 'week', 'month', 'custom'] as RangeMode[]).map(m => (
               <button key={m} className="oc-action" onClick={() => setMode(m)} style={chip(mode === m)}>
                 {m === 'day' ? 'A day' : m === 'week' ? 'A week' : m === 'month' ? 'A month' : 'A range'}
@@ -767,7 +791,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
 
         <div>
           <div style={{ marginBottom: 8 }}><Eyebrow>Against the target</Eyebrow></div>
-          <div className="oc-scroll-x" style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {([
               ['all', `Everything · ${cards.length}`],
               ['met', `Met · ${tally.met}`],
@@ -798,8 +822,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
               : 'No day in this window matches that. Try "Everything".'}
           />
         ) : (
-        <ScrollList count={cards.length} label="cards" height={900} testId="eod-scroll">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 18, padding: '10px 0' }}>
+        <div data-testid="eod-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 18, padding: '10px 0' }}>
         {byDay.map(([date, rows]) => (
           <div key={date}>
             <div style={{ marginBottom: 10 }}>
@@ -835,14 +858,17 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
                       {/* The same words Field activity uses, so the two screens agree. */}
                       <span data-testid={`eod-day-${c.uid}-${c.date}`} style={{
                         fontSize: 12, whiteSpace: 'nowrap',
-                        color: c.day === 'out' || c.day === 'auto_closed' ? t.warn : t.text3,
-                        fontWeight: c.day === 'out' ? 500 : 400,
+                        color: c.day === 'out' || c.day === 'auto_closed' ? t.warn
+                          : c.day === 'not_started' && c.att.tone === 'warn' ? t.warn
+                          : c.day === 'not_started' && c.att.tone === 'off' ? t.off : t.text3,
+                        fontWeight: c.day === 'out' || (c.day === 'not_started' && c.att.tone === 'warn') ? 500 : 400,
                       }}>
                         {c.day === 'out' ? `Still out · since ${hhmm(c.startAt)}`
                           : c.day === 'finished' ? `Finished · ${hhmm(c.startAt)}–${hhmm(c.endAt)}`
                           : c.day === 'auto_closed' ? `${hhmm(c.startAt)}–${hhmm(c.endAt)}`
-                          : c.holiday ? `Holiday · ${c.holiday}`
-                          : 'Not started'}
+                          // No day started: what the attendance says instead —
+                          // absent, on leave, an appeal waiting, a holiday.
+                          : c.att.text || 'Not started'}
                       </span>
                       {/* Said by the system, not the rep — the end time is when
                           the nightly job closed it, and no distance was claimed. */}
@@ -955,8 +981,8 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
           </div>
         ))}
         </div>
-        </ScrollList>
         )}
+        {cardPage.pager}
         </FilterBox>
 
         <div style={{ fontSize: 12, color: t.text3, lineHeight: 1.6, maxWidth: 600 }}>
@@ -1075,7 +1101,6 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
               ))}
             </div>
           </div>
-          <ScrollList count={report.length} label="reps" height={520}>
           <RankedBars
             rows={report.map(r => ({
               id: r.uid,
@@ -1094,17 +1119,16 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
             showRank
             emptyText="Nothing ordered in this window yet."
           />
-          </ScrollList>
         </div>
 
         {/* ── THE TABLE: the same reps, in the graph's order ────────────── */}
         {report.length > 0 && (
-          <div className="oc-scroll-x" style={{ border: `0.5px solid ${t.border}`, borderRadius: 6,
-                                                ...(report.length > 10 ? { maxHeight: 560, overflowY: 'auto' } : {}) }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 740 }}>
+          <>
+          <div className="oc-scroll-x oc-stack-wrap" style={{ border: `0.5px solid ${t.border}`, borderRadius: 6 }}>
+            <table className="oc-stack" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 820 }}>
               <thead>
                 <tr>
-                  {['Rep', 'Area', 'Visits', 'Shops', 'Orders', 'Packets', 'Value', 'Target', 'Days met', 'Meter', 'Expenses']
+                  {['Rep', 'Area', 'Present', 'Visits', 'Shops', 'Orders', 'Packets', 'Value', 'Target', 'Days met', 'Meter', 'Expenses']
                     .map((h, i) => (
                       <th key={h} style={{
                         textAlign: i < 2 ? 'left' : 'right', padding: '10px 9px',
@@ -1115,14 +1139,14 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {report.map(r => {
+                {reportPage.shown.map(r => {
                   const num = { textAlign: 'right' as const, padding: '10px 9px', color: t.text,
                                 fontVariantNumeric: 'tabular-nums' as const, whiteSpace: 'nowrap' as const,
                                 borderBottom: `0.5px solid ${t.border}` }
                   const allMet = r.daysTargeted > 0 && r.daysMet === r.daysTargeted
                   return (
                     <tr key={r.uid} data-testid={`report-row-${r.uid}`}>
-                      <td style={{ ...num, textAlign: 'left', fontWeight: 500 }}>
+                      <td data-label="Rep" style={{ ...num, textAlign: 'left', fontWeight: 500 }}>
                         {r.name}
                         <div style={{ fontSize: 12, fontWeight: 400, color: t.text3 }}>
                           {r.daysWorked} day{r.daysWorked === 1 ? '' : 's'} worked
@@ -1131,7 +1155,7 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
                       {/* Two places and a count, so one rep's long list cannot
                           stretch the row and push the figures out of line. The
                           rest is a tap away, and on hover. */}
-                      <td title={r.areas.join(', ')}
+                      <td data-label="Area" title={r.areas.join(', ')}
                         style={{ ...num, textAlign: 'left', whiteSpace: 'normal', color: r.areas.length ? t.text : t.text3,
                                  minWidth: 120, maxWidth: 220 }}>
                         {r.areas.length === 0 ? '—'
@@ -1151,22 +1175,33 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
                           </button>
                         )}
                       </td>
-                      <td style={num}>{r.visits}</td>
-                      <td style={num}>{r.shops}</td>
-                      <td style={num}>{r.orders}</td>
-                      <td style={num}>{r.packets.toLocaleString('en-IN')}</td>
-                      <td style={num}>₹{r.value.toLocaleString('en-IN')}</td>
-                      <td style={{ ...num, color: r.target === null ? t.text3 : t.text }}>
+                      {/* Present of working days, and what the rest were. */}
+                      <td data-label="Present" data-testid={`report-att-${r.uid}`} style={num}>
+                        {r.att.present} / {r.att.working}
+                        {(r.att.half + r.att.leave + r.att.absent + r.att.appealsPending) > 0 && (
+                          <div style={{ fontSize: 11, color: r.att.absent > 0 ? t.warn : t.text3 }}>
+                            {[r.att.half && `${r.att.half} half`, r.att.leave && `${r.att.leave} leave`,
+                              r.att.absent && `${r.att.absent} absent`,
+                              r.att.appealsPending && `${r.att.appealsPending} appeal`].filter(Boolean).join(' · ')}
+                          </div>
+                        )}
+                      </td>
+                      <td data-label="Visits" style={num}>{r.visits}</td>
+                      <td data-label="Shops" style={num}>{r.shops}</td>
+                      <td data-label="Orders" style={num}>{r.orders}</td>
+                      <td data-label="Packets" style={num}>{r.packets.toLocaleString('en-IN')}</td>
+                      <td data-label="Value" style={num}>₹{r.value.toLocaleString('en-IN')}</td>
+                      <td data-label="Target" style={{ ...num, color: r.target === null ? t.text3 : t.text }}>
                         {r.target === null ? 'Not set' : r.target.toLocaleString('en-IN')}
                       </td>
-                      <td style={{ ...num, color: r.daysTargeted === 0 ? t.text3 : allMet ? t.good : t.text,
+                      <td data-label="Days met" style={{ ...num, color: r.daysTargeted === 0 ? t.text3 : allMet ? t.good : t.text,
                                    fontWeight: allMet ? 500 : 400 }}>
                         {r.daysTargeted === 0 ? '—' : `${r.daysMet} / ${r.daysTargeted}`}
                       </td>
-                      <td style={{ ...num, color: r.meterKm ? t.text : t.text3 }}>
+                      <td data-label="Meter" style={{ ...num, color: r.meterKm ? t.text : t.text3 }}>
                         {r.meterKm ? `${r.meterKm} km` : 'Nil'}
                       </td>
-                      <td style={{ ...num, color: r.expenses ? t.text : t.text3 }}>
+                      <td data-label="Expenses" style={{ ...num, color: r.expenses ? t.text : t.text3 }}>
                         {r.expenses ? `₹${Math.round(r.expenses).toLocaleString('en-IN')}` : 'None'}
                       </td>
                     </tr>
@@ -1175,12 +1210,15 @@ export default function RepMonitor({ onBack, initialTab, initialWho }: Props) {
               </tbody>
             </table>
           </div>
+          {reportPage.pager}
+          </>
         )}
         </FilterBox>
 
         <div style={{ fontSize: 12, color: t.text3, lineHeight: 1.6, maxWidth: 600 }}>
-          The product filter narrows packets, value, targets and days met — the figures a
-          product owns. Visits, shops, the meter and expenses are the rep's whole day either
+          Present counts working days (not Sundays or holidays) up to today, as the
+          attendance register reads them. The product filter narrows packets, value, targets
+          and days met — the figures a product owns. Visits, shops, the meter and expenses are the rep's whole day either
           way. With a beat chosen, only the days that beat was assigned are counted.
           Cancelled orders and abandoned visits are left out.
         </div>

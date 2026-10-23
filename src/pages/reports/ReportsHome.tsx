@@ -9,7 +9,8 @@ import {
 import { useTheme } from '../../context/ThemeContext'
 import DateInput from '../../components/DateInput'
 import DayPicker, { HolidayNote } from '../../components/DayPicker'
-import { FilterBox, ScrollList } from '../../components/FilterBox'
+import { FilterBox } from '../../components/FilterBox'
+import { usePaged } from '../../components/Pager'
 import CustomSelect from '../../components/CustomSelect'
 import LazyChart from '../../components/LazyChart'
 import RankedBars, { RankedRow } from '../../components/RankedBars'
@@ -291,6 +292,10 @@ export default function ReportsHome({
       : rows
   }, [coverage, covLow, covSort])
 
+  // Ten rows a page, for the lists that grow with the team and the network.
+  const pacePage = usePaged(pace?.reps ?? [])
+  const covPage = usePaged(covRows)
+
   // ── growth, over the last six months ──────────────────────────────────────
   const monthTotals = useMemo(
     () => monthlyTotals(monthAllocs, lastMonths(today, GROWTH_MONTHS), today, prod || undefined),
@@ -328,17 +333,17 @@ export default function ReportsHome({
     }
     return (
       <tr key={c.id} data-testid={`coverage-row-${c.id}`}>
-        <td style={{ ...cell, textAlign: 'left', whiteSpace: 'normal' }}>
+        <td data-label="Beat" style={{ ...cell, textAlign: 'left', whiteSpace: 'normal' }}>
           {c.name}
           {c.places && <div style={{ fontSize: 12, color: t.text3, fontWeight: 400 }}>{c.places}</div>}
         </td>
-        <td style={cell}>{c.shops}</td>
-        <td style={cell}>{c.visited}</td>
-        <td style={{ ...cell, color: cov !== null && cov < 85 ? t.warn : t.text }}>
+        <td data-label="Shops" style={cell}>{c.shops}</td>
+        <td data-label="Visited" style={cell}>{c.visited}</td>
+        <td data-label="Coverage" style={{ ...cell, color: cov !== null && cov < 85 ? t.warn : t.text }}>
           {cov === null ? '—' : `${cov}%`}
         </td>
-        <td style={cell}>{c.ordered}</td>
-        <td style={cell}>{eff === null ? '—' : `${eff}%`}</td>
+        <td data-label="Ordered" style={cell}>{c.ordered}</td>
+        <td data-label="Effective" style={cell}>{eff === null ? '—' : `${eff}%`}</td>
       </tr>
     )
   }
@@ -477,9 +482,8 @@ export default function ReportsHome({
 
                 {/* Each rep, the same five figures — the chart says how the team
                     is doing, this says who is carrying it. */}
-                <div className="oc-scroll-x" style={{ marginTop: 18, border: `0.5px solid ${t.border}`, borderRadius: 6,
-                                                    ...(pace.reps.length > 10 ? { maxHeight: 560, overflowY: 'auto' } : {}) }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 560 }}>
+                <div className="oc-scroll-x oc-stack-wrap" style={{ marginTop: 18, border: `0.5px solid ${t.border}`, borderRadius: 6 }}>
+                  <table className="oc-stack" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 560 }}>
                     <thead>
                       <tr>
                         {['Rep', 'Target', 'Ordered', 'Due by today', 'Pace', 'At this pace', 'Needed a day'].map((h, i) => (
@@ -492,7 +496,7 @@ export default function ReportsHome({
                       </tr>
                     </thead>
                     <tbody>
-                      {pace.reps.map(r => {
+                      {pacePage.shown.map(r => {
                         const on = pct(r.done, r.dueByToday)
                         const cell = { textAlign: 'right' as const, padding: '9px 10px', color: t.text,
                                        fontVariantNumeric: 'tabular-nums' as const, whiteSpace: 'nowrap' as const,
@@ -500,22 +504,23 @@ export default function ReportsHome({
                         const ahead = r.done >= r.dueByToday
                         return (
                           <tr key={r.uid} data-testid={`pace-row-${r.uid}`}>
-                            <td style={{ ...cell, textAlign: 'left', fontWeight: 500 }}>{r.name}</td>
-                            <td style={cell}>{r.target.toLocaleString('en-IN')}</td>
-                            <td style={cell}>{r.done.toLocaleString('en-IN')}</td>
-                            <td style={cell}>{r.dueByToday.toLocaleString('en-IN')}</td>
+                            <td data-label="Rep" style={{ ...cell, textAlign: 'left', fontWeight: 500 }}>{r.name}</td>
+                            <td data-label="Target" style={cell}>{r.target.toLocaleString('en-IN')}</td>
+                            <td data-label="Ordered" style={cell}>{r.done.toLocaleString('en-IN')}</td>
+                            <td data-label="Due by today" style={cell}>{r.dueByToday.toLocaleString('en-IN')}</td>
                             {/* Ahead or behind in words as well as colour. */}
-                            <td style={{ ...cell, color: ahead ? t.good : t.warn, fontWeight: 500 }}>
+                            <td data-label="Pace" style={{ ...cell, color: ahead ? t.good : t.warn, fontWeight: 500 }}>
                               {on === null ? '—' : `${on}% · ${ahead ? 'ahead' : 'behind'}`}
                             </td>
-                            <td style={cell}>{r.projected.toLocaleString('en-IN')}</td>
-                            <td style={cell}>{r.neededPerDay === null ? '—' : r.neededPerDay.toLocaleString('en-IN')}</td>
+                            <td data-label="At this pace" style={cell}>{r.projected.toLocaleString('en-IN')}</td>
+                            <td data-label="Needed a day" style={cell}>{r.neededPerDay === null ? '—' : r.neededPerDay.toLocaleString('en-IN')}</td>
                           </tr>
                         )
                       })}
                     </tbody>
                   </table>
                 </div>
+                {pacePage.pager}
                 <div style={{ fontSize: 12, color: t.text3, marginTop: 8, lineHeight: 1.6 }}>
                   At this pace carries the month so far on at the same rate per working day.
                   Needed a day is what clears the target from tomorrow. A target set for the
@@ -565,14 +570,13 @@ export default function ReportsHome({
                 {covWho || covArea ? 'No beats match these filters this month.' : 'No beats yet. Set them up in Beats.'}
               </div>
             ) : (
-              // A fixed height that scrolls, with the headings pinned at the
-              // top and the total pinned at the bottom, so neither scrolls away
-              // from the rows they explain.
-              <div data-testid="coverage-scroll" style={{
-                maxHeight: 380, overflow: 'auto',
+              // Ten beats a page, the total under them. On a phone each beat is
+              // a small card, so no figure is cut off at the edge.
+              <>
+              <div data-testid="coverage-scroll" className="oc-scroll-x oc-stack-wrap" style={{
                 border: `0.5px solid ${t.border}`, borderRadius: 6,
               }}>
-                <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 13, minWidth: 520 }}>
+                <table className="oc-stack" style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 13, minWidth: 520 }}>
                   <thead>
                     <tr>
                       {['Beat', 'Shops', 'Visited', 'Coverage', 'Ordered', 'Effective'].map((h, i) => (
@@ -591,11 +595,13 @@ export default function ReportsHome({
                         Every beat here is at 85% or more.
                       </td></tr>
                     )}
-                    {covRows.map(c => covRow(c, false))}
+                    {covPage.shown.map(c => covRow(c, false))}
                   </tbody>
                   <tfoot>{covRow(coverage.all, true)}</tfoot>
                 </table>
               </div>
+              {covPage.pager}
+              </>
             )}
             <div style={{ fontSize: 12, color: t.text3, marginTop: 8, lineHeight: 1.6 }}>
               {covRows.length} of {coverage.beats.length} {coverage.beats.length === 1 ? 'beat' : 'beats'} shown.
@@ -685,10 +691,10 @@ export default function ReportsHome({
             </div>
             {loading
               ? <div style={{ fontSize: 13, color: t.text3 }}>Loading…</div>
-              : <ScrollList count={ranked.length} label="people" height={520}><RankedBars rows={ranked} showRank={rankBy === 'strike'}
+              : <RankedBars rows={ranked} showRank={rankBy === 'strike'}
                   format={rankBy === 'visits' ? undefined : rankBy === 'strike' ? (n => `${n}%`) : inr}
                   emptyText={rankBy === 'strike'
-                    ? `Nobody has ${MIN_VISITS_FOR_RATE} or more visits in this window yet.` : undefined} /></ScrollList>}
+                    ? `Nobody has ${MIN_VISITS_FOR_RATE} or more visits in this window yet.` : undefined} />}
             {rankBy === 'strike' && (
               <div style={{ fontSize: 12, color: t.text3, marginTop: 10, lineHeight: 1.6 }}>
                 Visits that ended in an order. In general trade 60–75% is a good rep. Anyone with
@@ -726,8 +732,8 @@ export default function ReportsHome({
                 )
               })()}
             </div>
-            <div className="oc-scroll-x" style={{ border: `0.5px solid ${t.border}`, borderRadius: 6 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 440 }}>
+            <div className="oc-scroll-x oc-stack-wrap" style={{ border: `0.5px solid ${t.border}`, borderRadius: 6 }}>
+              <table className="oc-stack" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 440 }}>
                 <thead>
                   <tr>
                     {['Month', 'Order value', 'Packets', 'Orders', 'Change'].map((h, i) => (
@@ -747,16 +753,16 @@ export default function ReportsHome({
                                    borderBottom: `0.5px solid ${t.border}` }
                     return (
                       <tr key={m.month} data-testid={`growth-row-${m.month}`}>
-                        <td style={{ ...cell, textAlign: 'left', fontWeight: 500 }}>
+                        <td data-label="Month" style={{ ...cell, textAlign: 'left', fontWeight: 500 }}>
                           {m.label}
                           {!m.complete && <span style={{ fontWeight: 400, color: t.text3 }}> · so far</span>}
                           {m.partial && <span style={{ fontWeight: 400, color: t.text3 }}> · partial</span>}
                         </td>
-                        <td style={cell}>{inr(m.value)}</td>
-                        <td style={cell}>{m.packets.toLocaleString('en-IN')}</td>
-                        <td style={cell}>{m.orders}</td>
+                        <td data-label="Order value" style={cell}>{inr(m.value)}</td>
+                        <td data-label="Packets" style={cell}>{m.packets.toLocaleString('en-IN')}</td>
+                        <td data-label="Orders" style={cell}>{m.orders}</td>
                         {/* Up or down in words as well as colour. */}
-                        <td style={{ ...cell, color: c === null ? t.text3 : c >= 0 ? t.good : t.warn }}>
+                        <td data-label="Change" style={{ ...cell, color: c === null ? t.text3 : c >= 0 ? t.good : t.warn }}>
                           {!m.complete ? 'under way' : m.partial ? 'not counted' : c === null ? '—' : `${c >= 0 ? 'up' : 'down'} ${Math.abs(c)}%`}
                         </td>
                       </tr>

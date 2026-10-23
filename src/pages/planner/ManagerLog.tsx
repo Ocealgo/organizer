@@ -14,7 +14,8 @@ import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
 import DayPicker, { HolidayNote } from '../../components/DayPicker'
 import WeekPicker from '../../components/WeekPicker'
-import { FilterBox, ScrollList } from '../../components/FilterBox'
+import { FilterBox } from '../../components/FilterBox'
+import { usePaged } from '../../components/Pager'
 import {
   PageHeader, Section, Field, Note, EmptyState, Eyebrow,
   ChipGroup, GhostButton, PrimaryButton, inputStyle,
@@ -173,6 +174,16 @@ export default function ManagerLog({ onBack }: Props) {
     })
     return [...byDay.entries()].sort((a, b) => b[0].localeCompare(a[0]))
   }, [entries, who])
+
+  // Ten entries a page, newest day first, regrouped by day within the page.
+  const adminFlat = useMemo(() => forAdmin.flatMap(([, rows]) =>
+    [...rows].sort((a, b) => a.name.localeCompare(b.name) || a.createdAt - b.createdAt)), [forAdmin])
+  const adminPage = usePaged(adminFlat)
+  const adminShown = useMemo(() => {
+    const byDay = new Map<string, ManagerActivity[]>()
+    adminPage.shown.forEach(e => { if (!byDay.has(e.date)) byDay.set(e.date, []); byDay.get(e.date)!.push(e) })
+    return [...byDay.entries()]
+  }, [adminPage.shown])
 
   const managers = useMemo(() => {
     const seen = new Map<string, string>()
@@ -514,9 +525,9 @@ export default function ManagerLog({ onBack }: Props) {
                 body="Managers log meetings, days out with a rep and desk days. Approvals and dispatches are recorded elsewhere, against their name."
               />
             ) : (
-            <ScrollList count={forAdmin.reduce((n, [, r]) => n + r.length, 0)} label="entries" testId="managers-scroll">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 18, padding: '10px 0' }}>
-            {forAdmin.map(([date, rows]) => (
+            <>
+            <div data-testid="managers-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 18, padding: '10px 0' }}>
+            {adminShown.map(([date, rows]) => (
               <div key={date}>
                 <div style={{ marginBottom: 10 }}>
                   <Eyebrow>{longDay(date)}</Eyebrow>
@@ -554,7 +565,8 @@ export default function ManagerLog({ onBack }: Props) {
               </div>
             ))}
             </div>
-            </ScrollList>
+            {adminPage.pager}
+            </>
             )}
           </FilterBox>
         )}

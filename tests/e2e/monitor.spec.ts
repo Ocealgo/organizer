@@ -4,7 +4,7 @@ import { testDate } from './fixtures/clock'
 import {
   companyAllocation, companyStock, noAllocations, noTargetsSet,
   packetTarget, todayLocal, closedDay, openDay, claimedExpense, noOneOnDuty, noWeeksFiled,
-  outletVisit, partyPlace, holiday,
+  outletVisit, partyPlace, holiday, autoMarkedLeave, approvedLeave, noLeaveRecorded, appealed,
 } from './fixtures/seed'
 
 /**
@@ -223,7 +223,7 @@ test('a holiday is named on the day and on the card', async ({ page, loginAs }) 
   await loginAs('manager')
   await openMonitor(page)
   await expect(page.getByTestId(`holiday-${todayLocal()}`)).toContainText('Vijayadashami')
-  await expect(page.getByTestId(`eod-day-e2e_rep-${todayLocal()}`)).toContainText('Holiday · Vijayadashami')
+  await expect(page.getByTestId(`eod-day-e2e_rep-${todayLocal()}`)).toContainText('Holiday — Vijayadashami')
 
   // The filter says so too: under the field, and red in its calendar.
   await expect(page.getByTestId('day-off-note')).toContainText('Holiday — Vijayadashami')
@@ -438,5 +438,42 @@ test.describe('field activity', () => {
     await page.keyboard.press('Escape')
     await page.getByRole('button', { name: 'Report', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Download PDF' })).toBeVisible()
+  })
+})
+
+test.describe('attendance in Monitor reps', () => {
+  test.beforeEach(async () => { await noOneOnDuty(); await noLeaveRecorded() })
+
+  test('Field activity names everybody for the day, absent ones too', async ({ page, loginAs }) => {
+    await closedDay('rep', todayLocal(), { km: 47 })
+    const id = await autoMarkedLeave('rep2', todayLocal(), 'full_day')
+    await appealed(id)
+    await loginAs('admin')
+    await page.getByRole('button', { name: /^Reports/ }).first().click()
+    await page.getByRole('button', { name: /^Monitor reps/ }).click()
+
+    await expect(page.getByTestId('field-attendance-line')).toContainText('1 in')
+    await expect(page.getByTestId('field-attendance-line')).toContainText('1 appeal waiting')
+    await expect(page.getByTestId('field-att-e2e_rep')).toContainText('Present')
+    await expect(page.getByTestId('field-att-e2e_rep2')).toContainText('Absent — appeal waiting')
+  })
+
+  test('End of day shows a card for a rep who did not work, and why', async ({ page, loginAs }) => {
+    await approvedLeave('rep2', todayLocal(), 'full_day')
+    await loginAs('admin')
+    await openMonitor(page)
+    await expect(page.getByTestId(`eod-day-e2e_rep2-${todayLocal()}`)).toContainText('On leave — full day')
+  })
+
+  test('the Report counts days present', async ({ page, loginAs }) => {
+    await closedDay('rep', todayLocal(), { km: 47 })
+    await loginAs('admin')
+    await page.getByRole('button', { name: /^Reports/ }).first().click()
+    await page.getByRole('button', { name: /^Monitor reps/ }).click()
+    await page.getByRole('button', { name: 'Report', exact: true }).click()
+    await page.getByRole('button', { name: 'A range' }).click()
+    await page.getByLabel('From').fill(todayLocal())
+    await page.getByLabel('To', { exact: true }).fill(todayLocal())
+    await expect(page.getByTestId('report-att-e2e_rep')).toContainText('1 / 1')
   })
 })

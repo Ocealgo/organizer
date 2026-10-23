@@ -9,7 +9,8 @@ import {
   OPPORTUNITY_LABEL, OPPORTUNITY_BLURB,
 } from '../../data/opportunities'
 import { PageHeader, Eyebrow, EmptyState, Note } from '../../components/ui'
-import { FilterBox, ScrollList } from '../../components/FilterBox'
+import { FilterBox } from '../../components/FilterBox'
+import { usePaged } from '../../components/Pager'
 import { localDateStr } from '../../utils/date'
 
 interface Props {
@@ -110,6 +111,8 @@ export default function OpportunitiesScreen({ onBack, uid, onVisit }: Props) {
     [parties, visits, allocations, uid])
 
   const total = ORDER.reduce((n, k) => n + grouped[k].length, 0)
+  // Ten shops a page, the most neglected first — every one of them, not a top sixty.
+  const page = usePaged(grouped[open])
 
   return (
     <div style={{ minHeight: 'var(--oc-screen)', background: t.bg, paddingBottom: 56 }}>
@@ -127,7 +130,7 @@ export default function OpportunitiesScreen({ onBack, uid, onVisit }: Props) {
 
         <FilterBox testId="opportunities-box" note="The list you pick changes what is shown in this box.">
         {/* One row of filters above the list */}
-        <div className="oc-scroll-x" style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {ORDER.map(k => {
             const n = grouped[k].length
             const on = open === k
@@ -161,9 +164,9 @@ export default function OpportunitiesScreen({ onBack, uid, onVisit }: Props) {
                 : 'Nothing matches this one. Try another list above.'}
             />
           ) : (
-            <ScrollList count={Math.min(60, grouped[open].length)} label="shops">
+            <>
             <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
-              {grouped[open].slice(0, 60).map(o => (
+              {page.shown.map(o => (
                 <div key={`${o.kind}-${o.party.id}`}
                   style={{ borderTop: `0.5px solid ${t.border}`, padding: '13px 0' }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
@@ -189,13 +192,9 @@ export default function OpportunitiesScreen({ onBack, uid, onVisit }: Props) {
                   </div>
                 </div>
               ))}
-              {grouped[open].length > 60 && (
-                <div style={{ fontSize: 12, color: t.text3, padding: '12px 0' }}>
-                  Showing the 60 most neglected of {grouped[open].length}.
-                </div>
-              )}
             </div>
-            </ScrollList>
+            {page.pager}
+            </>
           )}
         </div>
         </FilterBox>
