@@ -22,6 +22,10 @@ interface Props {
   onBack: () => void
   /** Set when leave closes the morning: the time the afternoon opens. */
   blockedUntil?: string
+  /** Whether a closed day has expenses to add — the done screen offers them. */
+  offerExpenses?: boolean
+  /** Back home, straight to the day's expenses. */
+  onAddExpenses?: () => void
 }
 
 type Mode = 'punch_in' | 'punch_out' | 'done'
@@ -31,7 +35,7 @@ const MIN_NOTE = 5
 const modeFor = (s: DutySession | null): Mode =>
   !s ? 'punch_in' : s.status === 'active' ? 'punch_out' : 'done'
 
-export default function DutyScreen({ appUser, session, onBack, blockedUntil }: Props) {
+export default function DutyScreen({ appUser, session, onBack, blockedUntil, offerExpenses, onAddExpenses }: Props) {
   const { t } = useTheme()
   const { modal: confirmModal, showConfirm } = useConfirm()
 
@@ -89,6 +93,9 @@ export default function DutyScreen({ appUser, session, onBack, blockedUntil }: P
 
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  // Set once the day is closed: the screen says so plainly before going home,
+  // because a form that just disappears left people unsure the day had ended.
+  const [done, setDone] = useState<{ at: number; km: number | null } | null>(null)
 
   const objectUrl = useRef<string | null>(null)
 
@@ -287,6 +294,9 @@ export default function DutyScreen({ appUser, session, onBack, blockedUntil }: P
           status: 'closed',
         })
         void cancelEndOfDayReminder()
+        setSaving(false)
+        setDone({ at: Date.now(), km: distance })
+        return
       }
       onBack()
     } catch (e: any) {
@@ -402,6 +412,33 @@ export default function DutyScreen({ appUser, session, onBack, blockedUntil }: P
    * that leads here, so the rule does not depend on that row staying the only
    * way in.
    */
+  if (done) {
+    return (
+      <div data-testid="day-done" style={{ minHeight: 'var(--oc-screen)', background: t.bg,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div style={{ textAlign: 'center', maxWidth: 420 }}>
+          <div aria-hidden style={{ width: 72, height: 72, borderRadius: '50%', margin: '0 auto 18px',
+                        background: t.good, color: '#fff', fontSize: 38, lineHeight: '72px' }}>✓</div>
+          <div style={{ fontSize: 26, fontWeight: 600, color: t.text }}>Done for the day</div>
+          <div style={{ fontSize: 15, color: t.text2, marginTop: 8, lineHeight: 1.6 }}>
+            Your day ended at {new Date(done.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+            {done.km !== null ? ` · ${done.km} km recorded` : ''}.
+            <br />Nothing more is logged today. See you tomorrow.
+          </div>
+          {offerExpenses && onAddExpenses ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginTop: 26 }}>
+              <PrimaryButton onClick={onAddExpenses} style={{ minWidth: 220 }}>Add today’s expenses</PrimaryButton>
+              <GhostButton onClick={onBack}>Later</GhostButton>
+            </div>
+          ) : (
+            <PrimaryButton onClick={onBack} style={{ marginTop: 26, minWidth: 200 }}>OK</PrimaryButton>
+          )}
+        </div>
+        {confirmModal}
+      </div>
+    )
+  }
+
   if (isIn && blockedUntil) {
     return (
       <div style={{ minHeight: 'var(--oc-screen)', background: t.bg }}>

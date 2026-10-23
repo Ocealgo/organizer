@@ -496,7 +496,12 @@ export default function SalesView({ name }: Props) {
       </div>
     )
     : <DutyScreen appUser={appUser} session={dutySession} onBack={() => setScreen('home')}
-        blockedUntil={inHalfDayMorning ? halfDayResumeAt : undefined} />
+        blockedUntil={inHalfDayMorning ? halfDayResumeAt : undefined}
+        offerExpenses={appUser.role !== 'sales_manager' || Math.max(todayVisitLog?.totalVisited ?? 0, outletVisitsToday) > 0}
+        onAddExpenses={() => {
+          setScreen('home')
+          setTimeout(() => document.getElementById('eod-expenses')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150)
+        }} />
   // `isOnDuty`, not "a session exists". A closed day still has one, and this is
   // the gate that is supposed to stop visits being filed against a day that is
   // already finished — including one that closes while this screen is open.
@@ -571,7 +576,7 @@ export default function SalesView({ name }: Props) {
       : isDayClosed && dutySession?.autoClosed
         ? `Your day was closed for you because it was left open — ${visitsToday} ${visitsToday === 1 ? 'visit' : 'visits'} logged, and no distance could be claimed.`
       : isDayClosed
-        ? `Your day is finished — ${visitsToday} ${visitsToday === 1 ? 'visit' : 'visits'} logged and ${dutySession?.claimedDistanceKm ?? 0} km travelled.`
+        ? `Done for the day ✓ — ${visitsToday} ${visitsToday === 1 ? 'visit' : 'visits'} logged and ${dutySession?.claimedDistanceKm ?? 0} km travelled.`
         : !isOnDuty
           ? 'You have not started your day yet. Punch in to unlock your outlet list.'
           : visitsToday === 0
@@ -709,13 +714,18 @@ export default function SalesView({ name }: Props) {
             Not on an auto-closed day: there was no closing reading, so no
             distance to work anything out from, and the rep never saw the
             end of that day in the app at all. */}
-        {isDayClosed && dutySession && !dutySession.autoClosed && appUser && (
+        {/* A manager's day is often meetings and desk work, with nothing to
+            claim: their expenses are offered only on a day they visited shops. */}
+        {isDayClosed && dutySession && !dutySession.autoClosed && appUser
+          && (appUser.role !== 'sales_manager' || visitsToday > 0) && (
+          <div id="eod-expenses">
           <EodExpenses
             appUser={appUser}
             session={dutySession}
             date={todayStr()}
             onOpenExpenses={() => { setExpenseDefaultToDay(true); setScreen('expenses') }}
           />
+          </div>
         )}
 
         {/* Leave status */}

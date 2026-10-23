@@ -97,7 +97,14 @@ test.describe('the duty gate', () => {
     await page.getByRole('button', { name: 'End the day' }).click()
     await page.getByRole('button', { name: 'End the day' }).last().click()
 
-    await expect(page.getByText(/Your day is finished — 0 visits logged and 63 km travelled/)).toBeVisible()
+    // Said plainly before going home, so nobody wonders whether it worked.
+    await expect(page.getByTestId('day-done')).toContainText('Done for the day')
+    await expect(page.getByTestId('day-done')).toContainText('63 km recorded')
+    // And the next step is one tap: straight to the day's expenses.
+    await page.getByRole('button', { name: 'Add today’s expenses' }).click()
+    await expect(page.getByText('Today’s expenses')).toBeVisible()
+
+    await expect(page.getByText(/Done for the day ✓ — 0 visits logged and 63 km travelled/)).toBeVisible()
     const logVisit = page.getByRole('button', { name: /Log a visit/ })
     await expect(logVisit).toBeDisabled()
     // Calls lock the same way, so the text is read off the visit tile.
