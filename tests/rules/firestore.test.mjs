@@ -497,6 +497,19 @@ describe('payment transactions', () => {
       txn({ collectedBy: U.rep2 })))
   })
 
+  it('a rep CAN ask for a change to their own collection, and nothing more', async () => {
+    await seed((db) => setDoc(doc(db, 'payment_transactions', 't1'), txn()))
+    await assertSucceeds(updateDoc(doc(asUser(U.rep), 'payment_transactions', 't1'),
+      { changeRequest: { kind: 'edit', amount: 600, reason: 'Typed 500', at: 2 } }))
+    await assertFails(updateDoc(doc(asUser(U.rep), 'payment_transactions', 't1'), { amount: 600 }))
+  })
+
+  it('a rep CANNOT ask for a change to a collection somebody else made', async () => {
+    await seed((db) => setDoc(doc(db, 'payment_transactions', 't1'), txn({ collectedBy: U.rep2 })))
+    await assertFails(updateDoc(doc(asUser(U.rep), 'payment_transactions', 't1'),
+      { changeRequest: { kind: 'edit', amount: 600, reason: 'x', at: 2 } }))
+  })
+
   it('a rep CANNOT approve their own payment', async () => {
     await seed((db) => setDoc(doc(db, 'payment_transactions', 't1'), txn()))
     await assertFails(updateDoc(doc(asUser(U.rep), 'payment_transactions', 't1'),
@@ -730,8 +743,44 @@ describe('expenses', () => {
     type: 'variable', category: 'bus_fare', amount: 100, createdAt: 1, ...over,
   })
 
+  const week = (uid, status) => ({
+    userId: uid, userName: uid, weekStart: '2026-07-27', weekEnd: '2026-08-02',
+    status, totalAmount: 100, createdAt: 1,
+  })
+
   it('a rep CAN create their own expense entry', async () => {
+    await seed((db) => setDoc(doc(db, 'expense_reports', 'r1'), week(U.rep, 'draft')))
     await assertSucceeds(setDoc(doc(asUser(U.rep), 'expense_entries', 'e_new'), entry(U.rep)))
+  })
+
+  it('a rep CANNOT add an entry to a submitted week', async () => {
+    await seed((db) => setDoc(doc(db, 'expense_reports', 'r1'), week(U.rep, 'submitted')))
+    await assertFails(setDoc(doc(asUser(U.rep), 'expense_entries', 'e_new'), entry(U.rep)))
+  })
+
+  it('a rep CANNOT edit or remove an entry of a submitted week', async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, 'expense_reports', 'r1'), week(U.rep, 'submitted'))
+      await setDoc(doc(db, 'expense_entries', 'e1'), entry(U.rep))
+    })
+    await assertFails(updateDoc(doc(asUser(U.rep), 'expense_entries', 'e1'), { amount: 900 }))
+    await assertFails(deleteDoc(doc(asUser(U.rep), 'expense_entries', 'e1')))
+  })
+
+  it('a rep CAN edit an entry once the week is sent back', async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, 'expense_reports', 'r1'), week(U.rep, 'rejected'))
+      await setDoc(doc(db, 'expense_entries', 'e1'), entry(U.rep))
+    })
+    await assertSucceeds(updateDoc(doc(asUser(U.rep), 'expense_entries', 'e1'), { amount: 120 }))
+  })
+
+  it('a rep CAN ask to reopen their submitted week, and nothing more', async () => {
+    await seed((db) => setDoc(doc(db, 'expense_reports', 'r1'), week(U.rep, 'submitted')))
+    await assertSucceeds(updateDoc(doc(asUser(U.rep), 'expense_reports', 'r1'),
+      { reopenRequest: { reason: 'Missed a bus fare', at: 2, byName: 'rep_1' } }))
+    await assertFails(updateDoc(doc(asUser(U.rep), 'expense_reports', 'r1'),
+      { reopenRequest: { reason: 'x', at: 3 }, status: 'rejected' }))
   })
 
   it('a rep CANNOT create an expense entry for another user', async () => {

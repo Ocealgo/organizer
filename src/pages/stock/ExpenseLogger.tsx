@@ -11,6 +11,7 @@ import {
   getDoc,
   deleteDoc,
   getDocs,
+  deleteField,
 } from 'firebase/firestore'
 import { onSnapshot } from '../../data/live'
 import { db } from '../../firebase'
@@ -195,6 +196,10 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
   const [varForm, setVarForm] = useState({ category: 'bus_fare' as ExpenseCategory, amount: '', km: '', customLabel: '', notes: '', noDutyReason: '', meterReason: '' })
   const [addDaDay, setAddDaDay] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [reopenReason, setReopenReason] = useState('')
+  const [askingReopen, setAskingReopen] = useState(false)
+  // Who reopens a submitted week: a manager's goes to an admin.
+  const reopener = appUser.role === 'sales_manager' ? 'an admin' : 'your manager'
   const [csvMode, setCsvMode] = useState(false)
   const [csvText, setCsvText] = useState('')
   const [fileLoaded, setFileLoaded] = useState(false)
@@ -280,9 +285,14 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
     return { id: ref.id, ...newReport }
   }
 
-  const syncReportTotal = async (reportId: string, delta: number) => {
-    const base = totalOf(entries.filter(e => e.reportId === reportId))
-    await updateDoc(doc(db, 'expense_reports', reportId), { totalAmount: base + delta })
+  // The total read back from the stored lines, after the write. Adding a delta
+  // to the listener's copy counted a change twice whenever the listener had
+  // already seen it.
+  const syncReportTotal = async (reportId: string, _delta?: number) => {
+    const snap = await getDocs(query(collection(db, 'expense_entries'),
+      where('userId', '==', appUser.uid), where('reportId', '==', reportId)))
+    const total = totalOf(snap.docs.map(d => d.data() as ExpenseEntry))
+    await updateDoc(doc(db, 'expense_reports', reportId), { totalAmount: total })
   }
 
   /**
@@ -484,7 +494,7 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
 
   const handleSubmitWeek = async () => {
     if (!report || weekEntries.length === 0) { await showAlert('Nothing to submit yet', 'Log at least one expense for the week first.'); return }
-    if (!await showConfirm('Submit this week?', `Expenses for ${weekLabel(activeWeekStart)} go to an admin for review. You can still edit them afterwards.`, 'Submit')) return
+    if (!await showConfirm('Submit this week?', `Expenses for ${weekLabel(activeWeekStart)} go for review. After this the week is locked — to change anything, ask ${reopener} to reopen it.`, 'Submit')) return
     setSubmitting(true)
     try {
       const total = totalOf(weekEntries)
@@ -576,7 +586,26 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
   const weekTotal = totalOf(weekEntries.filter(e => !leaveDates.has(e.date)))
   const dayTotal = leaveDates.has(selectedDay) ? 0 : totalOf(weekEntries.filter(e => e.date === selectedDay))
   const displayTotal = viewMode === 'day' ? dayTotal : weekTotal
-  const isLocked = report?.status === 'cleared'
+  // Submitted is locked as well as cleared: what the reviewer is reading must
+  // not change underneath them. Reopening is a request (below).
+  const isLocked = report?.status === 'cleared' || report?.status === 'submitted'
+
+  const handleAskReopen = async () => {
+    if (!report) return
+    if (!reopenReason.trim()) { await showAlert('Reason needed', 'Say what needs changing, so they know why.'); return }
+    setAskingReopen(true)
+    try {
+      await updateDoc(doc(db, 'expense_reports', report.id!), {
+        reopenRequest: { reason: reopenReason.trim(), at: Date.now(), byName: appUser.name },
+      })
+      await addDoc(collection(db, 'alerts'), {
+        type: 'expense_submitted',
+        message: `${appUser.name} asks to reopen expenses for ${weekLabel(report.weekStart)}: ${reopenReason.trim()}`,
+        relatedId: report.id!, read: false, toRole: 'admin_group', createdAt: Date.now(),
+      })
+      setReopenReason('')
+    } finally { setAskingReopen(false) }
+  }
 
   const money = (n: number) => `₹${n.toLocaleString('en-IN')}`
 
@@ -1069,8 +1098,28 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
               {report.nilReturn && weekTotal === 0 ? 'Declared as nothing to claim' : 'Submitted'}
               {report.submittedAt
                 ? ` on ${new Date(report.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`
-                : ''} and waiting on an admin. You can still edit entries.
+                : ''} and waiting for review. It is locked now — to change anything, ask {reopener} to reopen it.
             </Note>
+          )}
+          {report?.status === 'submitted' && (
+            report.reopenRequest ? (
+              <Note tone="warn">
+                You asked to reopen it: {report.reopenRequest.reason}. Waiting on {reopener}.
+              </Note>
+            ) : (
+              <Section label="Need to change something?">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 460 }}>
+                  <input value={reopenReason} onChange={e => setReopenReason(e.target.value)}
+                    placeholder="Missed Tuesday's bus fare" aria-label="Why reopen"
+                    style={inputStyle(t)} />
+                  <div>
+                    <GhostButton onClick={handleAskReopen} disabled={askingReopen}>
+                      {askingReopen ? 'Asking' : `Ask ${reopener} to reopen it`}
+                    </GhostButton>
+                  </div>
+                </div>
+              </Section>
+            )
           )}
 
           {report?.status === 'rejected' && (
@@ -1249,6 +1298,42 @@ This cannot be undone.`,
         relatedId: r.id!, read: false, toUid: r.userId, createdAt: Date.now(),
       })
       setRejectNote('')
+    } finally { setRejectingId(null) }
+  }
+
+  /** A filer's request for a submitted week back: reopen it (sent back for edits) or refuse. */
+  const handleReopen = async (r: ExpenseReport, yes: boolean) => {
+    if (!can(appUser, 'clear_expenses')) {
+      await showAlert('Not allowed', 'Reopening a week needs the clear_expenses permission. An admin can reopen it, or grant you the permission in Settings.')
+      return
+    }
+    if (!maySignOffFor(appUser, 'clear_expenses', { uid: r.userId, role: r.userRole })) {
+      await showAlert('An admin has to handle this one',
+        r.userId === appUser.uid
+          ? 'You cannot reopen your own claim.'
+          : `${r.userName} is at your own level, so their request goes to an admin.`)
+      return
+    }
+    const why = r.reopenRequest?.reason ?? ''
+    if (!await showConfirm(yes ? 'Reopen this week?' : 'Refuse to reopen?',
+      yes ? `${r.userName} can edit ${weekLabel(r.weekStart)} and submit it again.`
+          : `${weekLabel(r.weekStart)} stays submitted as it is.`,
+      yes ? 'Reopen' : 'Refuse')) return
+    setRejectingId(r.id!)
+    try {
+      await updateDoc(doc(db, 'expense_reports', r.id!), yes ? {
+        status: 'rejected', rejectedAt: Date.now(),
+        rejectedBy: appUser.uid, rejectedByName: appUser.name,
+        rejectNote: `Reopened at your request — ${why}`,
+        reopenRequest: deleteField(),
+      } : { reopenRequest: deleteField() })
+      await addDoc(collection(db, 'alerts'), {
+        type: 'expense_submitted',
+        message: yes
+          ? `${appUser.name} reopened your expenses for ${weekLabel(r.weekStart)}. Make the change and submit again.`
+          : `${appUser.name} kept your expenses for ${weekLabel(r.weekStart)} as submitted.`,
+        relatedId: r.id!, read: false, toUid: r.userId, createdAt: Date.now(),
+      })
     } finally { setRejectingId(null) }
   }
 
@@ -1452,7 +1537,7 @@ This cannot be undone.`,
                           </span>
                           <span style={{ display: 'block', fontSize: 13, fontWeight: 400, marginTop: 3,
                                          color: r.status === 'submitted' ? t.warn : t.text3 }}>
-                            {STATUS_TEXT[r.status] ?? r.status}
+                            {STATUS_TEXT[r.status] ?? r.status}{r.status === 'submitted' && r.reopenRequest ? ' · asks to reopen' : ''}
                           </span>
                         </span>
                       </button>
@@ -1593,6 +1678,29 @@ This cannot be undone.`,
 
                           {r.status === 'submitted' && (
                             <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 460 }}>
+                              {r.reopenRequest && (
+                                <div data-testid="reopen-request" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                  <Note tone="warn">
+                                    {r.userName} asks to reopen this week: {r.reopenRequest.reason}
+                                  </Note>
+                                  {!maySignOffFor(appUser, 'clear_expenses', { uid: r.userId, role: r.userRole }) ? (
+                                    <div style={{ fontSize: 13, color: t.text3 }}>
+                                      {can(appUser, 'clear_expenses')
+                                        ? `${r.userName} is at your own level, so an admin decides this.`
+                                        : 'Waiting on an admin — reopening needs the clear_expenses permission.'}
+                                    </div>
+                                  ) : (
+                                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                                    <PrimaryButton onClick={() => handleReopen(r, true)} disabled={!!clearingId || !!rejectingId}>
+                                      Reopen for editing
+                                    </PrimaryButton>
+                                    <GhostButton onClick={() => handleReopen(r, false)} disabled={!!clearingId || !!rejectingId}>
+                                      Refuse
+                                    </GhostButton>
+                                  </div>
+                                  )}
+                                </div>
+                              )}
                               {r.nilReturn && reportTotal(r.id!) === 0 ? (
                                 <Note>
                                   They declared nothing to claim for this week. Nothing is paid —

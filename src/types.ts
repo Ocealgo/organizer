@@ -301,6 +301,21 @@ export interface PaymentTransaction {
   confirmedAt?: number       // admin confirmation that cash reached company
   confirmedBy?: string
   confirmedByName?: string
+  /**
+   * Whoever collected it asking for a change, or for it to be removed. They
+   * cannot make it themselves: someone who signs off for them (a rep's manager
+   * or an admin, a manager's an admin) approves it, and the app makes it.
+   */
+  changeRequest?: {
+    kind: 'edit' | 'remove'
+    amount?: number
+    paymentMethod?: PaymentMethod
+    date?: string
+    notes?: string
+    reason: string
+    at: number
+    byName: string
+  }
 }
 
 /**
@@ -441,6 +456,12 @@ export interface ExpenseReport {
   clearedBy?: string
   clearedByName?: string
   clearNote?: string
+  /**
+   * The filer asking for a submitted week back. A submitted week is frozen;
+   * whoever signs off for them (a rep's manager or an admin, a manager's an
+   * admin) reopens it — by sending it back — or refuses.
+   */
+  reopenRequest?: { reason: string; at: number; byName: string }
   createdAt: number
 }
 

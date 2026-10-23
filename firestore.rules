@@ -127,6 +127,10 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys();
     }
 
+    function weekOpen(report) {
+      return report != null && report.data.status in ['draft', 'rejected'];
+    }
+
     function onlyChanged(fields) {
       return changedKeys().hasOnly(fields);
     }
@@ -321,7 +325,14 @@ service cloud.firestore {
                  && !('confirmedAt' in request.resource.data))
            );
 
-      allow update: if hasPerm('approve_payments');
+      // Whoever collected it may only ASK for a change (or its removal): the
+      // request goes to someone who can sign off for them — a rep's to their
+      // manager or an admin, a manager's to an admin — who makes the change.
+      allow update: if hasPerm('approve_payments')
+        || (approved()
+            && resource.data.collectedBy == request.auth.uid
+            && resource.data.status != 'rejected'
+            && onlyChanged(['changeRequest']));
 
       allow delete: if isAdmin()
         || (approved()
@@ -476,7 +487,12 @@ service cloud.firestore {
       allow update: if maySignOffFor(resource.data.userId, 'clear_expenses')
         || (approved()
             && resource.data.userId == request.auth.uid
-            && resource.data.status in ['draft', 'rejected']);
+            && resource.data.status in ['draft', 'rejected'])
+        // ...and once submitted, the owner may only ask for it to be reopened.
+        || (approved()
+            && resource.data.userId == request.auth.uid
+            && resource.data.status == 'submitted'
+            && onlyChanged(['reopenRequest']));
 
       allow delete: if isAdmin();
     }
@@ -487,12 +503,18 @@ service cloud.firestore {
         || hasPerm('view_reports')
         || resource.data.userId == request.auth.uid;
 
+      // An entry belongs to a week, and a submitted week is frozen: its lines
+      // change only once it is reopened (sent back), or the total a reviewer
+      // reads stops matching the lines under it. getAfter, so a week created
+      // in the same batch as its first lines counts as open.
       allow create: if approved()
         && request.resource.data.userId == request.auth.uid
-        && request.resource.data.amount >= 0;
+        && request.resource.data.amount >= 0
+        && weekOpen(getAfter(/databases/$(database)/documents/expense_reports/$(request.resource.data.reportId)));
 
       allow update, delete: if isAdmin()
-        || (approved() && resource.data.userId == request.auth.uid);
+        || (approved() && resource.data.userId == request.auth.uid
+            && weekOpen(get(/databases/$(database)/documents/expense_reports/$(resource.data.reportId))));
     }
 
     // ═════════════════════════════════════════════════════════════════════════
