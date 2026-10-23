@@ -717,3 +717,10 @@ export async function creditBillPaid(bill: number, paid: number): Promise<{ allo
 export async function storedField(path: string, field: string): Promise<unknown> {
   return (await getFirestore(admin()).doc(path).get()).data()?.[field]
 }
+
+/** The rep has appealed this leave: it waits on a manager. */
+export async function appealed(leaveId: string, reason = 'Phone battery died'): Promise<void> {
+  await getFirestore(admin()).doc(`leave_records/${leaveId}`).update({
+    status: 'unmark_requested', unmarkReason: reason,
+  })
+}

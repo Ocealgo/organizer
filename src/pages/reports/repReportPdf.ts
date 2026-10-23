@@ -34,6 +34,14 @@ const ordinal = (n: number) => {
   return `${n}${tail}`
 }
 
+/** Present of working days, and what the rest were, on a second line. */
+const attCell = (r: RepWeek) => {
+  const rest = [r.att.half && `${r.att.half} half`, r.att.leave && `${r.att.leave} leave`,
+                r.att.absent && `${r.att.absent} absent`].filter(Boolean).join(', ')
+  return `${r.att.present} / ${r.att.working}${rest ? `
+${rest}` : ''}`
+}
+
 export async function downloadRepReportPdf(rows: RepWeek[], meta: RepReportMeta): Promise<void> {
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([
     import('jspdf'),
@@ -106,12 +114,12 @@ export async function downloadRepReportPdf(rows: RepWeek[], meta: RepReportMeta)
   autoTable(doc, {
     startY: y,
     margin: { left: M, right: M },
-    head: [['Rep', 'Area', 'Days worked', 'Visits', 'Shops', 'Orders', 'Packets', 'Value',
+    head: [['Rep', 'Area', 'Present', 'Visits', 'Shops', 'Orders', 'Packets', 'Value',
             'Target', 'Days met', 'Meter', 'Expenses']],
     body: rows.map(r => [
       r.name,
       r.areas.length ? r.areas.join(', ') : '-',
-      r.daysWorked,
+      attCell(r),
       r.visits,
       r.shops,
       r.orders,

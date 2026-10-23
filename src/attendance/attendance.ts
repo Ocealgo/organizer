@@ -71,36 +71,81 @@ export function monthOf(
   uid: string, month: string, today: string,
   sessions: DutySession[], leaves: LeaveRecord[], holidays: Holiday[],
 ): Day[] {
-  const holidayOn = new Map(holidays.map(h => [h.date, h.name]))
-  return datesOfMonth(month).map(date => {
-    const session = sessions.find(s => s.uid === uid && s.date === date)
-    const all = leaves.filter(l => l.uid === uid && l.date === date)
-    const leave = all.find(standing) ?? all.find(l => l.status === 'pending_approval')
-    const automatic = !!leave?.autoMarked
-    const appealPending = leave?.status === 'unmark_requested'
-    const sunday = new Date(date + 'T00:00:00').getDay() === 0
-    const holiday = holidayOn.get(date)
-    const base = { date, session, leave, holiday, automatic, appealPending, dayOff: sunday || !!holiday }
+  return daysOf(uid, datesOfMonth(month), today, sessions, leaves, holidays)
+}
 
-    // Worked. Half a day of leave on a worked day is still half a day.
-    if (session) {
-      if (leave && standing(leave) && leave.leaveType === 'half_day') return { ...base, mark: 'half' as Mark }
-      return { ...base, mark: (session.autoClosed ? 'auto_closed' : 'present') as Mark }
+/** One rep's days, any run of them — a week, a range, a single day. */
+export function daysOf(
+  uid: string, dates: string[], today: string,
+  sessions: DutySession[], leaves: LeaveRecord[], holidays: Holiday[],
+): Day[] {
+  const holidayOn = new Map(holidays.map(h => [h.date, h.name]))
+  return dates.map(date => dayOf(uid, date, today, sessions, leaves, holidayOn))
+}
+
+/** One rep's day. */
+export function dayOf(
+  uid: string, date: string, today: string,
+  sessions: DutySession[], leaves: LeaveRecord[], holidayOn: Map<string, string>,
+): Day {
+  const session = sessions.find(s => s.uid === uid && s.date === date)
+  const all = leaves.filter(l => l.uid === uid && l.date === date)
+  const leave = all.find(standing) ?? all.find(l => l.status === 'pending_approval')
+  const automatic = !!leave?.autoMarked
+  const appealPending = leave?.status === 'unmark_requested'
+  const sunday = new Date(date + 'T00:00:00').getDay() === 0
+  const holiday = holidayOn.get(date)
+  const base = { date, session, leave, holiday, automatic, appealPending, dayOff: sunday || !!holiday }
+
+  // Worked. Half a day of leave on a worked day is still half a day.
+  if (session) {
+    if (leave && standing(leave) && leave.leaveType === 'half_day') return { ...base, mark: 'half' as Mark }
+    return { ...base, mark: (session.autoClosed ? 'auto_closed' : 'present') as Mark }
+  }
+  // A declared holiday is a day off for everyone, whatever else is on it. An
+  // automatic absence written before the holiday was declared does not stand
+  // against it, and leave taken on a holiday was never needed.
+  if (base.holiday) return { ...base, mark: 'holiday' as Mark }
+  if (leave && standing(leave)) {
+    if (leave.leaveType === 'half_day') return { ...base, mark: 'half' as Mark }
+    return { ...base, mark: (automatic ? 'absent' : 'leave') as Mark }
+  }
+  if (leave?.status === 'pending_approval') return { ...base, mark: 'requested' as Mark }
+  if (sunday) return { ...base, mark: 'off' as Mark }
+  if (date > today) return { ...base, mark: 'future' as Mark }
+  if (date === today) return { ...base, mark: 'not_yet' as Mark }
+  return { ...base, mark: 'none' as Mark }
+}
+
+/**
+ * A day in a few words, for a manager scanning the team — Monitor reps' lists
+ * and cards. An absence under appeal says so: it needs a decision, not a
+ * verdict.
+ */
+export function statusOf(d: Day): { text: string; tone: 'good' | 'warn' | 'off' | 'muted' } {
+  const s = d.session
+  const off = d.holiday ? `Holiday — ${d.holiday}` : 'Sunday'
+  switch (d.mark) {
+    case 'present': {
+      const when = s?.endAt ? `${hhmm(s.startAt)}–${hhmm(s.endAt)}` : `out since ${hhmm(s?.startAt)}`
+      return { text: `${d.dayOff ? `${off} · worked` : 'Present'} · ${when}`, tone: 'good' }
     }
-    // A declared holiday is a day off for everyone, whatever else is on it. An
-    // automatic absence written before the holiday was declared does not stand
-    // against it, and leave taken on a holiday was never needed.
-    if (base.holiday) return { ...base, mark: 'holiday' as Mark }
-    if (leave && standing(leave)) {
-      if (leave.leaveType === 'half_day') return { ...base, mark: 'half' as Mark }
-      return { ...base, mark: (automatic ? 'absent' : 'leave') as Mark }
-    }
-    if (leave?.status === 'pending_approval') return { ...base, mark: 'requested' as Mark }
-    if (sunday) return { ...base, mark: 'off' as Mark }
-    if (date > today) return { ...base, mark: 'future' as Mark }
-    if (date === today) return { ...base, mark: 'not_yet' as Mark }
-    return { ...base, mark: 'none' as Mark }
-  })
+    case 'auto_closed':
+      return { text: `${d.dayOff ? `${off} · worked` : 'Present'} · from ${hhmm(s?.startAt)}, day not ended`, tone: 'warn' }
+    case 'half':
+      return { text: d.appealPending ? 'Half day — appeal waiting'
+        : (d.automatic ? 'Half day — no punch-in in the morning' : 'Half day leave')
+          + (s ? ` · worked from ${hhmm(s.startAt)}` : ''), tone: 'warn' }
+    case 'absent':
+      return { text: d.appealPending ? 'Absent — appeal waiting' : 'Absent — no punch-in', tone: 'warn' }
+    case 'leave': return { text: `On leave — full day${d.leave?.reason ? ` · ${d.leave.reason}` : ''}`, tone: 'muted' }
+    case 'requested': return { text: 'Leave requested — not approved yet', tone: 'warn' }
+    case 'holiday': return { text: off, tone: 'off' }
+    case 'off': return { text: 'Sunday', tone: 'off' }
+    case 'not_yet': return { text: 'Not started yet', tone: 'muted' }
+    case 'none': return { text: 'No record', tone: 'muted' }
+    default: return { text: '', tone: 'muted' }
+  }
 }
 
 export interface Summary {
