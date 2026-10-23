@@ -22,6 +22,10 @@ interface Props {
   onBack: () => void
   /** Set when leave closes the morning: the time the afternoon opens. */
   blockedUntil?: string
+  /** Whether a closed day has expenses to add — the done screen offers them. */
+  offerExpenses?: boolean
+  /** Back home, straight to the day's expenses. */
+  onAddExpenses?: () => void
 }
 
 type Mode = 'punch_in' | 'punch_out' | 'done'
@@ -31,7 +35,7 @@ const MIN_NOTE = 5
 const modeFor = (s: DutySession | null): Mode =>
   !s ? 'punch_in' : s.status === 'active' ? 'punch_out' : 'done'
 
-export default function DutyScreen({ appUser, session, onBack, blockedUntil }: Props) {
+export default function DutyScreen({ appUser, session, onBack, blockedUntil, offerExpenses, onAddExpenses }: Props) {
   const { t } = useTheme()
   const { modal: confirmModal, showConfirm } = useConfirm()
 
@@ -421,7 +425,14 @@ export default function DutyScreen({ appUser, session, onBack, blockedUntil }: P
             {done.km !== null ? ` · ${done.km} km recorded` : ''}.
             <br />Nothing more is logged today. See you tomorrow.
           </div>
-          <PrimaryButton onClick={onBack} style={{ marginTop: 26, minWidth: 200 }}>OK</PrimaryButton>
+          {offerExpenses && onAddExpenses ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginTop: 26 }}>
+              <PrimaryButton onClick={onAddExpenses} style={{ minWidth: 220 }}>Add today’s expenses</PrimaryButton>
+              <GhostButton onClick={onBack}>Later</GhostButton>
+            </div>
+          ) : (
+            <PrimaryButton onClick={onBack} style={{ marginTop: 26, minWidth: 200 }}>OK</PrimaryButton>
+          )}
         </div>
         {confirmModal}
       </div>

@@ -496,7 +496,12 @@ export default function SalesView({ name }: Props) {
       </div>
     )
     : <DutyScreen appUser={appUser} session={dutySession} onBack={() => setScreen('home')}
-        blockedUntil={inHalfDayMorning ? halfDayResumeAt : undefined} />
+        blockedUntil={inHalfDayMorning ? halfDayResumeAt : undefined}
+        offerExpenses={appUser.role !== 'sales_manager' || Math.max(todayVisitLog?.totalVisited ?? 0, outletVisitsToday) > 0}
+        onAddExpenses={() => {
+          setScreen('home')
+          setTimeout(() => document.getElementById('eod-expenses')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150)
+        }} />
   // `isOnDuty`, not "a session exists". A closed day still has one, and this is
   // the gate that is supposed to stop visits being filed against a day that is
   // already finished — including one that closes while this screen is open.
@@ -713,12 +718,14 @@ export default function SalesView({ name }: Props) {
             claim: their expenses are offered only on a day they visited shops. */}
         {isDayClosed && dutySession && !dutySession.autoClosed && appUser
           && (appUser.role !== 'sales_manager' || visitsToday > 0) && (
+          <div id="eod-expenses">
           <EodExpenses
             appUser={appUser}
             session={dutySession}
             date={todayStr()}
             onOpenExpenses={() => { setExpenseDefaultToDay(true); setScreen('expenses') }}
           />
+          </div>
         )}
 
         {/* Leave status */}

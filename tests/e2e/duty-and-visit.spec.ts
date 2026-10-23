@@ -100,7 +100,9 @@ test.describe('the duty gate', () => {
     // Said plainly before going home, so nobody wonders whether it worked.
     await expect(page.getByTestId('day-done')).toContainText('Done for the day')
     await expect(page.getByTestId('day-done')).toContainText('63 km recorded')
-    await page.getByRole('button', { name: 'OK', exact: true }).click()
+    // And the next step is one tap: straight to the day's expenses.
+    await page.getByRole('button', { name: 'Add today’s expenses' }).click()
+    await expect(page.getByText('Today’s expenses')).toBeVisible()
 
     await expect(page.getByText(/Done for the day ✓ — 0 visits logged and 63 km travelled/)).toBeVisible()
     const logVisit = page.getByRole('button', { name: /Log a visit/ })
