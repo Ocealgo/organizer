@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures/app'
-import { closedDay, fuelRate, noWeeksFiled, noOneOnDuty, todayLocal } from './fixtures/seed'
+import { closedDay, fuelRate, noWeeksFiled, noOneOnDuty, todayLocal, outletVisit } from './fixtures/seed'
 
 /**
  * The day's expenses, proposed at the end of it.
@@ -107,5 +107,23 @@ test.describe('when it cannot work anything out', () => {
     await closedDay('rep', todayLocal(), { km: 47, autoClosed: true })
     await loginAs('rep')
     await expect(page.getByText('Today’s expenses')).toHaveCount(0)
+  })
+})
+
+test.describe('a manager in the field', () => {
+  test('a day with no shop visits offers no expenses', async ({ page, loginAs }) => {
+    await closedDay('manager', todayLocal(), { km: 47 })
+    await loginAs('manager')
+    await page.getByRole('button', { name: 'Your day' }).click()
+    await expect(page.getByText(/Done for the day/)).toBeVisible()
+    await expect(page.getByText('Today’s expenses')).toHaveCount(0)
+  })
+
+  test('a day with a shop visit offers them', async ({ page, loginAs }) => {
+    await closedDay('manager', todayLocal(), { km: 47 })
+    await outletVisit('manager', todayLocal(), 'party_shop', false)
+    await loginAs('manager')
+    await page.getByRole('button', { name: 'Your day' }).click()
+    await expect(page.getByText('Today’s expenses')).toBeVisible()
   })
 })
