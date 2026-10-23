@@ -164,6 +164,35 @@
         .oc-sm-only { display: block; }
       }
 
+      /* A table on a phone: each row becomes a small card, one figure per line
+         with its column name beside it, so nothing is cut off or scrolled to.
+         Cells carry the column name as data-label. The first cell heads the
+         card. */
+      @media (max-width: 640px) {
+        table.oc-stack { min-width: 0 !important; width: 100% !important; }
+        table.oc-stack thead { display: none; }
+        table.oc-stack, table.oc-stack tbody, table.oc-stack tfoot, table.oc-stack tr { display: block; }
+        table.oc-stack tr { padding: 10px 2px; border-bottom: 0.5px solid var(--oc-border); }
+        table.oc-stack tr:last-child { border-bottom: none; }
+        table.oc-stack td, table.oc-stack th {
+          display: block; overflow: hidden;
+          padding: 3px 10px !important; border: none !important; text-align: right !important;
+          white-space: normal !important; position: static !important; min-width: 0 !important;
+          max-width: none !important; background: none !important; overflow-wrap: anywhere;
+        }
+        /* The column name floats left; the cell's own content, however many
+           pieces it has, reads right-aligned beside and under it. */
+        table.oc-stack td::before, table.oc-stack th::before {
+          content: attr(data-label); float: left; margin-right: 14px; text-align: left; line-height: 1.9;
+          font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--oc-text3);
+        }
+        table.oc-stack td:first-child, table.oc-stack th:first-child {
+          display: block; text-align: left !important; font-size: 15px; padding-bottom: 6px !important;
+        }
+        table.oc-stack td:first-child::before, table.oc-stack th:first-child::before { content: none; }
+        .oc-stack-wrap { overflow: visible !important; max-height: none !important; border: none !important; }
+      }
+
       @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after { transition: none !important; animation: none !important; }
       }

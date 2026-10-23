@@ -579,8 +579,10 @@ export default function SalesReport({ onBack }: Props) {
               ) : (
                 // Metrics run down the side: past ten rows the table scrolls in
                 // its own box rather than pushing the page out.
-                <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 620, borderBottom: `0.5px solid ${t.border}` }}>
-                  <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 120 + columns.length * 96 }}>
+                // On a phone each figure is a small card: the figure's name on
+                // top, then one line per person.
+                <div className="oc-stack-wrap" style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 620, borderBottom: `0.5px solid ${t.border}` }}>
+                  <table className="oc-stack" style={{ borderCollapse: 'collapse', width: '100%', minWidth: 120 + columns.length * 96 }}>
                     <thead>
                       <tr>
                         <th style={{
@@ -620,7 +622,7 @@ export default function SalesReport({ onBack }: Props) {
                             const isTotal = columns.length > 1 && i === columns.length - 1
                             const v = m.get(c)
                             return (
-                              <td key={c.uid} style={{
+                              <td key={c.uid} data-label={c.name} style={{
                                 textAlign: 'right', padding: '11px 12px',
                                 fontSize: 14, fontWeight: isTotal ? 500 : 400,
                                 color: v === 0 ? t.text3 : t.text,

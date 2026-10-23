@@ -13,7 +13,8 @@ import CustomSelect from '../../components/CustomSelect'
 import DateInput from '../../components/DateInput'
 import DayPicker, { HolidayNote } from '../../components/DayPicker'
 import WeekPicker from '../../components/WeekPicker'
-import { FilterBox, ScrollList } from '../../components/FilterBox'
+import { FilterBox } from '../../components/FilterBox'
+import { usePaged } from '../../components/Pager'
 import { PageHeader, Eyebrow, StatGrid, StatCard, EmptyState } from '../../components/ui'
 import LazyRouteMap from '../../components/LazyRouteMap'
 import { RouteStop, stopLabel } from '../../components/RouteMap'
@@ -199,6 +200,10 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
     }
   }, [attendance, mode])
 
+  // Ten a page, for both lists.
+  const attPage = usePaged(attendance)
+  const dayPage = usePaged(shown)
+
   const toneColor = (tone: string) =>
     tone === 'good' ? t.good : tone === 'warn' ? t.warn : tone === 'off' ? t.off : t.text3
 
@@ -291,9 +296,8 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
                     </>}
               </div>
             )}
-            <ScrollList count={attendance.length} label="people" height={440}>
             <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
-              {attendance.map(a => {
+              {attPage.shown.map(a => {
                 const one = mode === 'day' ? a.days[0] : null
                 const st = one ? statusOf(one) : null
                 const rest = [a.sum.half && `${a.sum.half} half`, a.sum.leave && `${a.sum.leave} leave`,
@@ -312,7 +316,7 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
                 )
               })}
             </div>
-            </ScrollList>
+            {attPage.pager}
           </div>
         )}
 
@@ -325,9 +329,9 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
             body="Once an officer punches in, their day appears here with their meter readings and every outlet they visited."
           />
         ) : (
-          <ScrollList count={shown.length} label="days" testId="field-scroll">
-          <div className="oc-list-flush" style={{ borderBottom: `0.5px solid ${t.border}` }}>
-            {shown.map(s => {
+          <>
+          <div data-testid="field-scroll" className="oc-list-flush" style={{ borderBottom: `0.5px solid ${t.border}` }}>
+            {dayPage.shown.map(s => {
               const vs = visitsFor(s.id)
               const cs = contactsFor(s.id)
               // Derived, never stored. A day with contacts and no visits was
@@ -633,7 +637,8 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
               )
             })}
           </div>
-          </ScrollList>
+          {dayPage.pager}
+          </>
         )}
         </FilterBox>
       </div>

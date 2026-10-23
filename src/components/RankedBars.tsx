@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTheme } from '../context/ThemeContext'
+import { usePaged } from './Pager'
 
 /**
  * Who did most, and by how much.
@@ -62,6 +63,8 @@ export default function RankedBars({ rows, format, emptyText, showRank }: Props)
 
   const sorted = [...rows].sort((a, b) => b.value - a.value)
   const max = Math.max(...sorted.map(r => r.value), 0)
+  // Ten at a time; places and bar lengths still come from the whole list.
+  const { shown, pager, offset } = usePaged(sorted)
   const placeOf = (i: number) => {
     if (sorted[i].value <= 0) return null
     let j = i
@@ -78,8 +81,10 @@ export default function RankedBars({ rows, format, emptyText, showRank }: Props)
   }
 
   return (
+    <div>
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      {sorted.map((r, i) => {
+      {shown.map((r, k) => {
+        const i = offset + k
         const on = active === r.id
         const place = showRank ? placeOf(i) : null
         // A true zero draws no bar at all. The track still shows, so it reads
@@ -144,6 +149,8 @@ export default function RankedBars({ rows, format, emptyText, showRank }: Props)
           </div>
         )
       })}
+    </div>
+    {pager}
     </div>
   )
 }
