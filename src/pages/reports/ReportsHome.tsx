@@ -15,7 +15,7 @@ import CustomSelect from '../../components/CustomSelect'
 import LazyChart from '../../components/LazyChart'
 import RankedBars, { RankedRow } from '../../components/RankedBars'
 import type { TrendPoint } from '../../components/TrendChart'
-import { PageHeader, Eyebrow, RowGroup, ListRow, Note, TabBar } from '../../components/ui'
+import { PageHeader, Eyebrow, RowGroup, ListRow, Note, TabBar, ShowHide } from '../../components/ui'
 import { localDateStr } from '../../utils/date'
 import {
   paceOf, strikeOf, coverageOf, pct, MIN_VISITS_FOR_RATE,
@@ -241,9 +241,27 @@ export default function ReportsHome({
   const unsplit = prod
     ? targets.filter(t => t.month === thisMonth && (t.units || 0) > 0 && !((t.byProduct?.[prod] ?? 0) > 0)).length
     : 0
-  const paceSeries = useMemo<TrendPoint[]>(() => pace.series.map(p => ({
+  /**
+   * One person's month, picked in the box. The tiles and the chart become
+   * theirs — the same reading, run on their target alone — while the table
+   * keeps everybody, so where they stand against the team is still in view.
+   * Only people with a target this month (for the product picked) are offered;
+   * one who drops out of that list falls back to the team.
+   */
+  const [paceWho, setPaceWho] = useState('')
+  const paceUid = pace.reps.some(r => r.uid === paceWho) ? paceWho : ''
+  const paceFocus = useMemo(() => paceUid
+    ? paceOf(targets.filter(t => t.uid === paceUid), monthAllocs, thisMonth, today,
+             new Set(holidays.map(h => h.date)), prod || undefined)
+    : pace, [paceUid, pace, targets, monthAllocs, thisMonth, today, holidays, prod])
+  const paceName = pace.reps.find(r => r.uid === paceUid)?.name
+  // The person picked leads the table, so a second page never hides them.
+  const paceRows = useMemo(() => paceUid
+    ? [...pace.reps.filter(r => r.uid === paceUid), ...pace.reps.filter(r => r.uid !== paceUid)]
+    : pace.reps, [pace, paceUid])
+  const paceSeries = useMemo<TrendPoint[]>(() => paceFocus.series.map(p => ({
     label: p.label, current: p.actual, previous: p.target, projected: p.projected,
-  })), [pace])
+  })), [paceFocus])
 
   // ── 2. strike rate, this window and the one before ────────────────────────
   /** With a product picked, a visit counts only if it ordered that product. */
@@ -257,6 +275,8 @@ export default function ReportsHome({
   const [covWho, setCovWho] = useState('')
   const [covArea, setCovArea] = useState('')
   const [covLow, setCovLow] = useState(false)
+  // Closed until asked for: a long table most visits to this screen do not need.
+  const [covOpen, setCovOpen] = useState(false)
   const [covSort, setCovSort] = useState<'name' | 'lowest'>('lowest')
 
   /** People with a beat this month, for the person filter. */
@@ -293,7 +313,7 @@ export default function ReportsHome({
   }, [coverage, covLow, covSort])
 
   // Ten rows a page, for the lists that grow with the team and the network.
-  const pacePage = usePaged(pace?.reps ?? [])
+  const pacePage = usePaged(paceRows)
   const covPage = usePaged(covRows)
 
   // ── growth, over the last six months ──────────────────────────────────────
@@ -448,7 +468,17 @@ export default function ReportsHome({
             <div style={{ fontSize: 12, color: t.text3, marginBottom: 14, lineHeight: 1.6 }}>
               {new Date(thisMonth + '-01T00:00:00').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
               {' '}· always the current month, because targets are set by the month · packets
+              {paceName ? ` · ${paceName} only` : ' · the whole team'}
             </div>
+            {pace.reps.length > 0 && (
+              <div data-testid="pace-person" style={{ maxWidth: 260, marginBottom: 14 }}>
+                <div style={{ marginBottom: 6 }}><Eyebrow>Person</Eyebrow></div>
+                <CustomSelect value={paceUid} onChange={setPaceWho}
+                  options={[{ value: '', label: 'Whole team' },
+                            ...pace.reps.map(r => ({ value: r.uid, label: r.name }))]}
+                  placeholder="Whole team" />
+              </div>
+            )}
             {pace.reps.length === 0 ? (
               <div style={{ fontSize: 13, color: t.text3, lineHeight: 1.6 }}>
                 {prod
@@ -458,20 +488,20 @@ export default function ReportsHome({
             ) : (
               <>
                 <div className="oc-stats">
-                  <PaceTile value={pace.team.done.toLocaleString('en-IN')} label="Ordered so far"
-                    sub={`of ${pace.team.target.toLocaleString('en-IN')} for the month`} />
-                  <PaceTile value={pace.team.dueByToday.toLocaleString('en-IN')} label="Due by today"
-                    sub={pct(pace.team.done, pace.team.dueByToday) === null ? '—'
-                      : `${pct(pace.team.done, pace.team.dueByToday)}% of it done`}
-                    tone={pace.team.done >= pace.team.dueByToday ? 'good' : 'warn'} />
-                  <PaceTile value={pace.team.projected.toLocaleString('en-IN')} label="At this pace"
-                    sub={`${pct(pace.team.projected, pace.team.target) ?? 0}% of the target by month end`}
-                    tone={pace.team.projected >= pace.team.target ? 'good' : 'warn'} />
+                  <PaceTile value={paceFocus.team.done.toLocaleString('en-IN')} label="Ordered so far"
+                    sub={`of ${paceFocus.team.target.toLocaleString('en-IN')} for the month`} />
+                  <PaceTile value={paceFocus.team.dueByToday.toLocaleString('en-IN')} label="Due by today"
+                    sub={pct(paceFocus.team.done, paceFocus.team.dueByToday) === null ? '—'
+                      : `${pct(paceFocus.team.done, paceFocus.team.dueByToday)}% of it done`}
+                    tone={paceFocus.team.done >= paceFocus.team.dueByToday ? 'good' : 'warn'} />
+                  <PaceTile value={paceFocus.team.projected.toLocaleString('en-IN')} label="At this pace"
+                    sub={`${pct(paceFocus.team.projected, paceFocus.team.target) ?? 0}% of the target by month end`}
+                    tone={paceFocus.team.projected >= paceFocus.team.target ? 'good' : 'warn'} />
                   <PaceTile
-                    value={pace.team.neededPerDay === null ? '—' : pace.team.neededPerDay.toLocaleString('en-IN')}
+                    value={paceFocus.team.neededPerDay === null ? '—' : paceFocus.team.neededPerDay.toLocaleString('en-IN')}
                     label="Needed a day"
-                    sub={pace.team.daysLeft === 0 ? 'last working day'
-                      : `for the ${pace.team.daysLeft} working ${pace.team.daysLeft === 1 ? 'day' : 'days'} left`} />
+                    sub={paceFocus.team.daysLeft === 0 ? 'last working day'
+                      : `for the ${paceFocus.team.daysLeft} working ${paceFocus.team.daysLeft === 1 ? 'day' : 'days'} left`} />
                 </div>
 
                 <div style={{ marginTop: 18 }}>
@@ -503,8 +533,9 @@ export default function ReportsHome({
                                        borderBottom: `0.5px solid ${t.border}` }
                         const ahead = r.done >= r.dueByToday
                         return (
-                          <tr key={r.uid} data-testid={`pace-row-${r.uid}`}>
-                            <td data-label="Rep" style={{ ...cell, textAlign: 'left', fontWeight: 500 }}>{r.name}</td>
+                          <tr key={r.uid} data-testid={`pace-row-${r.uid}`} aria-current={r.uid === paceUid || undefined}
+                            style={r.uid === paceUid ? { background: t.tint, boxShadow: `inset 3px 0 0 ${t.accent}` } : undefined}>
+                            <td data-label="Rep" style={{ ...cell, textAlign: 'left', fontWeight: r.uid === paceUid ? 600 : 500 }}>{r.name}</td>
                             <td data-label="Target" style={cell}>{r.target.toLocaleString('en-IN')}</td>
                             <td data-label="Ordered" style={cell}>{r.done.toLocaleString('en-IN')}</td>
                             <td data-label="Due by today" style={cell}>{r.dueByToday.toLocaleString('en-IN')}</td>
@@ -534,12 +565,17 @@ export default function ReportsHome({
 
         <FilterBox>
           {/* ── 3. ARE THE BEATS BEING WORKED ───────────────────────────────── */}
-          <div>
-            <div style={{ marginBottom: 4 }}><Eyebrow>Beat coverage</Eyebrow></div>
-            <div style={{ fontSize: 12, color: t.text3, marginBottom: 14, lineHeight: 1.6 }}>
+          <div data-testid="coverage-box">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
+              <Eyebrow>Beat coverage</Eyebrow>
+              <ShowHide open={covOpen} onToggle={() => setCovOpen(o => !o)} testId="coverage-toggle" />
+            </div>
+            <div style={{ fontSize: 12, color: t.text3, marginBottom: covOpen ? 14 : 0, lineHeight: 1.6 }}>
               This month so far. Visited: shops on the beat seen at least once. Ordered: of
               those, how many bought — what the visits turned into.
+              {!covOpen && coverage.beats.length > 0 && ` ${coverage.beats.length} ${coverage.beats.length === 1 ? 'beat' : 'beats'} — overall ${pct(coverage.all.visited, coverage.all.shops) ?? 0}% covered.`}
             </div>
+            {covOpen && (<>
 
             {/* Its own filters, in one row above the table they narrow. */}
             <div className="oc-wrap" style={{ gap: 12, marginBottom: 12, alignItems: 'flex-end' }}>
@@ -609,6 +645,7 @@ export default function ReportsHome({
               worked.{covWho && ' With a person picked, only their own visits and orders count, on the beats they were given this month.'}
               {coverage.offBeat > 0 && ` ${coverage.offBeat} ${coverage.offBeat === 1 ? 'shop is' : 'shops are'} on no beat at all, so nobody is routed to ${coverage.offBeat === 1 ? 'it' : 'them'}.`}
             </div>
+            </>)}
           </div>
         </FilterBox>
         </>)}

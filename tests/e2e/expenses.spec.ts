@@ -1,5 +1,5 @@
 import { test, expect, clickStable } from './fixtures/app'
-import { noWeeksFiled, noOneOnDuty } from './fixtures/seed'
+import { noWeeksFiled, noOneOnDuty, claimedExpense, todayLocal } from './fixtures/seed'
 
 /**
  * Money paths. These are the ones worth being strict about — a wrong number
@@ -126,5 +126,29 @@ test.describe('nil returns', () => {
     await adminPage.getByRole('button', { name: 'Reopen', exact: true }).click()
 
     await expect(page.getByText(/This week was sent back: Reopened at your request/)).toBeVisible()
+  })
+})
+
+test.describe('the admin list, filtered', () => {
+  test.beforeEach(async () => { await noWeeksFiled() })
+
+  test('a week by default; a day shows each person\'s spending, and a person narrows it', async ({ page, loginAs }) => {
+    await claimedExpense('rep', todayLocal(), { allowance: 300 })
+    await claimedExpense('rep2', todayLocal(), { fuel: 50 })
+    await loginAs('admin')
+    await openAdminExpenses(page)
+
+    const box = page.getByTestId('expenses-box')
+    await expect(box.getByRole('button', { name: 'A week', exact: true })).toHaveAttribute('aria-pressed', 'true')
+
+    await box.getByRole('button', { name: 'A day', exact: true }).click()
+    await expect(box.getByTestId('expense-day')).toContainText('₹350')
+    await expect(box.getByTestId('expense-day-e2e_rep')).toContainText('₹300')
+    await expect(box.getByTestId('expense-day-e2e_rep2')).toContainText('₹50')
+
+    await box.getByTestId('expense-person').getByText('Everybody', { exact: true }).click()
+    await page.getByText('Ravi Rep', { exact: true }).last().click()
+    await expect(box.getByTestId('expense-day-e2e_rep')).toBeVisible()
+    await expect(box.getByTestId('expense-day-e2e_rep2')).toHaveCount(0)
   })
 })

@@ -44,6 +44,25 @@ test('the month against its target, rep by rep', async ({ page, loginAs }) => {
   await expect(page.getByText('Needed a day', { exact: true }).first()).toBeVisible()
 })
 
+test('the month against its target, for one person', async ({ page, loginAs }) => {
+  await packetTarget('rep', todayLocal().slice(0, 7), 1000)
+  await packetTarget('rep2', todayLocal().slice(0, 7), 500)
+
+  await loginAs('manager')
+  await openReports(page)
+  // The whole team first: both targets added up.
+  await expect(page.getByText('of 1,500 for the month')).toBeVisible()
+
+  await page.getByTestId('pace-person').getByText('Whole team', { exact: true }).click()
+  await page.getByTestId('pace-person').getByText('Priya Rep', { exact: true }).click()
+  // The tiles are hers; the table keeps everybody, with her row marked and first.
+  await expect(page.getByText('of 500 for the month')).toBeVisible()
+  await expect(page.getByText(/Priya Rep only/)).toBeVisible()
+  await expect(page.getByTestId('pace-row-e2e_rep')).toBeVisible()
+  await expect(page.getByTestId('pace-row-e2e_rep2')).toHaveAttribute('aria-current', 'true')
+  await expect(page.locator('[data-testid^="pace-row-"]').first()).toHaveAttribute('data-testid', 'pace-row-e2e_rep2')
+})
+
 test('with no targets, it says where to set them rather than showing zeros', async ({ page, loginAs }) => {
   await loginAs('manager')
   await openReports(page)
@@ -62,6 +81,18 @@ test('strike rate is the visits that ended in an order', async ({ page, loginAs 
   await expect(page.getByRole('group', { name: /^1st, Ravi Rep: 50%/ })).toBeVisible()
 })
 
+test('beat coverage starts closed, and opens on asking', async ({ page, loginAs }) => {
+  await beat('route_cov', 'Test Beat', ['party_shop'])
+  await loginAs('manager')
+  await openReports(page)
+  await expect(page.getByTestId('coverage-row-route_cov')).toHaveCount(0)
+  await expect(page.getByTestId('coverage-box')).toContainText('1 beat')
+  await page.getByTestId('coverage-toggle').click()
+  await expect(page.getByTestId('coverage-row-route_cov')).toBeVisible()
+  await page.getByTestId('coverage-toggle').click()
+  await expect(page.getByTestId('coverage-row-route_cov')).toHaveCount(0)
+})
+
 test('beat coverage: visited, and of those, ordered', async ({ page, loginAs }) => {
   // A beat of three shops: two visited, one of them ordered.
   await beat('route_cov', 'Test Beat', ['party_shop', 'party_pharmacy', 'party_dist'])
@@ -72,6 +103,7 @@ test('beat coverage: visited, and of those, ordered', async ({ page, loginAs }) 
 
   await loginAs('manager')
   await openReports(page)
+  await page.getByTestId('coverage-toggle').click()
 
   const row = page.getByTestId('coverage-row-route_cov')
   await expect(row).toContainText('Test Beat')
@@ -160,6 +192,7 @@ test('coverage can be read for one person', async ({ page, loginAs }) => {
 
   await loginAs('manager')
   await openReports(page)
+  await page.getByTestId('coverage-toggle').click()
   const box = page.getByTestId('coverage-scroll')
   await expect(page.getByTestId('coverage-row-route_a')).toBeVisible()
   await expect(page.getByTestId('coverage-row-route_b')).toBeVisible()
@@ -179,6 +212,7 @@ test('a long beat list is read ten at a time', async ({ page, loginAs }) => {
   for (let i = 1; i <= 12; i++) await beat(`route_${String(i).padStart(2, '0')}`, `Beat ${String(i).padStart(2, '0')}`, ['party_shop'])
   await loginAs('manager')
   await openReports(page)
+  await page.getByTestId('coverage-toggle').click()
   const pager = page.getByTestId('coverage-scroll').locator('..').getByTestId('pager')
   await expect(pager).toContainText('1–10 of 12')
   await pager.getByRole('button', { name: 'Next page' }).click()
@@ -194,6 +228,7 @@ test('coverage below 85% only, worst first', async ({ page, loginAs }) => {
 
   await loginAs('manager')
   await openReports(page)
+  await page.getByTestId('coverage-toggle').click()
   // Lowest first is the default: the gap leads.
   await expect(page.locator('[data-testid^=coverage-row-route_]').first()).toContainText('Beat Gap')
   await page.getByRole('button', { name: 'Below 85% only' }).click()
