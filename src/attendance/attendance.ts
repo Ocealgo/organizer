@@ -162,6 +162,18 @@ export interface Summary {
   /** Worked on a Sunday or a holiday — on top of the working days, not among them. */
   offWorked: number
   appealsPending: number
+  /**
+   * Days off taken, as leave is counted: a full day of leave or an absence is
+   * one, a half day is half — so two half days are one day of leave. Sundays
+   * and holidays never count, whatever was recorded on them.
+   */
+  leaveDays: number
+  /** Of those, leave the person asked for and had approved, in days. */
+  appliedDays: number
+  /** Of those, leave the app marked for no punch-in, in days. */
+  autoDays: number
+  /** Working days in the whole run — the month, future days included. */
+  scheduled: number
 }
 
 export function summaryOf(days: Day[]): Summary {
@@ -178,7 +190,65 @@ export function summaryOf(days: Day[]): Summary {
     autoClosed: n(d => d.mark === 'auto_closed'),
     none: n(d => d.mark === 'none'),
     appealsPending: n(d => d.appealPending),
+    leaveDays: n(d => !d.dayOff && (d.mark === 'leave' || d.mark === 'absent'))
+      + n(d => !d.dayOff && d.mark === 'half') / 2,
+    appliedDays: n(d => !d.dayOff && d.mark === 'leave')
+      + n(d => !d.dayOff && d.mark === 'half' && !d.automatic) / 2,
+    autoDays: n(d => !d.dayOff && d.mark === 'absent')
+      + n(d => !d.dayOff && d.mark === 'half' && d.automatic) / 2,
+    scheduled: n(d => !d.dayOff),
   }
+}
+
+/**
+ * The totals at the end of each register row, in words, for the screen and the
+ * PDF alike. The same columns as the leave report, so the two read the same.
+ * `days` marks a count that can end in a half.
+ */
+export const REGISTER_TOTALS: { head: string; title: string; of: (s: Summary) => number; days?: boolean; key?: boolean }[] = [
+  { head: 'Working days', title: 'Days due to be worked in the month — not Sundays, not holidays', of: s => s.scheduled },
+  { head: 'Present', title: 'Working days present so far', of: s => s.present },
+  { head: 'Half days', title: 'Half days — half-day leave, or no punch-in by the morning cutoff', of: s => s.half },
+  { head: 'Leave taken', title: 'Days off in total: a full day of leave or an absence is one, a half day is half — two half days are one day', of: s => s.leaveDays, days: true, key: true },
+  { head: 'Applied', title: 'Leave the person asked for and a manager approved, in days', of: s => s.appliedDays, days: true },
+  { head: 'Automatic', title: 'Leave the app marked because there was no punch-in, in days', of: s => s.autoDays, days: true },
+]
+
+/** A count of days that may end in a half: 3, 2½, ½. */
+export const fmtDays = (n: number) => {
+  const whole = Math.floor(n)
+  return n - whole >= 0.5 ? (whole ? `${whole}½` : '½') : String(whole)
+}
+
+/**
+ * Leave counted in days, from the records themselves — for a list of leave
+ * rather than a calendar.
+ *
+ * One person's day counts once however many records sit on it: a full day is
+ * one, a half day is half, a full day beside a half day is still one. Two half
+ * days on different dates add up to one. Leave on a Sunday or a declared
+ * holiday was never needed and counts nothing. Only leave that stands —
+ * approved, or under appeal and so in force until decided.
+ */
+export function leaveDaysOf(leaves: LeaveRecord[], holidays: Holiday[] | Set<string>): {
+  days: number; full: number; half: number; absent: number
+} {
+  const off = holidays instanceof Set ? holidays : new Set(holidays.map(h => h.date))
+  const byDay = new Map<string, LeaveRecord[]>()
+  for (const l of leaves) {
+    if (!standing(l)) continue
+    if (off.has(l.date) || new Date(l.date + 'T00:00:00').getDay() === 0) continue
+    const k = `${l.uid}|${l.date}`
+    byDay.set(k, [...(byDay.get(k) ?? []), l])
+  }
+  let full = 0, half = 0, absent = 0
+  for (const rs of byDay.values()) {
+    const whole = rs.find(l => l.leaveType !== 'half_day')
+    if (!whole) half++
+    else if (whole.autoMarked) absent++
+    else full++
+  }
+  return { days: full + absent + half / 2, full, half, absent }
 }
 
 const hhmm = (ms?: number) => ms

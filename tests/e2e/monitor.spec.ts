@@ -454,6 +454,9 @@ test.describe('attendance in Monitor reps', () => {
 
     await expect(page.getByTestId('field-attendance-line')).toContainText('1 in')
     await expect(page.getByTestId('field-attendance-line')).toContainText('1 appeal waiting')
+    // The list is closed until asked for; the line above is always there.
+    await expect(page.getByTestId('field-att-e2e_rep')).toHaveCount(0)
+    await page.getByTestId('field-attendance-toggle').click()
     await expect(page.getByTestId('field-att-e2e_rep')).toContainText('Present')
     await expect(page.getByTestId('field-att-e2e_rep2')).toContainText('Absent — appeal waiting')
   })
