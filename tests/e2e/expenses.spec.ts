@@ -146,8 +146,9 @@ test.describe('the admin list, filtered', () => {
     await expect(box.getByTestId('expense-day-e2e_rep')).toContainText('₹300')
     await expect(box.getByTestId('expense-day-e2e_rep2')).toContainText('₹50')
 
+    // Picked inside the picker: "Ravi Rep" is also a name in the list below.
     await box.getByTestId('expense-person').getByText('Everybody', { exact: true }).click()
-    await page.getByText('Ravi Rep', { exact: true }).last().click()
+    await box.getByTestId('expense-person').getByText('Ravi Rep', { exact: true }).click()
     await expect(box.getByTestId('expense-day-e2e_rep')).toBeVisible()
     await expect(box.getByTestId('expense-day-e2e_rep2')).toHaveCount(0)
   })

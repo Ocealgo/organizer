@@ -33,13 +33,16 @@ test.beforeEach(async () => {
 })
 
 /**
- * A day of this month that can actually carry a target.
- *
- * Sundays cannot: the division skips them and the day grid draws no box for
- * them. Anything asserting on a specific day has to pick one that exists, or
- * it passes six days a week and fails on the seventh — which is how both of
- * these were written the first time.
+ * A working day at least `n` days gone. A Sunday has no box in the grid, so a
+ * spec that lands on one finds nothing to read — step back past it.
  */
+function aWorkdayGone(n: number): string {
+  const d = testDate()
+  d.setDate(d.getDate() - n)
+  while (d.getDay() === 0) d.setDate(d.getDate() - 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 /**
  * The next day a target may be set for.
  *
@@ -47,13 +50,6 @@ test.beforeEach(async () => {
  * not a safe stand-in: a Sunday has no box at all, because the division never
  * offers one and the grid draws only the days it offers.
  */
-/** A date this many days back, for asserting on days that have gone. */
-function dayBefore(n: number): string {
-  const d = testDate()
-  d.setDate(d.getDate() - n)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
 function aSettableDay(): string {
   const d = testDate()
   while (d.getDay() === 0) d.setDate(d.getDate() + 1)
@@ -339,7 +335,7 @@ test.describe('a target can only be set forwards', () => {
    * target worth anything is that the rep knew it before the day began.
    */
   test('a day already gone cannot be changed, but can be read', async ({ page, loginAs }) => {
-    const gone = dayBefore(3)
+    const gone = aWorkdayGone(3)
     await packetTarget('rep', gone.slice(0, 7), 1000, undefined,
       { prod_wipes: 600, prod_mini: 400 },
       { prod_wipes: { [gone]: 44 } })
