@@ -15,7 +15,7 @@ import DayPicker, { HolidayNote } from '../../components/DayPicker'
 import WeekPicker from '../../components/WeekPicker'
 import { FilterBox } from '../../components/FilterBox'
 import { usePaged } from '../../components/Pager'
-import { PageHeader, Eyebrow, StatGrid, StatCard, EmptyState } from '../../components/ui'
+import { PageHeader, Eyebrow, StatGrid, StatCard, EmptyState, ShowHide } from '../../components/ui'
 import LazyRouteMap from '../../components/LazyRouteMap'
 import { RouteStop, stopLabel } from '../../components/RouteMap'
 import { proximity } from '../../device/location'
@@ -97,6 +97,8 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
   const [to, setTo] = useState(localDateStr())
   const [who, setWho] = useState(initialWho ?? 'all')
   const [open, setOpen] = useState<Set<string>>(new Set())
+  // The attendance list starts closed: the day's one-line count says most of it.
+  const [attOpen, setAttOpen] = useState(false)
 
   const range = useMemo(() => {
     if (mode === 'day') return { from: day, to: day }
@@ -282,7 +284,11 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
         {/* Attendance: everybody, not just who started a day. */}
         {!loading && attendance.length > 0 && (
           <div data-testid="field-attendance">
-            <div style={{ marginBottom: 8 }}><Eyebrow>Attendance</Eyebrow></div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+              <Eyebrow>Attendance</Eyebrow>
+              <ShowHide open={attOpen} onToggle={() => setAttOpen(o => !o)}
+                what={`everybody · ${attendance.length}`} testId="field-attendance-toggle" />
+            </div>
             {dayLine && (
               <div data-testid="field-attendance-line" style={{ fontSize: 13, color: dayLine.off ? t.off : t.text, marginBottom: 10 }}>
                 {dayLine.off ? 'A day off for everyone'
@@ -296,6 +302,7 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
                     </>}
               </div>
             )}
+            {attOpen && (<>
             <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
               {attPage.shown.map(a => {
                 const one = mode === 'day' ? a.days[0] : null
@@ -317,6 +324,7 @@ export default function FieldReport({ onBack, initialWho, embedded }: Props) {
               })}
             </div>
             {attPage.pager}
+            </>)}
           </div>
         )}
 

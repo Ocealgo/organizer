@@ -153,26 +153,32 @@ test('a holiday worked is shown as a day off that was worked', async ({ page, lo
 })
 
 test.describe('the leave tab', () => {
-  test('one list with a When filter: today first, then a month, then everything', async ({ page, loginAs }) => {
+  test('one list with a When filter: the month first, then a day, then everything', async ({ page, loginAs }) => {
     await approvedLeave('rep2', todayLocal(), 'full_day')
     await loginAs('admin')
     await page.getByRole('button', { name: /^Attendance/ }).first().click()
 
     await page.getByRole('button', { name: 'Leave', exact: true }).click()
     const box = page.getByTestId('leave-box')
+    // Opens on this month.
+    await expect(box.getByRole('button', { name: 'A month', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(box).toContainText('Days off across the team')
+    await expect(box.getByRole('button', { name: 'Previous month' })).toBeVisible()
+    // The team list is closed until asked for.
+    await expect(box.getByTestId('team-list')).toHaveCount(0)
+    await box.getByTestId('team-toggle').click()
+    await expect(box.getByTestId('team-list')).toContainText('Priya')
+
+    await box.getByRole('button', { name: 'A day', exact: true }).click()
     await expect(box).toContainText('On leave today')
     await expect(box.getByLabel('Leave day')).toBeVisible()
     await expect(box).toContainText('Priya')
     // A day shows what to decide for it, not the team.
-    await expect(box.getByText('Team', { exact: true })).toHaveCount(0)
+    await expect(box.getByText(/^Team/)).toHaveCount(0)
     await expect(box.getByTestId('day-nothing-pending')).toBeVisible()
 
-    await box.getByRole('button', { name: 'A month', exact: true }).click()
-    await expect(box).toContainText('Leave days in')
-    await expect(box.getByRole('button', { name: 'Previous month' })).toBeVisible()
-
     await box.getByRole('button', { name: 'Everything', exact: true }).click()
-    await expect(box).toContainText('Leave days on record')
+    await expect(box).toContainText('Days off across the team, all time')
   })
 
   test('a holiday picked is named, on the leave tab and in the register', async ({ page, loginAs }) => {
@@ -182,6 +188,7 @@ test.describe('the leave tab', () => {
     await expect(page.getByTestId('attendance-today')).toContainText('Holiday — Test Holiday')
 
     await page.getByRole('button', { name: 'Leave', exact: true }).click()
+    await page.getByTestId('leave-box').getByRole('button', { name: 'A day', exact: true }).click()
     await expect(page.getByTestId('leave-day-off')).toContainText('Holiday — Test Holiday')
   })
 
@@ -192,6 +199,7 @@ test.describe('the leave tab', () => {
     await expect(page.getByText(/^Leave requests · 1/)).toBeVisible()
     await page.getByRole('button', { name: 'Leave', exact: true }).click()
     await expect(page.getByText(/^Leave requests ·/)).toHaveCount(0)
+    await page.getByTestId('leave-box').getByRole('button', { name: 'A day', exact: true }).click()
     await expect(page.getByTestId('day-pending')).toContainText('Priya')
     await expect(page.getByTestId('day-pending').getByRole('button', { name: 'Approve' })).toBeVisible()
   })
@@ -219,5 +227,81 @@ test.describe('a holiday means no work', () => {
     await page.getByRole('button', { name: 'Add', exact: true }).click()
     await expect(page.getByText('Declared now')).toBeVisible()
     await expect.poll(() => leaveStatus(id)).toBe('removed')
+  })
+})
+
+/** Two working days (not Sundays) in this month, today's month. */
+function twoWorkdaysThisMonth(): [string, string] {
+  const d = testDate()
+  const out: string[] = []
+  for (let day = 1; out.length < 2; day++) {
+    const x = new Date(d.getFullYear(), d.getMonth(), day)
+    if (x.getDay() !== 0) out.push(`${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`)
+  }
+  return [out[0], out[1]]
+}
+
+test.describe('leave counted in days', () => {
+  test('two half days are one day of leave, in the register', async ({ page, loginAs }) => {
+    const [a, b] = twoWorkdaysThisMonth()
+    await approvedLeave('rep', a, 'half_day')
+    await approvedLeave('rep', b, 'half_day')
+    await approvedLeave('rep2', a, 'half_day')
+    await loginAs('admin')
+    await page.getByRole('button', { name: /^Attendance/ }).first().click()
+
+    await expect(page.getByTestId('register-leave-taken-e2e_rep')).toHaveText('1')
+    await expect(page.getByTestId('register-applied-e2e_rep')).toHaveText('1')
+    await expect(page.getByTestId('register-automatic-e2e_rep')).toHaveText('0')
+    await expect(page.getByTestId('register-leave-taken-e2e_rep2')).toHaveText('½')
+    await expect(page.getByRole('columnheader', { name: 'Leave taken' })).toBeVisible()
+    await expect(page.getByRole('columnheader', { name: 'Day not ended' })).toHaveCount(0)
+  })
+})
+
+test.describe('who is on the register', () => {
+  test('an admin sees the sales managers too', async ({ page, loginAs }) => {
+    await loginAs('admin')
+    await page.getByRole('button', { name: /^Attendance/ }).first().click()
+    await expect(page.getByTestId('register-row-e2e_rep')).toBeVisible()
+    await expect(page.getByTestId('register-row-e2e_manager')).toBeVisible()
+  })
+
+  test('a sales manager sees only the reps', async ({ page, loginAs }) => {
+    await loginAs('manager')
+    await page.getByRole('button', { name: /^Attendance/ }).first().click()
+    await expect(page.getByTestId('register-row-e2e_rep')).toBeVisible()
+    await expect(page.getByTestId('register-row-e2e_manager')).toHaveCount(0)
+    await expect(page.getByTestId('register-row-e2e_manager2')).toHaveCount(0)
+  })
+})
+
+test.describe('the leave report', () => {
+  test('per person for the month: taken, applied, automatic, waiting', async ({ page, loginAs }) => {
+    const [a, b] = twoWorkdaysThisMonth()
+    await approvedLeave('rep', a, 'half_day')
+    await approvedLeave('rep', b, 'half_day')
+    await autoMarkedLeave('rep', b, 'full_day')
+    await pendingLeave('rep2', a)
+    await loginAs('admin')
+    await page.getByRole('button', { name: /^Attendance/ }).first().click()
+    await page.getByRole('button', { name: 'Leave', exact: true }).click()
+    const box = page.getByTestId('leave-box')
+    await box.getByRole('button', { name: 'A month', exact: true }).click()
+
+    const ravi = box.getByTestId('leave-report-e2e_rep')
+    // b has a half day and an automatic full day: the day counts once, as one.
+    // So: ½ (a) + 1 (b) taken; ½ + ½ applied; 1 automatic.
+    await expect(ravi.locator('td').nth(2)).toHaveText('1½')
+    await expect(ravi.locator('td').nth(3)).toHaveText('1')
+    await expect(ravi.locator('td').nth(4)).toHaveText('1')
+    await expect(box.getByTestId('leave-report-e2e_rep2').locator('td').nth(5)).toHaveText('1')
+    await expect(box.getByTestId('leave-report-total')).toBeVisible()
+
+    // One person: their row only. Hidden: no report at all.
+    await box.getByTestId('records-card').getByRole('button', { name: 'Ravi Rep', exact: true }).click()
+    await expect(box.getByTestId('leave-report-e2e_rep2')).toHaveCount(0)
+    await box.getByTestId('records-toggle').click()
+    await expect(box.getByTestId('leave-report')).toHaveCount(0)
   })
 })

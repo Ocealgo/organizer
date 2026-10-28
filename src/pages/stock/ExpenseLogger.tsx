@@ -24,9 +24,12 @@ import { useAuth } from '../../context/AuthContext'
 import { can, maySignOffFor } from '../../auth/permissions'
 import { useTheme } from '../../context/ThemeContext'
 import { useConfirm } from '../../hooks/useConfirm'
-import { needsMeterReason, ABOVE_METER_MIN_REASON } from '../../data/expenses'
+import { needsMeterReason, ABOVE_METER_MIN_REASON, roundClaim } from '../../data/expenses'
 import { localDateStr, isSunday } from '../../utils/date'
 import DateInput from '../../components/DateInput'
+import WeekPicker from '../../components/WeekPicker'
+import DayPicker from '../../components/DayPicker'
+import CustomSelect from '../../components/CustomSelect'
 import {
   PageHeader, TabBar, StatGrid, StatCard, Section, EmptyState,
   Field, ChipGroup, Note, GhostButton, PrimaryButton, inputStyle,
@@ -420,7 +423,8 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
         `That is more than the ${meterKm} km on the meter for ${fmtDate(addVarDay)}. Write a line saying why — it goes with the claim to whoever clears the week.`)
       return
     }
-    const amount = fuelByDistance ? round2(km * fuelRate!) : parseFloat(varForm.amount)
+    // A typed amount is claimed in whole rupees — see roundClaim.
+    const amount = fuelByDistance ? round2(km * fuelRate!) : roundClaim(parseFloat(varForm.amount))
     if (isNaN(amount) || amount <= 0) { await showAlert('Amount needed', 'Enter an amount above zero.'); return }
 
     // Spending on a day with no duty session is allowed and is not silent. The
@@ -556,7 +560,7 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
             addedAllowanceDates.add(row.date)
             importedDelta += amt
           } else {
-            const amt = parseFloat(row.amount)
+            const amt = roundClaim(parseFloat(row.amount))
             if (isNaN(amt) || amt <= 0) continue
             const cat = VAR_CATS.find(c => c.value === row.type.toLowerCase())?.value ?? 'other'
             // Skip duplicate: same date + category + amount already exists
@@ -1004,9 +1008,21 @@ function SalesView({ onBack, appUser, onLogVisit, defaultToDay }: { onBack: () =
                                 hint={varForm.category === 'fuel'
                                   ? 'No ₹ per km rate has been set, so enter the amount yourself.'
                                   : undefined}>
-                                <input type="number" inputMode="decimal" value={varForm.amount}
-                                  onChange={e => setVarForm(f => ({ ...f, amount: e.target.value }))}
-                                  placeholder="45" style={inputStyle(t)} />
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                  <input type="number" inputMode="decimal" value={varForm.amount}
+                                    onChange={e => setVarForm(f => ({ ...f, amount: e.target.value }))}
+                                    placeholder="45" style={{ ...inputStyle(t), flex: 1, minWidth: 0 }} />
+                                  {/* Said beside the box, so the rounding is never a surprise on the sheet. */}
+                                  {(() => {
+                                    const typed = parseFloat(varForm.amount)
+                                    const r = roundClaim(typed)
+                                    return typed > 0 && r !== typed && (
+                                      <span data-testid="amount-rounded" style={{ fontSize: 13, color: t.text2, whiteSpace: 'nowrap' }}>
+                                        Counted as {money(r)}
+                                      </span>
+                                    )
+                                  })()}
+                                </div>
                               </Field>
                             )}
                             <Field label="Notes">
@@ -1166,6 +1182,12 @@ function AdminView({ onBack, appUser, onViewVisitLog }: { onBack: () => void; ap
   const [visitLogMap, setVisitLogMap] = useState<Map<string, Set<string>>>(new Map())
   const [allLeaves, setAllLeaves] = useState<LeaveRecord[]>([])
   const [allHolidays, setAllHolidays] = useState<Holiday[]>([])
+  // Which claims the list shows: a week (this one, to start), a day, or every
+  // week — and everybody or one person.
+  const [when, setWhen] = useState<'week' | 'day' | 'all'>('week')
+  const [pickWeek, setPickWeek] = useState(getWeekStart())
+  const [pickDay, setPickDay] = useState(localDateStr())
+  const [person, setPerson] = useState('')
 
   useEffect(() => {
     const u1 = onSnapshot(doc(db, 'expense_config', 'main'), snap => {
@@ -1339,9 +1361,51 @@ This cannot be undone.`,
 
   const reportTotal = (rId: string) => totalOf(entries.filter(e => e.reportId === rId))
 
-  const filtered = reports.filter(r =>
+  const byStatus = (r: ExpenseReport) =>
     statusFilter === 'all' ? r.status !== 'draft' : r.status === statusFilter
-  )
+  const byPerson = (r: ExpenseReport) => !person || r.userId === person
+  const filtered = reports.filter(r => byStatus(r) && byPerson(r)
+    && (when !== 'week' || r.weekStart === pickWeek))
+  /**
+   * Claims awaiting review that the week picked hides. Reps file a week after
+   * it ends, so "this week" is often empty while last week waits — said, so
+   * the default view never quietly hides work.
+   */
+  const waitingElsewhere = when === 'week'
+    ? reports.filter(r => r.status === 'submitted' && byPerson(r) && r.weekStart !== pickWeek).length : 0
+
+  /** Everybody who has ever filed, for the person filter. */
+  const people = [...new Map(reports.map(r => [r.userId, r.userName])).entries()]
+    .sort((a, b) => a[1].localeCompare(b[1]))
+    .map(([value, label]) => ({ value, label }))
+
+  /**
+   * One day's spending, person by person. Drafts included: a week is filed
+   * after it ends, so a day this week lives only in a draft — and what was
+   * spent today is exactly what a day view is for. Each says where its week is.
+   */
+  const dayRows = when !== 'day' ? [] : (() => {
+    const reportOf = new Map(reports.map(r => [r.id!, r]))
+    const out = new Map<string, { report: ExpenseReport; entries: ExpenseEntry[] }>()
+    for (const e of entries) {
+      if (e.date !== pickDay) continue
+      const r = reportOf.get(e.reportId)
+      if (!r || !byPerson(r)) continue
+      const row = out.get(r.id!) ?? { report: r, entries: [] }
+      row.entries.push(e)
+      out.set(r.id!, row)
+    }
+    return [...out.values()].sort((a, b) => a.report.userName.localeCompare(b.report.userName))
+  })()
+  const dayTotal = dayRows.reduce((n, r) => n + totalOf(r.entries), 0)
+
+  /** From a day to the week it belongs to, opened, where it can be cleared. */
+  const openWeek = (r: ExpenseReport) => {
+    setWhen('week')
+    setPickWeek(r.weekStart)
+    setStatusFilter(r.status === 'draft' ? 'all' : r.status as 'submitted' | 'cleared' | 'rejected')
+    setExpandedId(r.id!)
+  }
 
   useEffect(() => {
     if (!expandedId) return
@@ -1461,8 +1525,33 @@ This cannot be undone.`,
             </StatGrid>
 
             <FilterBox title="Expense reports" testId="expenses-box"
-              note="The status you pick changes the list in this box.">
-            <Section label="Filter">
+              note="When, who and the status you pick change the list in this box.">
+            <div className="oc-wrap" style={{ gap: 16, alignItems: 'flex-end' }}>
+              <div>
+                <div style={{ fontSize: 12, color: t.text3, marginBottom: 6 }}>When</div>
+                <ChipGroup value={when} onChange={setWhen}
+                  options={[{ id: 'week' as const, label: 'A week' }, { id: 'day' as const, label: 'A day' },
+                            { id: 'all' as const, label: 'All weeks' }]} />
+              </div>
+              {when === 'week' && (
+                <div style={{ flex: '1 1 220px', maxWidth: 300 }}>
+                  <WeekPicker value={pickWeek} onChange={setPickWeek} days={7} ariaLabel="Expense week" />
+                </div>
+              )}
+              {when === 'day' && (
+                <div style={{ flex: '1 1 200px', maxWidth: 260 }}>
+                  <DayPicker value={pickDay} onChange={setPickDay} ariaLabel="Expense day" />
+                </div>
+              )}
+              <div data-testid="expense-person" style={{ flex: '1 1 180px', maxWidth: 260 }}>
+                <div style={{ fontSize: 12, color: t.text3, marginBottom: 6 }}>Person</div>
+                <CustomSelect value={person} onChange={setPerson}
+                  options={[{ value: '', label: 'Everybody' }, ...people]} placeholder="Everybody" />
+              </div>
+            </div>
+
+            {when !== 'day' && (
+            <Section label="Status">
               <ChipGroup
                 value={statusFilter}
                 onChange={setStatusFilter}
@@ -1474,13 +1563,67 @@ This cannot be undone.`,
                 ]}
               />
             </Section>
+            )}
 
-            {filtered.length === 0 ? (
+            {waitingElsewhere > 0 && (
+              <div data-testid="waiting-elsewhere" style={{ fontSize: 13, color: t.warn }}>
+                {waitingElsewhere} more awaiting review in other weeks ·{' '}
+                <button className="oc-action" onClick={() => { setWhen('all'); setStatusFilter('submitted') }}
+                  style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, color: t.accent, cursor: 'pointer' }}>
+                  Show them
+                </button>
+              </div>
+            )}
+
+            {when === 'day' ? (
+              dayRows.length === 0 ? (
+                <EmptyState title="Nothing spent"
+                  body={`No expense is logged for ${fmtDate(pickDay)}${person ? ' by this person' : ''}.`} />
+              ) : (
+                <div data-testid="expense-day">
+                  <div style={{ fontSize: 13, color: t.text2, marginBottom: 8 }}>
+                    {fmtDate(pickDay)} · <b style={{ color: t.text }}>{money(dayTotal)}</b> across {dayRows.length}{' '}
+                    {dayRows.length === 1 ? 'person' : 'people'}
+                  </div>
+                  <ScrollList count={dayRows.length} label="people">
+                  <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+                    {dayRows.map(({ report: r, entries: es }) => (
+                      <div key={r.id} data-testid={`expense-day-${r.userId}`}
+                        style={{ borderTop: `0.5px solid ${t.border}`, padding: '14px 0' }}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
+                          <span style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ display: 'block', fontSize: 15, fontWeight: 500, color: t.text }}>{r.userName}</span>
+                            <span style={{ display: 'block', fontSize: 13, color: t.text3, marginTop: 3 }}>
+                              {es.map(e => `${e.type === 'allowance'
+                                ? `${ALLOW_INFO[e.allowanceType!].label} allowance`
+                                : (e.customLabel || VAR_CATS.find(c => c.value === e.category)?.label || 'Expense')} ${money(e.amount)}`).join(' · ')}
+                            </span>
+                          </span>
+                          <span style={{ textAlign: 'right', flexShrink: 0 }}>
+                            <span style={{ display: 'block', fontSize: 15, fontWeight: 500, color: t.text }}>{money(totalOf(es))}</span>
+                            <span style={{ display: 'block', fontSize: 13, marginTop: 3,
+                                           color: r.status === 'submitted' ? t.warn : t.text3 }}>
+                              {r.status === 'draft' ? 'Week not filed yet' : STATUS_TEXT[r.status] ?? r.status}
+                            </span>
+                          </span>
+                        </div>
+                        <div style={{ marginTop: 8 }}>
+                          {action(`Open the week · ${weekLabel(r.weekStart)}`, () => openWeek(r))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  </ScrollList>
+                </div>
+              )
+            ) : filtered.length === 0 ? (
               <EmptyState
                 title="Nothing here"
-                body={statusFilter === 'submitted'
-                  ? 'No expense report is waiting for review.'
-                  : 'No report matches that filter.'}
+                body={when === 'week'
+                  ? `No report ${statusFilter === 'submitted' ? 'is waiting for review' : 'matches'} for ${weekLabel(pickWeek)}${person ? ' from this person' : ''}.`
+                  : statusFilter === 'submitted'
+                    ? 'No expense report is waiting for review.'
+                    : 'No report matches that filter.'}
               />
             ) : (
               <ScrollList count={filtered.length} label="reports" height={760}>

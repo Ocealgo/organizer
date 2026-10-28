@@ -48,6 +48,19 @@ function addDays(s: string, n: number): string {
 export const round2 = (n: number) => Math.round(n * 100) / 100
 
 /**
+ * A typed amount, in whole rupees: up to 70 paise is dropped, above 70 goes up
+ * to the next rupee — ₹45.10 to ₹45.70 is ₹45, ₹45.80 is ₹46. Worked in paise
+ * so 1.7 is not read as 1.7000000000000002. Never below ₹1 for something spent,
+ * so 50 paise is not turned into nothing.
+ */
+export function roundClaim(n: number): number {
+  if (!Number.isFinite(n) || n <= 0) return n
+  const paise = Math.round(n * 100)
+  const whole = Math.floor(paise / 100)
+  return Math.max(1, paise % 100 > 70 ? whole + 1 : whole)
+}
+
+/**
  * Whether a week can still be added to.
  *
  * Draft and sent-back weeks only, which is what the rules already enforce on

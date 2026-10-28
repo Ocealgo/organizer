@@ -10,10 +10,11 @@ import { localDateStr, localMonthStr } from '../../utils/date'
 import DateInput from '../../components/DateInput'
 import DayPicker, { dayOffLabel, HolidayNote } from '../../components/DayPicker'
 import AttendanceRegister from '../../attendance/AttendanceRegister'
+import { datesOfMonth, fmtDays, leaveDaysOf } from '../../attendance/attendance'
 import { FilterBox, ScrollList } from '../../components/FilterBox'
 import {
-  PageHeader, TabBar, StatGrid, StatCard, Section, EmptyState,
-  ChipGroup, GhostButton, PrimaryButton, inputStyle,
+  PageHeader, TabBar, StatGrid, StatCard, Section, EmptyState, Eyebrow,
+  ChipGroup, GhostButton, PrimaryButton, ShowHide, inputStyle,
 } from '../../components/ui'
 
 interface Props { onBack: () => void }
@@ -41,6 +42,12 @@ const ACTION_LABEL: Record<string, string> = {
   holiday_declared: 'Cancelled — the day was declared a holiday',
 }
 
+/** A cell of the leave report: numbers right-aligned, in even figures. */
+const reportCell = (t: any, align: 'left' | 'right' = 'right') => ({
+  textAlign: align, padding: '9px 10px', borderBottom: `0.5px solid ${t.border}`,
+  color: t.text2, fontVariantNumeric: 'tabular-nums' as const, whiteSpace: 'nowrap' as const,
+})
+
 const longDate = (d: string) =>
   new Date(d + 'T00:00:00').toLocaleDateString('en-IN',
     { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })
@@ -63,7 +70,7 @@ export default function LeaveTracker({ onBack }: Props) {
   const [tab, setTab] = useState<LeaveTab>('register')
   const [selectedPerson, setSelectedPerson] = useState<string>('all')
   // Each leave tab has its own "when": a day, a month, or everything.
-  const [when, setWhen] = useState<LeaveWhen>('day')
+  const [when, setWhen] = useState<LeaveWhen>('month')
   const [leaveDay, setLeaveDay] = useState(localDateStr())
   const [leaveMonth, setLeaveMonth] = useState(localMonthStr())
   const [expandedAudit, setExpandedAudit] = useState<string | null>(null)
@@ -71,6 +78,15 @@ export default function LeaveTracker({ onBack }: Props) {
   const [newHolidayName, setNewHolidayName] = useState('')
   const [newHolidayDate, setNewHolidayDate] = useState(localDateStr())
   const [addingHoliday, setAddingHoliday] = useState(false)
+  const [teamOpen, setTeamOpen] = useState(false)
+  const [recordsOpen, setRecordsOpen] = useState(true)
+
+  /**
+   * Whose attendance this is. Sales managers are tracked like the reps; a
+   * sales manager looking at it sees only the reps — not their own leave, nor
+   * a fellow manager's, which are an admin's to decide.
+   */
+  const viewerIsManager = appUser?.role === 'sales_manager'
 
   useEffect(() => {
     const u1 = onSnapshot(collection(db, 'leave_records'), snap => {
@@ -79,13 +95,15 @@ export default function LeaveTracker({ onBack }: Props) {
     const u2 = onSnapshot(collection(db, 'users'), snap => {
       setSalesUsers(snap.docs
         .map(d => ({ uid: d.id, ...d.data() } as AppUser))
-        .filter(u => u.status === 'approved' && (u.role === 'offline_sales' || u.role === 'online_sales')))
+        .filter(u => u.status === 'approved' && (u.role === 'offline_sales' || u.role === 'online_sales'
+          || (u.role === 'sales_manager' && !viewerIsManager)))
+        .sort((a, b) => a.name.localeCompare(b.name)))
     })
     const u3 = onSnapshot(query(collection(db, 'holidays'), orderBy('date')), snap => {
       setHolidays(snap.docs.map(d => ({ id: d.id, ...d.data() } as Holiday)))
     })
     return () => { u1(); u2(); u3() }
-  }, [])
+  }, [viewerIsManager])
 
   const today = todayStr()
   const month = thisMonth()
@@ -99,7 +117,10 @@ export default function LeaveTracker({ onBack }: Props) {
   const holidayMap = new Map(holidays.map(h => [h.date, h.name]))
   const voidOnDayOff = (l: LeaveRecord) => l.autoMarked === true
     && (holidayMap.has(l.date) || new Date(l.date + 'T00:00:00').getDay() === 0)
-  const shown = leaveRecords.filter(l => !voidOnDayOff(l))
+  // Only the people on this screen: a sales manager never sees, nor decides, their own leave.
+  const tracked = new Set(salesUsers.map(u => u.uid))
+  const ownLeave = leaveRecords.filter(l => tracked.has(l.uid))
+  const shown = ownLeave.filter(l => !voidOnDayOff(l))
 
   const pendingApproval = shown.filter(l => l.status === 'pending_approval')
   const pendingUnmark = shown.filter(l => l.status === 'unmark_requested')
@@ -248,9 +269,21 @@ export default function LeaveTracker({ onBack }: Props) {
 
   const displayed = selectedPerson === 'all' ? tabFiltered : tabFiltered.filter(l => l.uid === selectedPerson)
 
-  const active = shown.filter(l => l.status === 'active')
-  const dayCount = active.filter(l => l.date === leaveDay).length
-  const monthCount = active.filter(l => l.date.startsWith(leaveMonth)).length
+  /**
+   * Leave counted in days, not records: a half day is half, two half days are
+   * one, a day with two records on it counts once, and leave on a Sunday or a
+   * holiday counts nothing. Leave under appeal still stands until decided.
+   */
+  const standingLeave = shown.filter(l => l.status === 'active' || l.status === 'unmark_requested')
+  const countOf = (f: (l: LeaveRecord) => boolean) => leaveDaysOf(standingLeave.filter(f), holidays)
+  const dayCount = new Set(standingLeave.filter(l => l.date === leaveDay).map(l => l.uid)).size
+  const monthLeave = countOf(l => l.date.startsWith(leaveMonth))
+  const allLeave = countOf(() => true)
+  const breakdown = (c: { full: number; half: number; absent: number }) => [
+    c.full && `${c.full} full day${c.full > 1 ? 's' : ''}`,
+    c.half && `${c.half} half day${c.half > 1 ? 's' : ''}`,
+    c.absent && `${c.absent} absent`,
+  ].filter(Boolean).join(' · ') || 'None'
   const dayOff = dayOffLabel(leaveDay, holidayMap)
   const monthName = new Date(leaveMonth + '-01T00:00:00').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
   const monthEnd = (() => { const [y, m] = leaveMonth.split('-').map(Number); return localDateStr(new Date(y, m, 0)) })()
@@ -263,6 +296,31 @@ export default function LeaveTracker({ onBack }: Props) {
   const dayWords = leaveDay === today ? 'today' : `on ${longDate(leaveDay)}`
   const totalPending = pendingApproval.length + pendingUnmark.length
   const waitingFor = (uid: string) => pendingApproval.some(l => l.uid === uid) || pendingUnmark.some(l => l.uid === uid)
+
+  /**
+   * The leave report: for each person in the period picked, the working days
+   * there were, the leave taken in days, and how much of it they asked for
+   * against how much the app marked when nobody punched in. Leave still
+   * waiting on a decision is not taken yet, so it is counted on its own.
+   */
+  const inPeriod = (date: string) =>
+    when === 'day' ? date === leaveDay : when === 'month' ? date.startsWith(leaveMonth) : true
+  const workingDays = when === 'day' ? (dayOff ? 0 : 1)
+    : when === 'month' ? datesOfMonth(leaveMonth).filter(d => !dayOffLabel(d, holidayMap)).length
+    : null
+  const reportPeople = selectedPerson === 'all' ? salesUsers : salesUsers.filter(u => u.uid === selectedPerson)
+  const reportOf = (uids: Set<string>) => {
+    const mine = standingLeave.filter(l => uids.has(l.uid) && inPeriod(l.date))
+    return {
+      taken: leaveDaysOf(mine, holidays).days,
+      applied: leaveDaysOf(mine.filter(l => !l.autoMarked), holidays).days,
+      automatic: leaveDaysOf(mine.filter(l => l.autoMarked), holidays).days,
+      waiting: shown.filter(l => uids.has(l.uid) && inPeriod(l.date) && l.status === 'pending_approval').length,
+    }
+  }
+  const reportRows = reportPeople.map(u => ({ user: u, ...reportOf(new Set([u.uid])) }))
+  const reportTotal = reportOf(new Set(reportPeople.map(u => u.uid)))
+  const periodWords = when === 'day' ? longDate(leaveDay) : when === 'month' ? monthName : 'all time'
 
   // A pending request, with the two decisions available on it.
   const RequestRow = ({ leave, onYes, onNo, yes, no }: {
@@ -413,7 +471,7 @@ export default function LeaveTracker({ onBack }: Props) {
             )}
 
             <FilterBox title="Register" note="The month you pick changes everything in this box." testId="register-box">
-              <AttendanceRegister reps={salesUsers} leaves={leaveRecords} holidays={holidays} />
+              <AttendanceRegister reps={salesUsers} leaves={ownLeave} holidays={holidays} />
             </FilterBox>
           </>
         )}
@@ -453,10 +511,14 @@ export default function LeaveTracker({ onBack }: Props) {
             ) : (
               <StatGrid>
                 {when === 'day' && <StatCard value={dayCount} label={`On leave ${dayWords}`} />}
-                {when === 'month' && <StatCard value={monthCount} label={`Leave days in ${monthName}`} />}
-                {when === 'month' && <StatCard value={new Set(active.filter(l => l.date.startsWith(leaveMonth)).map(l => l.uid)).size} label="People who took leave" />}
-                {when === 'all' && <StatCard value={active.length} label="Leave days on record" />}
-                {when === 'all' && <StatCard value={new Set(active.map(l => l.uid)).size} label="People who took leave" />}
+                {when === 'month' && <StatCard value={fmtDays(monthLeave.days)}
+                  label={`Days off across the team, ${monthName}`} context={breakdown(monthLeave)}
+                  explain="Every person's leave added up, in days. A full day of leave or an absence is one, a half day is half — two half days make one day. Sundays and holidays are not counted." />}
+                {when === 'month' && <StatCard value={new Set(standingLeave.filter(l => l.date.startsWith(leaveMonth)).map(l => l.uid)).size} label="People who took leave" />}
+                {when === 'all' && <StatCard value={fmtDays(allLeave.days)}
+                  label="Days off across the team, all time" context={breakdown(allLeave)}
+                  explain="Every person's leave on record added up, in days. A full day of leave or an absence is one, a half day is half — two half days make one day. Sundays and holidays are not counted." />}
+                {when === 'all' && <StatCard value={new Set(standingLeave.map(l => l.uid)).size} label="People who took leave" />}
               </StatGrid>
             )}
             {when === 'day' && (
@@ -478,25 +540,31 @@ export default function LeaveTracker({ onBack }: Props) {
               </Section>
             )}
             {when !== 'day' && (
-            <Section label="Team">
+            <Section label={`Team · ${salesUsers.length}`}
+              right={salesUsers.length > 0 && <ShowHide open={teamOpen} onToggle={() => setTeamOpen(o => !o)} what="team" testId="team-toggle" />}>
               {salesUsers.length === 0 ? (
                 <EmptyState title="No sales staff yet" body="Approve a sales account and their leave will be tracked here." />
-              ) : (
+              ) : teamOpen && (
                 <ScrollList count={salesUsers.length} label="people">
-                <div style={{ borderBottom: `0.5px solid ${t.border}` }}>
+                <div data-testid="team-list" style={{ borderBottom: `0.5px solid ${t.border}` }}>
                   {salesUsers.map(u => {
-                    const total = leaveRecords.filter(l => l.uid === u.uid && l.status === 'active').length
-                    const monthLeaves = leaveRecords.filter(l => l.uid === u.uid && l.date.startsWith(month) && l.status === 'active').length
-                    const inMonth = active.filter(l => l.uid === u.uid && l.date.startsWith(leaveMonth)).length
+                    const theirs = (f: (l: LeaveRecord) => boolean) => countOf(l => l.uid === u.uid && f(l)).days
+                    const total = theirs(() => true)
+                    const monthLeaves = theirs(l => l.date.startsWith(month))
+                    const inMonth = theirs(l => l.date.startsWith(leaveMonth))
+                    const dd = (n: number) => `${fmtDays(n)} day${n === 1 ? '' : 's'}`
                     const status = waitingFor(u.uid) ? 'Request waiting'
-                      : when === 'month' ? `${inMonth} in ${monthName.split(' ')[0]}`
-                        : `${total} in total`
+                      : when === 'month' ? `${dd(inMonth)} in ${monthName.split(' ')[0]}`
+                        : `${dd(total)} in total`
                     return (
                       <div key={u.uid} style={{ display: 'flex', alignItems: 'baseline', gap: 16, borderTop: `0.5px solid ${t.border}`, padding: '14px 0' }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 15, fontWeight: 500, color: t.text }}>{u.name}</div>
+                          <div style={{ fontSize: 15, fontWeight: 500, color: t.text }}>
+                            {u.name}
+                            {u.role === 'sales_manager' && <span style={{ fontSize: 12, fontWeight: 400, color: t.text3 }}> · Sales manager</span>}
+                          </div>
                           <div style={{ fontSize: 13, fontWeight: 400, color: t.text3, marginTop: 3 }}>
-                            {monthLeaves} this month · {total} in total
+                            {dd(monthLeaves)} this month · {dd(total)} in total
                           </div>
                         </div>
                         <div style={{ fontSize: 14, fontWeight: 400, whiteSpace: 'nowrap',
@@ -512,14 +580,91 @@ export default function LeaveTracker({ onBack }: Props) {
             </Section>
             )}
 
-            <Section label="Records">
+            <div data-testid="records-card" style={{ border: `0.5px solid ${t.border2}`, borderRadius: 8, padding: 16,
+                                                     background: t.bg2, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 500, color: t.text }}>Records</div>
+                  <div style={{ fontSize: 12, color: t.text3, marginTop: 2 }}>
+                    Leave report and every record, {periodWords}
+                  </div>
+                </div>
+                <ShowHide open={recordsOpen} onToggle={() => setRecordsOpen(o => !o)} testId="records-toggle" />
+              </div>
+              {recordsOpen && (<>
               {salesUsers.length > 0 && (
-                <div style={{ marginBottom: 16 }}>
+                <div>
                   <ChipGroup
                     value={selectedPerson}
                     onChange={setSelectedPerson}
                     options={[{ id: 'all', label: 'Everyone' }, ...salesUsers.map(u => ({ id: u.uid, label: u.name }))]}
                   />
+                </div>
+              )}
+
+              {reportPeople.length > 0 && (
+                <div data-testid="leave-report">
+                  <div style={{ marginBottom: 8 }}><Eyebrow>Leave report · {periodWords}</Eyebrow></div>
+                  <div className="oc-scroll-x" style={{ border: `0.5px solid ${t.border}`, borderRadius: 6,
+                                                        ...(reportRows.length > 10 ? { maxHeight: 460, overflowY: 'auto' } : {}) }}>
+                    <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 13, minWidth: 560 }}>
+                      <thead>
+                        <tr>
+                          {[['Person', ''],
+                            ['Working days', 'Days the team was due to work in the period — not Sundays, not holidays'],
+                            ['Leave taken', 'Days off in total: a full day or an absence is one, a half day is half, so two half days are one'],
+                            ['Applied', 'Leave the person asked for and a manager approved, in days'],
+                            ['Automatic', 'Leave the app marked because there was no punch-in, in days'],
+                            ['Waiting', 'Requests not decided yet — not counted as taken'],
+                          ].map(([h, title], i) => (
+                            <th key={h} title={title || undefined} style={{
+                              position: 'sticky', top: 0, background: t.bg2, zIndex: 1,
+                              textAlign: i === 0 ? 'left' : 'right', padding: '9px 10px', fontSize: 11, fontWeight: 400,
+                              letterSpacing: '0.06em', textTransform: 'uppercase', color: t.text3,
+                              borderBottom: `0.5px solid ${t.border}`, whiteSpace: 'nowrap',
+                            }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reportRows.map(r => (
+                          <tr key={r.user.uid} data-testid={`leave-report-${r.user.uid}`}>
+                            <td style={reportCell(t, 'left')}>
+                              <span style={{ fontWeight: 500, color: t.text }}>{r.user.name}</span>
+                              {r.user.role === 'sales_manager' && <span style={{ fontSize: 12, color: t.text3 }}> · Sales manager</span>}
+                            </td>
+                            <td style={reportCell(t)}>{workingDays ?? '—'}</td>
+                            <td style={{ ...reportCell(t), fontWeight: 600, color: r.taken ? t.text : t.text3 }}>{fmtDays(r.taken)}</td>
+                            <td style={reportCell(t)}>{fmtDays(r.applied)}</td>
+                            <td style={{ ...reportCell(t), color: r.automatic ? t.warn : t.text3 }}>{fmtDays(r.automatic)}</td>
+                            <td style={{ ...reportCell(t), color: r.waiting ? t.warn : t.text3 }}>{r.waiting}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      {reportRows.length > 1 && (
+                        <tfoot>
+                          <tr data-testid="leave-report-total">
+                            <td style={{ ...reportCell(t, 'left'), fontWeight: 500, color: t.text, borderBottom: 'none' }}>
+                              Everyone · {reportRows.length}
+                            </td>
+                            <td style={{ ...reportCell(t), borderBottom: 'none' }}>
+                              {workingDays === null ? '—' : workingDays * reportRows.length}
+                            </td>
+                            <td style={{ ...reportCell(t), fontWeight: 600, color: t.text, borderBottom: 'none' }}>{fmtDays(reportTotal.taken)}</td>
+                            <td style={{ ...reportCell(t), borderBottom: 'none' }}>{fmtDays(reportTotal.applied)}</td>
+                            <td style={{ ...reportCell(t), borderBottom: 'none' }}>{fmtDays(reportTotal.automatic)}</td>
+                            <td style={{ ...reportCell(t), borderBottom: 'none' }}>{reportTotal.waiting}</td>
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                  </div>
+                  <div style={{ fontSize: 12, color: t.text3, marginTop: 8, lineHeight: 1.6 }}>
+                    A full day of leave or an absence counts one, a half day counts half — two half days are one day.
+                    Sundays and holidays are never counted.
+                    {workingDays === null && ' Working days are shown for a day or a month, not for everything.'}
+                    {reportRows.length > 1 && workingDays !== null && ' The total row adds up the working days of everyone listed.'}
+                  </div>
                 </div>
               )}
 
@@ -574,7 +719,8 @@ export default function LeaveTracker({ onBack }: Props) {
                 </div>
                 </ScrollList>
               )}
-            </Section>
+              </>)}
+            </div>
             </FilterBox>
           </>
         )}

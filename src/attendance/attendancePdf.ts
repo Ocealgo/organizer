@@ -1,5 +1,5 @@
 import type { Holiday } from '../types'
-import { Day, MARK_LETTER, Summary } from './attendance'
+import { Day, MARK_LETTER, REGISTER_TOTALS, Summary } from './attendance'
 
 /**
  * The attendance register as a PDF: one A4 landscape page per month, a row per
@@ -25,8 +25,8 @@ const INK: [number, number, number] = [17, 24, 39]
 const SHADE: [number, number, number] = [241, 245, 249]
 
 const colourOf = (d: Day) =>
-  d.mark === 'present' ? GOOD
-    : d.mark === 'auto_closed' || d.mark === 'half' || d.mark === 'absent' ? WARN
+  d.mark === 'present' || d.mark === 'auto_closed' ? GOOD
+    : d.mark === 'half' || d.mark === 'absent' ? WARN
     : d.mark === 'holiday' || d.mark === 'off' ? OFF
     : d.mark === 'leave' || d.mark === 'requested' ? LEAVE : MUTED
 
@@ -57,15 +57,18 @@ export async function downloadAttendancePdf(
 
   // ── the grid ──────────────────────────────────────────────────────────────
   const weekday = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'narrow' })
-  const head = [['Rep', ...dates.map(d => `${Number(d.slice(8))}\n${weekday(d)}`), 'P', 'H/2', 'A', 'L', 'Not\nended']]
+  const head = [['Name', ...dates.map(d => `${Number(d.slice(8))}\n${weekday(d)}`),
+    ...REGISTER_TOTALS.map(c => c.head.replace(' ', '\n'))]]
+  // No "½" in the built-in fonts, so leave days are written 2.5 here.
+  const days = (n: number) => Number.isInteger(n) ? String(n) : n.toFixed(1)
+  const leaveCol = dates.length + 1 + REGISTER_TOTALS.findIndex(c => c.key)
   // jsPDF's built-in fonts have no "½", so the PDF says "H/2" where the screen
-  // says "½" — and "P*" for a day not ended, its "P·".
-  const letter = (d: Day) => d.mark === 'half' ? 'H/2'
-    : d.mark === 'auto_closed' ? 'P*' : MARK_LETTER[d.mark] || ''
+  // says "½".
+  const letter = (d: Day) => d.mark === 'half' ? 'H/2' : MARK_LETTER[d.mark] || ''
   const body = rows.map(r => [
-    `${r.name}\n${r.sum.present} of ${r.sum.working} present`,
+    `${r.name}\n${days(r.sum.leaveDays)} leave taken`,
     ...r.days.map(letter),
-    String(r.sum.present), String(r.sum.half), String(r.sum.absent), String(r.sum.leave), String(r.sum.autoClosed),
+    ...REGISTER_TOTALS.map(c => c.days ? days(c.of(r.sum)) : String(c.of(r.sum))),
   ])
 
   autoTable(doc, {
@@ -91,6 +94,8 @@ export async function downloadAttendancePdf(
         data.cell.styles.fontStyle = 'bold'
       }
       if (data.section === 'body' && col === 0) data.cell.styles.fontStyle = 'bold'
+      // The leave total is the figure people come to the file for.
+      if (col === leaveCol) { data.cell.styles.fontStyle = 'bold'; data.cell.styles.textColor = INK }
     },
   })
 
@@ -98,9 +103,11 @@ export async function downloadAttendancePdf(
   const end = (doc as any).lastAutoTable?.finalY ?? M + 60
   doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(...MUTED)
   doc.text(doc.splitTextToSize(
-    'P present · P* present, day not ended (closed automatically, no distance) · H/2 half day · A absent '
+    'P present · H/2 half day · A absent '
     + '(marked automatically: no punch-in) · L leave · L? leave requested · H holiday · – no record. '
-    + 'Shaded columns are Sundays and holidays; a P on one was worked on a day off.',
+    + 'Shaded columns are Sundays and holidays; a P on one was worked on a day off. '
+    + 'Leave taken: a full day of leave or an absence counts 1, a half day counts 0.5 — two half days are one day; '
+    + 'Applied is leave asked for and approved, Automatic is leave marked for no punch-in.',
     W - 2 * M), M, end + 14)
 
   doc.save(`ocealgo-attendance_${month}.pdf`)

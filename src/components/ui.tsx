@@ -226,6 +226,21 @@ export function Section({ label, children, right }: {
   )
 }
 
+// ── Show / hide ──────────────────────────────────────────────────────────────
+/** The button that opens and closes a block; says which it will do, and what. */
+export function ShowHide({ open, onToggle, what, testId }: {
+  open: boolean; onToggle: () => void; what?: string; testId?: string
+}) {
+  const { t } = useTheme()
+  return (
+    <button className="oc-action" onClick={onToggle} aria-expanded={open} data-testid={testId}
+      style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, color: t.accent,
+               cursor: 'pointer', whiteSpace: 'nowrap' }}>
+      {open ? `Hide${what ? ` ${what}` : ''}` : `Show${what ? ` ${what}` : ''}`}
+    </button>
+  )
+}
+
 // ── Empty state ──────────────────────────────────────────────────────────────
 export function EmptyState({ title, body, actionLabel, onAction }: {
   title: string; body: string; actionLabel?: string; onAction?: () => void
@@ -351,7 +366,7 @@ export function ChipGroup<T extends string>({ options, value, onChange }: {
       {items.map(o => {
         const on = value === o.id
         return (
-          <button key={o.id} className="oc-action" onClick={() => onChange(o.id)}
+          <button key={o.id} className="oc-action" onClick={() => onChange(o.id)} aria-pressed={on}
             style={{
               background: on ? t.tint : 'none',
               border: `0.5px solid ${on ? t.text2 : t.border2}`,

@@ -8,7 +8,8 @@ import { localDateStr, localMonthStr } from '../utils/date'
 import { GhostButton } from '../components/ui'
 import { HolidayNote } from '../components/DayPicker'
 import AttendanceCalendar from './AttendanceCalendar'
-import { Day, MARK_LETTER, MARK_LABEL, datesOfMonth, describe, monthOf, summaryOf } from './attendance'
+import { Day, MARK_LETTER, MARK_LABEL, REGISTER_TOTALS as TOTALS, datesOfMonth, describe, fmtDays, monthOf, summaryOf } from './attendance'
+
 
 /**
  * The team's month: a row per rep, a column per day, one letter in each cell.
@@ -105,8 +106,8 @@ export default function AttendanceRegister({ reps, leaves, holidays }: Props) {
 
   // ── the whole team ─────────────────────────────────────────────────────────
   const cellColour = (d: Day) =>
-    d.mark === 'present' ? t.good
-      : d.mark === 'auto_closed' || d.mark === 'half' || d.mark === 'absent' ? t.warn
+    d.mark === 'present' || d.mark === 'auto_closed' ? t.good
+      : d.mark === 'half' || d.mark === 'absent' ? t.warn
       : d.mark === 'holiday' || d.mark === 'off' ? t.off
       : d.mark === 'leave' || d.mark === 'requested' ? t.text2 : t.text3
   const th = {
@@ -155,7 +156,7 @@ export default function AttendanceRegister({ reps, leaves, holidays }: Props) {
           <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 12 }}>
             <thead>
               <tr>
-                <th style={{ ...th, textAlign: 'left', left: 0, zIndex: 2, padding: '7px 10px', minWidth: 140 }}>Rep</th>
+                <th style={{ ...th, textAlign: 'left', left: 0, zIndex: 2, padding: '7px 10px', minWidth: 140 }}>Name</th>
                 {dates.map(d => {
                   const sun = new Date(d + 'T00:00:00').getDay() === 0
                   const hol = holidays.some(h => h.date === d)
@@ -167,8 +168,9 @@ export default function AttendanceRegister({ reps, leaves, holidays }: Props) {
                     </th>
                   )
                 })}
-                {['P', '½', 'A', 'L', 'Not ended'].map(h => (
-                  <th key={h} style={{ ...th, padding: '7px 8px', minWidth: 34 }}>{h}</th>
+                {TOTALS.map(c => (
+                  <th key={c.head} title={c.title} style={{ ...th, padding: '7px 8px', minWidth: 52,
+                    color: c.key ? t.text : t.text3, fontWeight: c.key ? 600 : 400 }}>{c.head}</th>
                 ))}
               </tr>
             </thead>
@@ -194,13 +196,17 @@ export default function AttendanceRegister({ reps, leaves, holidays }: Props) {
                                boxShadow: d.dayOff && (d.mark === 'present' || d.mark === 'auto_closed')
                                  ? `inset 0 -2px 0 ${t.off}` : undefined }}>
                       {MARK_LETTER[d.mark]}
-                      {d.mark === 'auto_closed' && '·'}
                     </td>
                   ))}
-                  {[r.sum.present, r.sum.half, r.sum.absent, r.sum.leave, r.sum.autoClosed].map((n, i) => (
-                    <td key={i} style={{ textAlign: 'center', padding: '6px 8px', borderBottom: `0.5px solid ${t.border}`,
-                                         color: n ? t.text : t.text3, fontVariantNumeric: 'tabular-nums' }}>{n}</td>
-                  ))}
+                  {TOTALS.map(c => {
+                    const n = c.of(r.sum)
+                    return (
+                      <td key={c.head} title={c.title} data-testid={`register-${c.head.toLowerCase().replace(/ /g, '-')}-${r.rep.uid}`}
+                        style={{ textAlign: 'center', padding: '6px 8px', borderBottom: `0.5px solid ${t.border}`,
+                                 color: n ? t.text : t.text3, fontWeight: c.key ? 600 : 400,
+                                 fontVariantNumeric: 'tabular-nums' }}>{c.days ? fmtDays(n) : n}</td>
+                    )
+                  })}
                 </tr>
               ))}
             </tbody>
@@ -209,10 +215,12 @@ export default function AttendanceRegister({ reps, leaves, holidays }: Props) {
       )}
 
       <div style={{ fontSize: 12, color: t.text3, lineHeight: 1.7 }}>
-        <b style={{ color: t.good }}>P</b> present · <b style={{ color: t.warn }}>P·</b> present, day not ended
+        <b style={{ color: t.good }}>P</b> present
         {' · '}<b style={{ color: t.warn }}>½</b> half day · <b style={{ color: t.warn }}>A</b> absent
         {' · '}<b style={{ color: t.text2 }}>L</b> leave · <b style={{ color: t.off }}>H</b> holiday · <b>–</b> no record
         {' · '}a shaded <b style={{ color: t.good }}>P</b> underlined in red was worked on a day off.
+        {' '}<b>Leave taken</b> adds up the days off: a leave or an absence is one, a half day is half, so two half days make one —
+        {' '}split into <b>Applied</b> (asked for and approved) and <b>Automatic</b> (no punch-in).
         {' '}Attendance as the app recorded it. Tap a name for that rep's own calendar, with times and reasons.
       </div>
     </div>
